@@ -1,3 +1,4 @@
+import { compilePath } from '../column/get-value'
 import { buildDiagnostic, DatakableError } from '../diagnostics/build'
 import type { DiagnosticDetails } from '../diagnostics/catalog'
 import { keepDiagnostics } from '../diagnostics/catalog'
@@ -69,12 +70,6 @@ export function joinIssuePath(path: RowIssue['path']): string {
     out += (i === 0 ? '' : '.') + (typeof k === 'symbol' ? k.toString() : String(k))
   }
   return out
-}
-
-/** The issue path and the column key point at the same cell: equal, or one contains the other. */
-export function pathTouches(issuePath: string, key: string): boolean {
-  if (issuePath === '' || issuePath === key) return true
-  return issuePath.startsWith(`${key}.`) || key.startsWith(`${issuePath}.`)
 }
 
 /**
@@ -258,27 +253,35 @@ export function createSchemaIngest(
 
   /** Issue paths of the invalid rows, matched to columns, most frequent first. */
   function issueColumns(rows: readonly InvalidRow[]): SchemaIssueColumn[] {
-    const counts = new Map<string, number>()
+    // Joined path → [count, one raw path]: the raw path is matched segment by segment, like
+    // getCellIssues (`matchCellIssues`), so the fix names the column whose cells show the issue.
+    const counts = new Map<string, [number, RowIssue['path']]>()
     for (const r of rows) {
       const seen = new Set<string>()
       for (const issue of r.issues) {
+        let raw: RowIssue['path']
         let p: string
         try {
-          p = joinIssuePath(issue.path)
+          raw = issue.path
+          p = joinIssuePath(raw)
         } catch {
+          raw = undefined
           p = ''
         }
         if (seen.has(p)) continue
         seen.add(p)
-        counts.set(p, (counts.get(p) ?? 0) + 1)
+        const c = counts.get(p)
+        if (c) c[0]++
+        else counts.set(p, [1, raw])
       }
     }
     const keys = columnKeys(getColumns())
     return [...counts]
-      .sort((a, b) => b[1] - a[1])
+      .sort((a, b) => b[1][0] - a[1][0])
       .slice(0, SAMPLE)
-      .map(([path, count]) => {
-        const col = path === '' ? undefined : keys.find((k) => pathTouches(path, k.key))
+      .map(([path, [count, raw]]) => {
+        const col =
+          path === '' ? undefined : keys.find((k) => issuePathTouches(raw, compilePath(k.key)))
         return col ? { path, column: col.key, index: col.index, count } : { path, count }
       })
   }
