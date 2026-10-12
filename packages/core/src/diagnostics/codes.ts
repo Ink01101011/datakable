@@ -21,6 +21,11 @@ declare module './catalog' {
       errorName?: string
       /** The registry fallback applied (errorBoundary); invariant callers abort instead. */
       fallback?: string
+      /**
+       * `error.message` of the classified throw (errorBoundary). Engine messages embed row values
+       * (`Cannot create property 'x' on string '<value>'`), so it is redacted as a cell value.
+       */
+      message?: unknown
     }
   }
 }
@@ -100,7 +105,8 @@ export const coreDiagnostics = [
       d.slot ? { kind: 'operation', op: d.op, slot: d.slot } : { kind: 'operation', op: d.op },
     problem: (d) =>
       d.errorName
-        ? `${d.errorName} thrown inside DataKable code during ${d.op}: ${d.problem} — likely a DataKable bug`
+        ? `${d.errorName} thrown inside DataKable code during ${d.op}` +
+          `${d.message === undefined ? '' : ` (message: ${String(d.message)})`} — likely a DataKable bug`
         : d.problem,
     impact: (d) => (d.fallback ? `${d.fallback}; the table keeps working` : 'the call was aborted'),
     fix: (d) => [
@@ -108,5 +114,6 @@ export const coreDiagnostics = [
       'attach diagnostic.toJSON() and table.explain() (both redacted) to the issue',
       'meanwhile, check plugins / interceptors registered on this operation',
     ],
+    redact: { message: 'value' },
   }),
 ]

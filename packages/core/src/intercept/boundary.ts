@@ -53,7 +53,8 @@ function recover(ctx: InterceptorContext, error: unknown): unknown {
       'DK_INTERNAL',
       {
         op: ctx.op,
-        problem: (error as Error).message,
+        problem: 'an exception escaped DataKable code',
+        message: (error as Error).message,
         ...slot,
         errorName: (error as Error).name,
         fallback: fallback.describe,
