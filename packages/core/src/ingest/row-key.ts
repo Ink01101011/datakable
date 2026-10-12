@@ -1,10 +1,11 @@
 import { compilePath, getValue } from '../column/get-value'
+import { useDiagnostics } from '../diagnostics/catalog'
 import type { Emit } from '../diagnostics/types'
 import type { RowKey } from '../pipeline/row'
 import { rowKeyDiagnostics } from './row-key-codes'
 import { findUniqueFields } from './unique-fields'
 
-void rowKeyDiagnostics
+useDiagnostics(rowKeyDiagnostics)
 
 /** Rows listed in a diagnostic's `rows` sample. */
 const SAMPLE = 5

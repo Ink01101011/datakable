@@ -13,21 +13,32 @@ export type DiagnosticCode = keyof DiagnosticCatalog & string
 export type DiagnosticDetails<C extends DiagnosticCode> = DiagnosticCatalog[C]
 
 /**
- * One catalog entry (§3.5, §8.3). The builders get the emitted details and must compute their text
- * from that real data. They run only in development (or with messages opted in), so keep them pure
- * and cheap; `where` runs always.
+ * The human-readable half of a catalog entry (§8.2). The builders get the emitted details and must
+ * compute their text from that real data. They run only in development, or in production after
+ * `import '@datakable/core/messages'` (`datakable/messages`), so keep them pure and cheap.
  */
-export interface DiagnosticDefinition<C extends DiagnosticCode = DiagnosticCode> {
-  readonly code: C
-  readonly level: DiagnosticLevel
-  /** `error (config)` codes: thrown as `DatakableConfigError` at creation (§8.6). */
-  readonly config?: boolean
-  where(details: DiagnosticDetails<C>): Location
+export interface DiagnosticText<C extends DiagnosticCode = DiagnosticCode> {
   problem(details: DiagnosticDetails<C>): string
   /** Consequence + the fallback applied. */
   impact(details: DiagnosticDetails<C>): string
   /** Concrete fixes, best first; never empty. */
   fix(details: DiagnosticDetails<C>): string[]
+}
+
+/** Text for several codes, keyed by code (one object per owning module). */
+export type DiagnosticMessages<C extends DiagnosticCode> = { readonly [K in C]: DiagnosticText<K> }
+
+/**
+ * One catalog entry (§3.5, §8.3). `where` runs always; the text builders (`DiagnosticText`) only in
+ * development or with messages opted in.
+ */
+export interface DiagnosticDefinition<C extends DiagnosticCode = DiagnosticCode>
+  extends DiagnosticText<C> {
+  readonly code: C
+  readonly level: DiagnosticLevel
+  /** `error (config)` codes: thrown as `DatakableConfigError` at creation (§8.6). */
+  readonly config?: boolean
+  where(details: DiagnosticDetails<C>): Location
   /** Overrides the default `docs/errors.md#<code>` URL. */
   readonly docs?: string
   /**
@@ -38,15 +49,34 @@ export interface DiagnosticDefinition<C extends DiagnosticCode = DiagnosticCode>
   readonly redact?: { readonly [K in keyof DiagnosticDetails<C>]?: RedactField }
 }
 
+/** A definition without its text: the part a production bundle keeps. */
+export type DiagnosticMeta<C extends DiagnosticCode = DiagnosticCode> = Omit<
+  DiagnosticDefinition<C>,
+  keyof DiagnosticText
+>
+
 const registry = new Map<string, DiagnosticDefinition>()
 
 /**
  * Adds a code to the catalog and returns the definition. A code may be defined again only with the
  * same level (module re-evaluation); a code is never redefined with another meaning (§8.5).
+ *
+ * Core passes the text separately as `DEV && messages.DK_X` (§8.2): a production bundle folds that
+ * to `false`, drops the module's message object, and keeps only `code`, `level`, `where` and
+ * `redact`. The same message object is what `@datakable/core/messages` installs.
  */
 export function defineDiagnostic<const C extends DiagnosticCode>(
   definition: DiagnosticDefinition<C>,
+): DiagnosticDefinition<C>
+export function defineDiagnostic<const C extends DiagnosticCode>(
+  meta: DiagnosticMeta<C>,
+  text: DiagnosticText<C> | false,
+): DiagnosticDefinition<C>
+export function defineDiagnostic<const C extends DiagnosticCode>(
+  meta: DiagnosticMeta<C> & Partial<DiagnosticText<C>>,
+  text?: DiagnosticText<C> | false,
 ): DiagnosticDefinition<C> {
+  const definition = (text ? { ...meta, ...text } : meta) as DiagnosticDefinition<C>
   const prev = registry.get(definition.code)
   if (prev && prev.level !== definition.level) {
     throw new Error(
@@ -56,6 +86,42 @@ export function defineDiagnostic<const C extends DiagnosticCode>(
   }
   registry.set(definition.code, definition as unknown as DiagnosticDefinition)
   return definition
+}
+
+const messages = new Map<string, DiagnosticText>()
+
+/**
+ * Installs full message text for production builds (§8.2); called by `@datakable/core/messages`.
+ * Development builds already carry the text on each definition.
+ */
+export function installMessages(...all: ReadonlyArray<Readonly<Record<string, unknown>>>): void {
+  for (const m of all) {
+    for (const code of Object.keys(m)) messages.set(code, m[code] as DiagnosticText)
+  }
+}
+
+/** `true` once `installMessages` ran: production diagnostics then build their text too. */
+export const hasMessages = (): boolean => messages.size > 0
+
+/** The text builders for a code: from its definition (development) or installed messages. */
+export function getDiagnosticText(code: string): DiagnosticText | undefined {
+  const def = registry.get(code)
+  return def && typeof def.problem === 'function' ? def : messages.get(code)
+}
+
+/**
+ * Uses the definitions of the codes a module emits, so a bundler keeps them. `@datakable/core` is
+ * built one file per module with `sideEffects: false`: a codes module that is only referenced
+ * (`void defs`) is dropped from a consumer's bundle together with its `defineDiagnostic` calls, and
+ * the codes would then emit as unknown. Call this at the top level of the emitting module. It
+ * (re-)registers the definitions, which is idempotent. `pnpm check:catalog` verifies it per bundle.
+ */
+export function useDiagnostics(
+  ...lists: ReadonlyArray<readonly { readonly code: string }[]>
+): void {
+  for (const list of lists) {
+    for (const def of list) registry.set(def.code, def as unknown as DiagnosticDefinition)
+  }
 }
 
 export function getDiagnosticDefinition(code: string): DiagnosticDefinition | undefined {

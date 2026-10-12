@@ -1,6 +1,7 @@
 import { debouncedSignal } from 'kk-debounce/debounceSignal'
 import { throttle } from 'kk-debounce/throttle'
 import { defineOptions } from '../../catalog/options'
+import { useDiagnostics } from '../../diagnostics/catalog'
 import { describeValue } from '../../diagnostics/redact'
 import { defineFeature } from '../../feature/define'
 import type { AnyRow, RowModelContext } from '../../feature/types'
@@ -21,8 +22,7 @@ import {
   type SearchIndex,
 } from './search-index'
 
-// Referencing the definitions keeps them in the bundle (`sideEffects: false`).
-void searchDiagnostics
+useDiagnostics(searchDiagnostics)
 
 /**
  * `state.search.status` (§6.3): `'pending'` = a debounce is waiting (T17), `'searching'` = an async

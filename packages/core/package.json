@@ -52,5 +52,8 @@
     "ex-search": "1.1.1",
     "exsorted": "1.2.3",
     "kk-debounce": "1.1.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.27.7"
   }
 }

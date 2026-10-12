@@ -1,4 +1,5 @@
-import { defineDiagnostic } from '../diagnostics/catalog'
+import { type DiagnosticMessages, defineDiagnostic } from '../diagnostics/catalog'
+import { DEV } from '../diagnostics/env'
 import type { Location } from '../diagnostics/types'
 import { compareVersions, parseVersion } from './semver'
 
@@ -59,15 +60,15 @@ const newest = (a: string, b: string): string => {
   return compareVersions(pa, pb) < 0 ? b : a
 }
 
-/** Codes owned by versioning (§8.5). */
-export const versioningDiagnostics = [
-  defineDiagnostic({
-    code: 'DK_DEPRECATED',
-    level: 'warn',
-    where: (d) =>
-      d.api.startsWith(OPTIONS)
-        ? { kind: 'option', path: d.api.slice(OPTIONS.length) }
-        : { kind: 'operation', op: d.api },
+/** Message text (§8.2): development builds, or production via `@datakable/core/messages`. */
+export const versioningMessages: DiagnosticMessages<
+  | 'DK_DEPRECATED'
+  | 'DK_DUPLICATE_CORE'
+  | 'DK_VERSION_MISMATCH'
+  | 'DK_DEP_INCOMPATIBLE'
+  | 'DK_FEATURE_INCOMPATIBLE'
+> = {
+  DK_DEPRECATED: {
     problem: (d) => `${d.api} is deprecated since ${d.since}`,
     impact: (d) =>
       `it still works in this version and is removed in ${d.removeIn}; this warning is shown ` +
@@ -76,11 +77,8 @@ export const versioningDiagnostics = [
       `use ${d.replacement} instead`,
       ...(d.codemod ? [`run the codemod: ${d.codemod}`] : []),
     ],
-  }),
-  defineDiagnostic({
-    code: 'DK_DUPLICATE_CORE',
-    level: 'error',
-    where: () => CREATE,
+  },
+  DK_DUPLICATE_CORE: {
     problem: (d) =>
       `${d.versions.length} copies of @datakable/core are loaded (${d.versions.join(', ')}); ` +
       'features, interceptors and types from one copy do not match the other',
@@ -93,11 +91,8 @@ export const versioningDiagnostics = [
       'or force one version: "pnpm": { "overrides": { "@datakable/core": "<version>" } } in ' +
         'package.json (npm "overrides", yarn "resolutions")',
     ],
-  }),
-  defineDiagnostic({
-    code: 'DK_VERSION_MISMATCH',
-    level: 'warn',
-    where: () => CREATE,
+  },
+  DK_VERSION_MISMATCH: {
     problem: (d) =>
       `${d.package}@${d.version} is used with @datakable/core@${d.core}; ` +
       'these packages are released together and must have the same version',
@@ -109,11 +104,8 @@ export const versioningDiagnostics = [
         `or with npm: npm install ${FIXED_GROUP.map((p) => `${p}@${v}`).join(' ')}`,
       ]
     },
-  }),
-  defineDiagnostic({
-    code: 'DK_DEP_INCOMPATIBLE',
-    level: 'warn',
-    where: (d) => ({ kind: 'feature', name: d.feature }),
+  },
+  DK_DEP_INCOMPATIBLE: {
     problem: (d) =>
       `${d.dependency} has no usable ${d.capability}; it was probably overridden to a version ` +
       `outside ${d.supported}`,
@@ -122,12 +114,8 @@ export const versioningDiagnostics = [
       `install a supported version: pnpm add ${d.dependency}@"${d.supported}" (check pnpm why ${d.dependency})`,
       `remove the override / resolution of ${d.dependency} from package.json`,
     ],
-  }),
-  defineDiagnostic({
-    code: 'DK_FEATURE_INCOMPATIBLE',
-    level: 'error',
-    config: true,
-    where: (d) => ({ kind: 'feature', name: d.feature }),
+  },
+  DK_FEATURE_INCOMPATIBLE: {
     problem: (d) =>
       d.invalid
         ? `feature "${d.feature}" declares requires.core "${d.required}", which is not a semver range`
@@ -145,5 +133,53 @@ export const versioningDiagnostics = [
               'datakable to the same version)',
             `or use a version of feature "${d.feature}" that supports @datakable/core ${d.core}`,
           ],
-  }),
+  },
+}
+
+/** Codes owned by versioning (§8.5). */
+export const versioningDiagnostics = [
+  defineDiagnostic(
+    {
+      code: 'DK_DEPRECATED',
+      level: 'warn',
+      where: (d) =>
+        d.api.startsWith(OPTIONS)
+          ? { kind: 'option', path: d.api.slice(OPTIONS.length) }
+          : { kind: 'operation', op: d.api },
+    },
+    DEV && versioningMessages.DK_DEPRECATED,
+  ),
+  defineDiagnostic(
+    {
+      code: 'DK_DUPLICATE_CORE',
+      level: 'error',
+      where: () => CREATE,
+    },
+    DEV && versioningMessages.DK_DUPLICATE_CORE,
+  ),
+  defineDiagnostic(
+    {
+      code: 'DK_VERSION_MISMATCH',
+      level: 'warn',
+      where: () => CREATE,
+    },
+    DEV && versioningMessages.DK_VERSION_MISMATCH,
+  ),
+  defineDiagnostic(
+    {
+      code: 'DK_DEP_INCOMPATIBLE',
+      level: 'warn',
+      where: (d) => ({ kind: 'feature', name: d.feature }),
+    },
+    DEV && versioningMessages.DK_DEP_INCOMPATIBLE,
+  ),
+  defineDiagnostic(
+    {
+      code: 'DK_FEATURE_INCOMPATIBLE',
+      level: 'error',
+      config: true,
+      where: (d) => ({ kind: 'feature', name: d.feature }),
+    },
+    DEV && versioningMessages.DK_FEATURE_INCOMPATIBLE,
+  ),
 ]

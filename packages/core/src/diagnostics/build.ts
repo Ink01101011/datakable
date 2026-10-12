@@ -3,7 +3,10 @@ import {
   type DiagnosticCode,
   type DiagnosticDefinition,
   type DiagnosticDetails,
+  type DiagnosticText,
   getDiagnosticDefinition,
+  getDiagnosticText,
+  hasMessages,
 } from './catalog'
 import { coreDiagnostics } from './codes'
 import { DEV } from './env'
@@ -44,7 +47,8 @@ export interface BuildInput {
   now?: number
   cause?: unknown
   causedBy?: string
-  /** Build the problem / impact / fix text. Default: development builds only (§8.2). */
+  /** Build the problem / impact / fix text. Default: development builds only (§8.2); production
+   * builds also build it once `@datakable/core/messages` is installed. */
   dev?: boolean
   /** Redaction policy (§8.2). Default: `'keys'` when `dev`, else `'safe'`. */
   redaction?: Redactor
@@ -133,6 +137,11 @@ export function buildDiagnostic<C extends DiagnosticCode>(
     r,
   )
   const dd = d as DiagnosticDetails<'DK_INTERNAL'>
+  // Text: development builds, or production with `@datakable/core/messages` installed (§8.2).
+  const t =
+    dev || hasMessages()
+      ? (getDiagnosticText(def.code) as DiagnosticText<'DK_INTERNAL'> | undefined)
+      : undefined
   const whereText = formatWhere(where)
   const now = input.now ?? Date.now()
   const context: DiagnosticContext = {
@@ -157,10 +166,10 @@ export function buildDiagnostic<C extends DiagnosticCode>(
   return new DiagnosticRecord(
     def.code,
     def.level,
-    dev ? b.problem(dd) : '',
+    t ? t.problem(dd) : '',
     where,
-    dev ? b.impact(dd) : '',
-    dev ? b.fix(dd) : [],
+    t ? t.impact(dd) : '',
+    t ? t.fix(dd) : [],
     docs,
     d,
     context,

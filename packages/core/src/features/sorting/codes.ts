@@ -1,4 +1,4 @@
-import { defineDiagnostic } from '../../diagnostics/catalog'
+import { type DiagnosticMessages, defineDiagnostic } from '../../diagnostics/catalog'
 import { DEV } from '../../diagnostics/env'
 
 declare module '../../diagnostics/catalog' {
@@ -36,16 +36,9 @@ const REASON = {
   inconsistent: 'is inconsistent: sortFn(a, b) and sortFn(b, a) do not have opposite signs',
 } as const
 
-/**
- * Codes owned by the `sorting` feature (§6.4, §8.3). `DK_SORT_COMPARATOR_INVALID` is a dev check
- * (sampled): its definition is behind `DEV`, so a production bundle has none of it.
- */
-export const sortingDiagnostics = [
-  defineDiagnostic({
-    code: 'DK_SORT_STRATEGY',
-    level: 'info',
-    where: (d) =>
-      d.column ? { kind: 'column', ...d.column } : { kind: 'feature', name: 'sorting' },
+/** Message text (§8.2): development builds, or production via `@datakable/core/messages`. */
+export const sortingMessages: DiagnosticMessages<'DK_SORT_STRATEGY'> = {
+  DK_SORT_STRATEGY: {
     problem: (d) =>
       `sorted ${d.n} rows by ${d.by.join(', ')} with ${d.algorithm} in ${d.ms.toFixed(2)} ms ` +
       `(${d.reason})`,
@@ -55,7 +48,23 @@ export const sortingDiagnostics = [
         "'native' }) or a column's sortAlgorithm",
       'remove debug: true from sorting() to stop these reports',
     ],
-  }),
+  },
+}
+
+/**
+ * Codes owned by the `sorting` feature (§6.4, §8.3). `DK_SORT_COMPARATOR_INVALID` is a dev check
+ * (sampled): its definition is behind `DEV`, so a production bundle has none of it.
+ */
+export const sortingDiagnostics = [
+  defineDiagnostic(
+    {
+      code: 'DK_SORT_STRATEGY',
+      level: 'info',
+      where: (d) =>
+        d.column ? { kind: 'column', ...d.column } : { kind: 'feature', name: 'sorting' },
+    },
+    DEV && sortingMessages.DK_SORT_STRATEGY,
+  ),
 ]
 
 export const comparatorDiagnostics = DEV

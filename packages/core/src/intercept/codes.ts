@@ -1,4 +1,5 @@
-import { defineDiagnostic } from '../diagnostics/catalog'
+import { type DiagnosticMessages, defineDiagnostic } from '../diagnostics/catalog'
+import { DEV } from '../diagnostics/env'
 
 declare module '../diagnostics/catalog' {
   interface DiagnosticCatalog {
@@ -31,12 +32,9 @@ const rowList = (rows: readonly number[] | undefined, count: number) => {
   return ` (${count > rows.length ? `first: ${list}, …` : `rows ${list}`})`
 }
 
-/** Codes owned by the errorBoundary (spec §3.4, §8.3, §8.6). `DK_INTERNAL` lives in diagnostics/codes.ts. */
-export const boundaryDiagnostics = [
-  defineDiagnostic({
-    code: 'DK_CALLBACK_FAILED',
-    level: 'error',
-    where: (d) => ({ kind: 'option', path: d.slot }),
+/** Message text (§8.2): development builds, or production via `@datakable/core/messages`. */
+export const boundaryMessages: DiagnosticMessages<'DK_CALLBACK_FAILED' | 'DK_UNKNOWN'> = {
+  DK_CALLBACK_FAILED: {
     problem: (d) =>
       `${d.slot}${d.column === undefined ? '' : ` (column "${d.column}")`} threw` +
       `${d.errorName ? ` ${d.errorName}` : ''} for ` +
@@ -49,12 +47,8 @@ export const boundaryDiagnostics = [
         ? `reproduce with table.explainRow() on row #${d.rows[0]}; the original error is context.cause`
         : 'the original error is context.cause (passed to onDiagnostic)',
     ],
-  }),
-  defineDiagnostic({
-    code: 'DK_UNKNOWN',
-    level: 'error',
-    where: (d) =>
-      d.slot ? { kind: 'operation', op: d.op, slot: d.slot } : { kind: 'operation', op: d.op },
+  },
+  DK_UNKNOWN: {
     problem: (d) =>
       `${d.errorName ?? 'a non-Error value'} was thrown during ${d.op}` +
       `${d.slot ? ` at ${d.slot}` : ''} from code DataKable could not classify`,
@@ -65,5 +59,26 @@ export const boundaryDiagnostics = [
         'and return a fallback',
       'if the stack points into DataKable, report it as a bug',
     ],
-  }),
+  },
+}
+
+/** Codes owned by the errorBoundary (spec §3.4, §8.3, §8.6). `DK_INTERNAL` lives in diagnostics/codes.ts. */
+export const boundaryDiagnostics = [
+  defineDiagnostic(
+    {
+      code: 'DK_CALLBACK_FAILED',
+      level: 'error',
+      where: (d) => ({ kind: 'option', path: d.slot }),
+    },
+    DEV && boundaryMessages.DK_CALLBACK_FAILED,
+  ),
+  defineDiagnostic(
+    {
+      code: 'DK_UNKNOWN',
+      level: 'error',
+      where: (d) =>
+        d.slot ? { kind: 'operation', op: d.op, slot: d.slot } : { kind: 'operation', op: d.op },
+    },
+    DEV && boundaryMessages.DK_UNKNOWN,
+  ),
 ]

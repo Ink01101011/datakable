@@ -1,4 +1,5 @@
-import { defineDiagnostic } from '../diagnostics/catalog'
+import { type DiagnosticMessages, defineDiagnostic } from '../diagnostics/catalog'
+import { DEV } from '../diagnostics/env'
 
 declare module '../diagnostics/catalog' {
   interface DiagnosticCatalog {
@@ -44,13 +45,9 @@ const rowList = (rows: readonly number[], total: number) =>
 const uniqueFixes = (unique: readonly string[], total: number) =>
   unique.map((f) => `rowKey: '${f}' (unique in all ${n(total)} rows)`)
 
-/** Codes owned by row-key resolution (§5.2, §8.3). */
-export const rowKeyDiagnostics = [
-  defineDiagnostic({
-    code: 'DK_DUPLICATE_ROW_KEY',
-    level: 'error',
-    redact: { key: 'rowKey' },
-    where: (d) => ({ kind: 'row', index: d.rows[1] ?? d.rows[0] ?? 0, key: String(d.key) }),
+/** Message text (§8.2): development builds, or production via `@datakable/core/messages`. */
+export const rowKeyMessages: DiagnosticMessages<'DK_DUPLICATE_ROW_KEY' | 'DK_MISSING_ROW_KEY'> = {
+  DK_DUPLICATE_ROW_KEY: {
     problem: (d) => {
       const head =
         d.path === undefined
@@ -82,11 +79,8 @@ export const rowKeyDiagnostics = [
       if (d.path === undefined) fixes.push('or make the rowKey function return a unique value')
       return fixes
     },
-  }),
-  defineDiagnostic({
-    code: 'DK_MISSING_ROW_KEY',
-    level: 'error',
-    where: (d) => ({ kind: 'row', index: d.rows[0] ?? 0 }),
+  },
+  DK_MISSING_ROW_KEY: {
     problem: (d) => {
       const rows = `rows ${rowList(d.rows, d.count)}`
       if (d.path === undefined) {
@@ -106,5 +100,26 @@ export const rowKeyDiagnostics = [
         ? 'return a string or a number for every row from the rowKey function'
         : `give every row a string or a number at "${d.path}"`,
     ],
-  }),
+  },
+}
+
+/** Codes owned by row-key resolution (§5.2, §8.3). */
+export const rowKeyDiagnostics = [
+  defineDiagnostic(
+    {
+      code: 'DK_DUPLICATE_ROW_KEY',
+      level: 'error',
+      redact: { key: 'rowKey' },
+      where: (d) => ({ kind: 'row', index: d.rows[1] ?? d.rows[0] ?? 0, key: String(d.key) }),
+    },
+    DEV && rowKeyMessages.DK_DUPLICATE_ROW_KEY,
+  ),
+  defineDiagnostic(
+    {
+      code: 'DK_MISSING_ROW_KEY',
+      level: 'error',
+      where: (d) => ({ kind: 'row', index: d.rows[0] ?? 0 }),
+    },
+    DEV && rowKeyMessages.DK_MISSING_ROW_KEY,
+  ),
 ]

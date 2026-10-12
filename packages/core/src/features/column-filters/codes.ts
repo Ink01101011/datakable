@@ -1,5 +1,6 @@
 import { suggest } from '../../catalog/suggest'
-import { defineDiagnostic } from '../../diagnostics/catalog'
+import { type DiagnosticMessages, defineDiagnostic } from '../../diagnostics/catalog'
+import { DEV } from '../../diagnostics/env'
 
 declare module '../../diagnostics/catalog' {
   interface DiagnosticCatalog {
@@ -43,12 +44,9 @@ function convert(expected: string, received: string): string | undefined {
   return undefined
 }
 
-/** Codes owned by the `columnFilters` feature (§6.1, §8.3). */
-export const columnFiltersDiagnostics = [
-  defineDiagnostic({
-    code: 'DK_FILTER_TYPE_MISMATCH',
-    level: 'warn',
-    where: (d) => ({ kind: 'column', index: d.index, id: d.column }),
+/** Message text (§8.2): development builds, or production via `@datakable/core/messages`. */
+export const columnFiltersMessages: DiagnosticMessages<'DK_FILTER_TYPE_MISMATCH'> = {
+  DK_FILTER_TYPE_MISMATCH: {
     problem: (d) =>
       d.source === 'filter'
         ? `the "${d.filter}" filter on column "${d.column}" has a value of type ${d.received}; ` +
@@ -96,5 +94,17 @@ export const columnFiltersDiagnostics = [
       )
       return out
     },
-  }),
+  },
+}
+
+/** Codes owned by the `columnFilters` feature (§6.1, §8.3). */
+export const columnFiltersDiagnostics = [
+  defineDiagnostic(
+    {
+      code: 'DK_FILTER_TYPE_MISMATCH',
+      level: 'warn',
+      where: (d) => ({ kind: 'column', index: d.index, id: d.column }),
+    },
+    DEV && columnFiltersMessages.DK_FILTER_TYPE_MISMATCH,
+  ),
 ]

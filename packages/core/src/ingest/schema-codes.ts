@@ -1,4 +1,5 @@
-import { defineDiagnostic } from '../diagnostics/catalog'
+import { type DiagnosticMessages, defineDiagnostic } from '../diagnostics/catalog'
+import { DEV } from '../diagnostics/env'
 
 /** `options.invalidRows` (§5.1). */
 export type InvalidRowsMode = 'drop' | 'flag' | 'throw'
@@ -59,13 +60,9 @@ const handled = (mode: InvalidRowsMode, rows: string) => {
   }
 }
 
-/** Codes owned by the schema ingest (§5.1, §8.3). */
-export const schemaDiagnostics = [
-  defineDiagnostic({
-    code: 'DK_SCHEMA_INVALID_ROW',
-    level: 'error',
-    where: () => ({ kind: 'option', path: 'schema' }),
-    redact: { issues: 'schemaIssues' },
+/** Message text (§8.2): development builds, or production via `@datakable/core/messages`. */
+export const schemaMessages: DiagnosticMessages<'DK_SCHEMA_INVALID_ROW' | 'DK_SCHEMA_CRASHED'> = {
+  DK_SCHEMA_INVALID_ROW: {
     problem: (d) =>
       `${d.count} of ${plural(d.total, 'row')} failed schema validation ` +
       `(rows ${rowList(d.rows, d.count)})`,
@@ -94,11 +91,8 @@ export const schemaDiagnostics = [
       out.push('inspect them with table.getInvalidRows() (index, raw value and issues per row)')
       return out
     },
-  }),
-  defineDiagnostic({
-    code: 'DK_SCHEMA_CRASHED',
-    level: 'error',
-    where: () => ({ kind: 'option', path: 'schema' }),
+  },
+  DK_SCHEMA_CRASHED: {
     problem: (d) =>
       `the schema threw${d.errorName ? ` ${d.errorName}` : ''} instead of returning issues ` +
       `for ${plural(d.count, 'row')} (rows ${rowList(d.rows, d.count)})`,
@@ -111,5 +105,26 @@ export const schemaDiagnostics = [
       'make custom checks return an issue (e.g. ctx.addIssue / a refine predicate) instead of ' +
         'throwing on unexpected input',
     ],
-  }),
+  },
+}
+
+/** Codes owned by the schema ingest (§5.1, §8.3). */
+export const schemaDiagnostics = [
+  defineDiagnostic(
+    {
+      code: 'DK_SCHEMA_INVALID_ROW',
+      level: 'error',
+      where: () => ({ kind: 'option', path: 'schema' }),
+      redact: { issues: 'schemaIssues' },
+    },
+    DEV && schemaMessages.DK_SCHEMA_INVALID_ROW,
+  ),
+  defineDiagnostic(
+    {
+      code: 'DK_SCHEMA_CRASHED',
+      level: 'error',
+      where: () => ({ kind: 'option', path: 'schema' }),
+    },
+    DEV && schemaMessages.DK_SCHEMA_CRASHED,
+  ),
 ]

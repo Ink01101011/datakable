@@ -1,4 +1,5 @@
 import { throwConfigError } from '../diagnostics/build'
+import { useDiagnostics } from '../diagnostics/catalog'
 import type { Emit, Trigger } from '../diagnostics/types'
 import { STAGES } from '../feature/order'
 import type { AnyFeature } from '../feature/types'
@@ -12,8 +13,7 @@ import {
 import { suggest } from './suggest'
 import { tableOptions } from './table-options'
 
-// Referencing the definitions keeps them in the bundle (`sideEffects: false`).
-void optionDiagnostics
+useDiagnostics(optionDiagnostics)
 
 type Values = Readonly<Record<string, unknown>>
 

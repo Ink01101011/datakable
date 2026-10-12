@@ -1,4 +1,5 @@
-import { defineDiagnostic } from '../diagnostics/catalog'
+import { type DiagnosticMessages, defineDiagnostic } from '../diagnostics/catalog'
+import { DEV } from '../diagnostics/env'
 
 declare module '../diagnostics/catalog' {
   interface DiagnosticCatalog {
@@ -42,12 +43,11 @@ const rowList = (rows: readonly number[], count: number) => {
 
 const firstRows = (n: number) => (n === 1 ? 'the first row' : `the first ${n} rows`)
 
-/** Codes owned by the ingest data checks (§5.3, §8.3). */
-export const dataCheckDiagnostics = [
-  defineDiagnostic({
-    code: 'DK_COLUMN_PATH_NOT_FOUND',
-    level: 'warn',
-    where: (d) => ({ kind: 'column', index: d.index, id: d.column }),
+/** Message text (§8.2): development builds, or production via `@datakable/core/messages`. */
+export const dataCheckMessages: DiagnosticMessages<
+  'DK_COLUMN_PATH_NOT_FOUND' | 'DK_COLUMN_PATH_PARTIAL' | 'DK_INCONSISTENT_ROW_SHAPE'
+> = {
+  DK_COLUMN_PATH_NOT_FOUND: {
     problem: (d) =>
       `columns[${d.index}] key "${d.column}" does not exist in any of ${firstRows(d.sampled)}` +
       (d.suggestions[0] === undefined ? '' : ` (did you mean "${d.suggestions[0]}"?)`),
@@ -57,11 +57,8 @@ export const dataCheckDiagnostics = [
       `or compute the value: columns[${d.index}]: { id: '${d.column}', accessor: (row) => … }`,
       'or, if the field only appears in later rows, ignore this (only the first rows are checked)',
     ],
-  }),
-  defineDiagnostic({
-    code: 'DK_COLUMN_PATH_PARTIAL',
-    level: 'info',
-    where: (d) => ({ kind: 'column', index: d.index, id: d.column }),
+  },
+  DK_COLUMN_PATH_PARTIAL: {
     problem: (d) =>
       `columns[${d.index}] key "${d.column}" is missing in ${d.count} of ${firstRows(d.sampled)} ` +
       `(${rowList(d.rows, d.count)})`,
@@ -70,11 +67,8 @@ export const dataCheckDiagnostics = [
       `show a placeholder: columns[${d.index}].format: (v) => v ?? '—'`,
       'or fill the field in every row before passing data, if it is required',
     ],
-  }),
-  defineDiagnostic({
-    code: 'DK_INCONSISTENT_ROW_SHAPE',
-    level: 'info',
-    where: () => ({ kind: 'option', path: 'columns' }),
+  },
+  DK_INCONSISTENT_ROW_SHAPE: {
     problem: (d) =>
       `rows have differing keys in ${firstRows(d.sampled)}: ` +
       d.keys.map((k) => `"${k.key}" missing in ${k.missing}`).join(', ') +
@@ -88,5 +82,33 @@ export const dataCheckDiagnostics = [
         .join(', ')}, …]`,
       'or normalise the rows so every row has the same keys',
     ],
-  }),
+  },
+}
+
+/** Codes owned by the ingest data checks (§5.3, §8.3). */
+export const dataCheckDiagnostics = [
+  defineDiagnostic(
+    {
+      code: 'DK_COLUMN_PATH_NOT_FOUND',
+      level: 'warn',
+      where: (d) => ({ kind: 'column', index: d.index, id: d.column }),
+    },
+    DEV && dataCheckMessages.DK_COLUMN_PATH_NOT_FOUND,
+  ),
+  defineDiagnostic(
+    {
+      code: 'DK_COLUMN_PATH_PARTIAL',
+      level: 'info',
+      where: (d) => ({ kind: 'column', index: d.index, id: d.column }),
+    },
+    DEV && dataCheckMessages.DK_COLUMN_PATH_PARTIAL,
+  ),
+  defineDiagnostic(
+    {
+      code: 'DK_INCONSISTENT_ROW_SHAPE',
+      level: 'info',
+      where: () => ({ kind: 'option', path: 'columns' }),
+    },
+    DEV && dataCheckMessages.DK_INCONSISTENT_ROW_SHAPE,
+  ),
 ]

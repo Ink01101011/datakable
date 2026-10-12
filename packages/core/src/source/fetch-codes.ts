@@ -1,4 +1,5 @@
-import { defineDiagnostic } from '../diagnostics/catalog'
+import { type DiagnosticMessages, defineDiagnostic } from '../diagnostics/catalog'
+import { DEV } from '../diagnostics/env'
 
 /** Why a fetcher result was rejected (`DK_FETCH_BAD_RESPONSE`); a closed set, never row data. */
 export type BadResponse =
@@ -55,13 +56,15 @@ const BAD: Record<
 
 const FETCHER = { kind: 'option', path: 'fetcher' } as const
 
-/** Codes owned by the data modes and the server source (spec §7.1, §8.3). */
-export const fetchDiagnostics = [
-  defineDiagnostic({
-    code: 'DK_MODE_ORDER',
-    level: 'error',
-    config: true,
-    where: (d) => ({ kind: 'feature', name: d.server }),
+/** Message text (§8.2): development builds, or production via `@datakable/core/messages`. */
+export const fetchMessages: DiagnosticMessages<
+  | 'DK_MODE_ORDER'
+  | 'DK_FETCHER_WITHOUT_SERVER_MODE'
+  | 'DK_FETCH_FAILED'
+  | 'DK_FETCH_ABORTED'
+  | 'DK_FETCH_BAD_RESPONSE'
+> = {
+  DK_MODE_ORDER: {
     problem: (d) =>
       `feature "${d.server}" (${d.serverStage}) is in server mode, but "${d.client}" ` +
       `(${d.clientStage}) runs before it in client mode; server steps must come first`,
@@ -71,12 +74,8 @@ export const fetchDiagnostics = [
       `move "${d.client}" to the server too: ${d.client}({ mode: 'server' })`,
       `or handle "${d.server}" in the client: ${d.server}({ mode: 'client' }) (the default)`,
     ],
-  }),
-  defineDiagnostic({
-    code: 'DK_FETCHER_WITHOUT_SERVER_MODE',
-    level: 'error',
-    config: true,
-    where: () => FETCHER,
+  },
+  DK_FETCHER_WITHOUT_SERVER_MODE: {
     problem: () => 'options.fetcher is set, but no feature is in server mode',
     impact: (d) =>
       d.phase === 'init'
@@ -88,11 +87,8 @@ export const fetchDiagnostics = [
         `, e.g. pagination({ mode: 'server' })`,
       'or remove fetcher and pass the rows as options.data (client mode)',
     ],
-  }),
-  defineDiagnostic({
-    code: 'DK_FETCH_FAILED',
-    level: 'error',
-    where: () => FETCHER,
+  },
+  DK_FETCH_FAILED: {
     problem: (d) => `fetcher rejected or threw${d.errorName ? ` ${d.errorName}` : ''}`,
     impact: (d) =>
       d.hadRows
@@ -104,21 +100,15 @@ export const fetchDiagnostics = [
       'retry from the UI with table.refetch(); the next state change (page, sort, filter, ' +
         'query) or a new fetcher also runs it again',
     ],
-  }),
-  defineDiagnostic({
-    code: 'DK_FETCH_ABORTED',
-    level: 'info',
-    where: () => FETCHER,
+  },
+  DK_FETCH_ABORTED: {
     problem: () => 'a fetcher request was superseded by a newer one (latest wins)',
     impact: () => 'its result is ignored; the request was aborted through ctx.signal',
     fix: () => [
       'nothing to fix; pass params.signal to fetch() so superseded requests stop on the network',
     ],
-  }),
-  defineDiagnostic({
-    code: 'DK_FETCH_BAD_RESPONSE',
-    level: 'error',
-    where: () => FETCHER,
+  },
+  DK_FETCH_BAD_RESPONSE: {
     problem: (d) => BAD[d.problem](d),
     impact: () => "the result was ignored and the previous rows are kept (status: 'error')",
     fix: (d) => [
@@ -129,5 +119,51 @@ export const fetchDiagnostics = [
       'map your API response in the fetcher: async (p) => { const r = await api(p); ' +
         'return { rows: r.items, rowCount: r.total } }',
     ],
-  }),
+  },
+}
+
+/** Codes owned by the data modes and the server source (spec §7.1, §8.3). */
+export const fetchDiagnostics = [
+  defineDiagnostic(
+    {
+      code: 'DK_MODE_ORDER',
+      level: 'error',
+      config: true,
+      where: (d) => ({ kind: 'feature', name: d.server }),
+    },
+    DEV && fetchMessages.DK_MODE_ORDER,
+  ),
+  defineDiagnostic(
+    {
+      code: 'DK_FETCHER_WITHOUT_SERVER_MODE',
+      level: 'error',
+      config: true,
+      where: () => FETCHER,
+    },
+    DEV && fetchMessages.DK_FETCHER_WITHOUT_SERVER_MODE,
+  ),
+  defineDiagnostic(
+    {
+      code: 'DK_FETCH_FAILED',
+      level: 'error',
+      where: () => FETCHER,
+    },
+    DEV && fetchMessages.DK_FETCH_FAILED,
+  ),
+  defineDiagnostic(
+    {
+      code: 'DK_FETCH_ABORTED',
+      level: 'info',
+      where: () => FETCHER,
+    },
+    DEV && fetchMessages.DK_FETCH_ABORTED,
+  ),
+  defineDiagnostic(
+    {
+      code: 'DK_FETCH_BAD_RESPONSE',
+      level: 'error',
+      where: () => FETCHER,
+    },
+    DEV && fetchMessages.DK_FETCH_BAD_RESPONSE,
+  ),
 ]

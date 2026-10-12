@@ -3,6 +3,7 @@ import { describeReturn } from '../../catalog/slots'
 import type { SortAlgorithm } from '../../column/column-def'
 import { compilePath, getValue } from '../../column/get-value'
 import type { Path } from '../../column/path'
+import { useDiagnostics } from '../../diagnostics/catalog'
 import { DEV } from '../../diagnostics/env'
 import { defineFeature } from '../../feature/define'
 import type { FeatureTypes, RowModelContext } from '../../feature/types'
@@ -30,8 +31,7 @@ import {
   sortWithComparator,
 } from './strategy'
 
-void sortingDiagnostics
-void comparatorDiagnostics
+useDiagnostics(sortingDiagnostics, comparatorDiagnostics)
 
 /** One sort key: a column id (a path of the row type) and its direction. */
 export type SortEntry<T> = { id: Path<T>; desc: boolean }

@@ -1,4 +1,5 @@
-import { defineDiagnostic } from '../diagnostics/catalog'
+import { type DiagnosticMessages, defineDiagnostic } from '../diagnostics/catalog'
+import { DEV } from '../diagnostics/env'
 
 declare module '../diagnostics/catalog' {
   interface DiagnosticCatalog {
@@ -29,13 +30,11 @@ declare module '../diagnostics/catalog' {
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
-/** Codes owned by the feature contract (§3.3, §8.3). */
-export const featureDiagnostics = [
-  defineDiagnostic({
-    code: 'DK_FEATURE_DUPLICATE',
-    level: 'error',
-    config: true,
-    where: (d) => ({ kind: 'feature', name: d.feature }),
+/** Message text (§8.2): development builds, or production via `@datakable/core/messages`. */
+export const featureMessages: DiagnosticMessages<
+  'DK_FEATURE_DUPLICATE' | 'DK_FEATURE_API_CONFLICT' | 'DK_FEATURE_FAILED'
+> = {
+  DK_FEATURE_DUPLICATE: {
     problem: (d) =>
       `feature "${d.feature}" is installed twice (features[${d.first}] and features[${d.second}]); ` +
       'a feature name is its state slice key and must be unique per table',
@@ -45,12 +44,8 @@ export const featureDiagnostics = [
         'its options in one call',
       'for two different features that share a name, rename one: defineFeature({ name: ... })',
     ],
-  }),
-  defineDiagnostic({
-    code: 'DK_FEATURE_API_CONFLICT',
-    level: 'error',
-    config: true,
-    where: (d) => ({ kind: 'feature', name: d.feature }),
+  },
+  DK_FEATURE_API_CONFLICT: {
     problem: (d) =>
       `feature "${d.feature}" exposes "${d.method}", which ` +
       (d.owner === null
@@ -65,11 +60,8 @@ export const featureDiagnostics = [
           `change what table.${d.method}() does`
         : `or rename it in feature "${d.owner}", or install only one of the two features`,
     ],
-  }),
-  defineDiagnostic({
-    code: 'DK_FEATURE_FAILED',
-    level: 'error',
-    where: (d) => ({ kind: 'feature', name: d.feature }),
+  },
+  DK_FEATURE_FAILED: {
     problem: (d) =>
       `feature "${d.feature}" ${d.hook}() threw${d.errorName ? ` ${d.errorName}` : ''}`,
     impact: (d) => `${d.fallback}; the rest of the table is unaffected`,
@@ -78,5 +70,35 @@ export const featureDiagnostics = [
         (d.hook === 'rowModel' ? ' (return its input indices when it cannot filter)' : ''),
       'the original error is context.cause (passed to onDiagnostic)',
     ],
-  }),
+  },
+}
+
+/** Codes owned by the feature contract (§3.3, §8.3). */
+export const featureDiagnostics = [
+  defineDiagnostic(
+    {
+      code: 'DK_FEATURE_DUPLICATE',
+      level: 'error',
+      config: true,
+      where: (d) => ({ kind: 'feature', name: d.feature }),
+    },
+    DEV && featureMessages.DK_FEATURE_DUPLICATE,
+  ),
+  defineDiagnostic(
+    {
+      code: 'DK_FEATURE_API_CONFLICT',
+      level: 'error',
+      config: true,
+      where: (d) => ({ kind: 'feature', name: d.feature }),
+    },
+    DEV && featureMessages.DK_FEATURE_API_CONFLICT,
+  ),
+  defineDiagnostic(
+    {
+      code: 'DK_FEATURE_FAILED',
+      level: 'error',
+      where: (d) => ({ kind: 'feature', name: d.feature }),
+    },
+    DEV && featureMessages.DK_FEATURE_FAILED,
+  ),
 ]

@@ -1,12 +1,12 @@
 import { throwConfigError } from '../diagnostics/build'
+import { useDiagnostics } from '../diagnostics/catalog'
 import { describeValue } from '../diagnostics/redact'
 import { STAGES } from '../feature/order'
 import type { AnyFeature } from '../feature/types'
 import type { TableState } from '../table/types'
 import { type BadResponse, fetchDiagnostics } from './fetch-codes'
 
-// Referencing the definitions keeps them in the bundle (`sideEffects: false`).
-void fetchDiagnostics
+useDiagnostics(fetchDiagnostics)
 
 /**
  * What `options.fetcher` receives (§7.1): only the state of the server-mode steps, plus the

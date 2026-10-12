@@ -1,8 +1,9 @@
 import { throwConfigError } from '../diagnostics/build'
+import { useDiagnostics } from '../diagnostics/catalog'
 import { featureDiagnostics } from './codes'
 import type { AnyFeature, Stage } from './types'
 
-void featureDiagnostics
+useDiagnostics(featureDiagnostics)
 
 /**
  * Pipeline order of the stages (§3.3): `ingest → filter → search → sort → paginate`. Filter runs

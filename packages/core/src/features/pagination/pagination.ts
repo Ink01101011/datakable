@@ -1,4 +1,5 @@
 import { defineOptions } from '../../catalog/options'
+import { useDiagnostics } from '../../diagnostics/catalog'
 import { describeValue } from '../../diagnostics/redact'
 import { defineFeature } from '../../feature/define'
 import type { FeatureContext } from '../../feature/types'
@@ -8,7 +9,7 @@ import { getTableInternals } from '../../table/internals'
 import type { Table, TableState } from '../../table/types'
 import { paginationDiagnostics } from './codes'
 
-void paginationDiagnostics
+useDiagnostics(paginationDiagnostics)
 
 export interface PaginationState {
   pageIndex: number

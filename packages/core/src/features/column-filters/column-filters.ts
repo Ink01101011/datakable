@@ -1,4 +1,5 @@
 import { defineOptions } from '../../catalog/options'
+import { useDiagnostics } from '../../diagnostics/catalog'
 import { defineFeature } from '../../feature/define'
 import type { RowModelContext } from '../../feature/types'
 import { CellFailures } from '../../intercept/cell-batch'
@@ -19,7 +20,7 @@ import {
 } from './match'
 import type { ColumnFiltersState, ColumnFiltersTypes } from './types'
 
-void columnFiltersDiagnostics
+useDiagnostics(columnFiltersDiagnostics)
 
 export interface ColumnFiltersOptions {
   /**

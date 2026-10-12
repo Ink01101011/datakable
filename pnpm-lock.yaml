@@ -87,6 +87,10 @@ importers:
       kk-debounce:
         specifier: 1.1.0
         version: 1.1.0(react@19.3.0)
+    devDependencies:
+      esbuild:
+        specifier: 0.27.7
+        version: 0.27.7
 
   packages/datakable:
     dependencies:

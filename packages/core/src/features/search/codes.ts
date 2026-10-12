@@ -1,4 +1,5 @@
-import { defineDiagnostic } from '../../diagnostics/catalog'
+import { type DiagnosticMessages, defineDiagnostic } from '../../diagnostics/catalog'
+import { DEV } from '../../diagnostics/env'
 
 declare module '../../diagnostics/catalog' {
   interface DiagnosticCatalog {
@@ -15,12 +16,9 @@ declare module '../../diagnostics/catalog' {
   }
 }
 
-/** Codes owned by the `search` feature (spec §6.3, §8.3). */
-export const searchDiagnostics = [
-  defineDiagnostic({
-    code: 'DK_SEARCH_FAILED',
-    level: 'error',
-    where: () => ({ kind: 'option', path: 'searchFn' }),
+/** Message text (§8.2): development builds, or production via `@datakable/core/messages`. */
+export const searchMessages: DiagnosticMessages<'DK_SEARCH_FAILED'> = {
+  DK_SEARCH_FAILED: {
     problem: (d) =>
       d.problem === 'bad-result'
         ? `searchFn resolved with ${d.received}, not an array of rows (from ctx.rows) or ` +
@@ -38,5 +36,17 @@ export const searchDiagnostics = [
           'onDiagnostic)',
       'retry from the UI with flushSearch(); the next query change runs searchFn again',
     ],
-  }),
+  },
+}
+
+/** Codes owned by the `search` feature (spec §6.3, §8.3). */
+export const searchDiagnostics = [
+  defineDiagnostic(
+    {
+      code: 'DK_SEARCH_FAILED',
+      level: 'error',
+      where: () => ({ kind: 'option', path: 'searchFn' }),
+    },
+    DEV && searchMessages.DK_SEARCH_FAILED,
+  ),
 ]

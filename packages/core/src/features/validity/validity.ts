@@ -1,9 +1,10 @@
+import { useDiagnostics } from '../../diagnostics/catalog'
 import { describeValue } from '../../diagnostics/redact'
 import { defineFeature } from '../../feature/define'
 import type { FeatureContext } from '../../feature/types'
 import { validityDiagnostics } from './codes'
 
-void validityDiagnostics
+useDiagnostics(validityDiagnostics)
 
 /** Which rows the `validity` step keeps (§6.2). */
 export type ValidityState = 'all' | 'valid' | 'invalid'
