@@ -24,6 +24,7 @@ import type { RowModel, RowModelStatus } from '../pipeline/types'
 import { ASYNC_STATUS, type AsyncStatus, asyncControl } from '../source/async-control'
 import { checkVersions } from '../versioning/registry'
 import { tableDiagnostics } from './codes'
+import { createDataMutationCheck, dataMutationDiagnostics } from './data-mutation'
 import { setTableInternals } from './internals'
 import {
   type ControlledState,
@@ -37,6 +38,7 @@ import {
 
 // Referencing the definitions keeps them in the bundle (`sideEffects: false`).
 void tableDiagnostics
+void dataMutationDiagnostics
 
 const EMPTY: readonly never[] = []
 
@@ -187,6 +189,8 @@ export function createTable<T, S extends TableState>(
   })
   runtime.installBoundary(errorBoundary)
   hub.attach(runtime)
+  // Dev check (§5.3): the same `data` array passed again with changed contents (DK_DATA_MUTATED).
+  const dataCheck = DEV ? createDataMutationCheck(hub.emit) : undefined
   // Feature `requires.core` (throws DK_FEATURE_INCOMPATIBLE), duplicate cores, version mismatch.
   checkVersions(features, hub.emit, hub.table)
   // Ingest data checks (§5.3) and zero-config columns (§4.1): both read only the first rows.
@@ -475,6 +479,7 @@ export function createTable<T, S extends TableState>(
   function ingest() {
     const seq = ++ingestSeq
     const given = options.data !== undefined
+    dataCheck?.remember(options.data)
     // A validation still in flight is superseded (its result is discarded): not 'validating' now,
     // unless this ingest's own schema step goes async.
     if (validatingSeq !== 0) {
@@ -600,7 +605,10 @@ export function createTable<T, S extends TableState>(
         }
         // New data is checked when applied (setData); same data with new columns is checked here.
         if (next.data !== previous.data) ingest()
-        else if (next.columns !== previous.columns) dataChecks.check(data, next.columns)
+        else {
+          if ('data' in partial) dataCheck?.check(next.data)
+          if (next.columns !== previous.columns) dataChecks.check(data, next.columns)
+        }
       })
       flush()
     })

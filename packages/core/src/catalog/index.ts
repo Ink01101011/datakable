@@ -31,3 +31,13 @@ export {
   type OptionsSchema,
   type OptionType,
 } from './options'
+export {
+  defineSlot,
+  describeReturn,
+  formatSlot,
+  getSlot,
+  matchesSlot,
+  type SlotDefinition,
+  type SlotReturns,
+  slotDiagnostics,
+} from './slots'

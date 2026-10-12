@@ -1,4 +1,5 @@
-import { getValue } from '../column/get-value'
+import { compilePath, getValue } from '../column/get-value'
+import { DEV } from '../diagnostics/env'
 import type { Emit } from '../diagnostics/types'
 import { featureDiagnostics } from '../feature/codes'
 import type { AnyFeature, RowModelContext } from '../feature/types'
@@ -12,11 +13,13 @@ import type { InterceptorRuntime } from '../intercept/runtime'
 import type { TableState } from '../table/types'
 import { createColumnCache } from './column-cache'
 import { type ResolvedColumn, type ResolvedColumns, resolveColumns } from './columns'
+import { checkStep, indexPrint, stepDiagnostics } from './dev-checks'
 import { allRows } from './indices'
 import { Row, type RowIssue, type RowSource } from './row'
 import type { RowModel, RowModelStatus } from './types'
 
 void featureDiagnostics
+void stepDiagnostics
 
 const EMPTY: readonly never[] = []
 
@@ -264,6 +267,8 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
       )
       const output = host.runtime.run('pipeline:step', ctx, () => {
         let out: unknown
+        // Dev check (§3.4 devChecks): a bounded fingerprint of the input before rowModel runs.
+        const before = DEV ? indexPrint(input) : 0
         try {
           out = (f.rowModel as NonNullable<AnyFeature['rowModel']>)(
             input,
@@ -284,8 +289,9 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
           )
           return input
         }
+        // Dev: a mutated input warns; a bad output passes the input through, not memoised.
+        if (DEV && !checkStep(host.emit, f.name, input, before, out, data.length)) return input
         ok = true
-        // TODO(T27): DK_FEATURE_BAD_OUTPUT for a non-index-array output.
         return out instanceof Uint32Array ? out : input
       })
       if (ok) memo.set(f, { input, state: slice, columns, output })
