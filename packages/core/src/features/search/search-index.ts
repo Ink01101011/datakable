@@ -2,6 +2,7 @@ import { ExSearch } from 'ex-search'
 import type { Emit } from '../../diagnostics/types'
 import type { RowModelContext } from '../../feature/types'
 import { resolveColumns } from '../../pipeline/columns'
+import { arrayIndex } from '../../pipeline/row'
 import { detectCapability } from '../../versioning/capability'
 
 /** Matcher settings (the client options of `search()`, defaults applied). */
@@ -12,9 +13,10 @@ export interface MatchConfig {
 }
 
 /**
- * One projected row: `i` is the row index (results map back by it, never by identity: ex-search
- * returns copies), `c0`, `c1`, … the formatted values of the searchable columns. Flat keys also
- * sidestep ex-search's top-level-key limitation for nested paths.
+ * One projected row as ex-search reads it: `i` is the row index (results map back by it, never by
+ * identity: ex-search returns copies), `c0`, `c1`, … the formatted values of the searchable
+ * columns. Flat keys also sidestep ex-search's top-level-key limitation for nested paths. Items
+ * are built per chunk while matching and dropped after it (§9.3 memory): none is kept.
  */
 export type Item = Record<string, string | number> & { readonly i: number }
 
@@ -24,24 +26,25 @@ export interface Hit {
   readonly score: number
 }
 
-/** The projection of one (data, columns) pair and its matcher. */
+/** The matcher of one (data, columns) pair: references to column values, no per-row copy. */
 export interface SearchIndex {
-  /** One item per row of `data` (index = row index). */
-  readonly items: readonly Item[]
   /**
-   * A time-sliced job (§9.1) matching `query` (trimmed, non-blank) against `items` (all of them or
-   * a subset), in chunks: the hits in relevance order ({@link rankHits}).
+   * A time-sliced job (§9.1) matching `query` (trimmed, non-blank) against the rows `rows` (row
+   * indices), in chunks: the hits in relevance order ({@link rankHits}).
    */
-  match(items: readonly Item[], query: string): Generator<undefined, Uint32Array, undefined>
+  match(rows: Uint32Array, query: string): Generator<undefined, Uint32Array, undefined>
 }
 
-/** Rows per chunk between two `yield`s of the projection and matching jobs. */
+/** Rows per chunk between two `yield`s of the matching job. */
 const CHUNK = 4096
 
 interface Key {
   readonly name: string
   readonly weight: number
 }
+
+/** The formatted value of row `r` of one searchable column. */
+type Read = (r: number) => string
 
 const hasExSearch = () =>
   typeof ExSearch === 'function' &&
@@ -64,11 +67,22 @@ export function probeExSearch(emit: Emit): boolean {
 }
 
 /**
- * Builds the projection from the column cache's formatted values (what the user sees), once per
- * data + columns, as a time-sliced job (§9.1): one column read per slice, then the items in chunks.
- * Searchable columns are those with a `search` weight > 0; when no column declares `search`, every
- * column is searchable at weight 1. `null` when nothing is searchable. Without `caseSensitive` the
- * values are lower-cased here, once, not on every query.
+ * A numeric column's formatted value without the cached strings: `String(v)` is what the default
+ * formatter shows for a number. Only when no value is `NaN` — a `NaN` cell is `null` / `undefined`
+ * (shown as `''`) or a real `NaN` (shown as `'NaN'`), which only the formatted cache tells apart.
+ */
+function numberReader(values: Float64Array): Read | undefined {
+  for (let r = 0; r < values.length; r++) if (Number.isNaN(values[r])) return undefined
+  return (r) => String(values[r])
+}
+
+/**
+ * Builds the matcher over the formatted values of the searchable columns (what the user sees), once
+ * per data + columns, as a time-sliced job (§9.1): one column read per slice. Searchable columns are
+ * those with a `search` weight > 0; when no column declares `search`, every column is searchable at
+ * weight 1. `null` when nothing is searchable. The values are read from the column cache, never
+ * copied (§9.3 memory): a numeric column without `format` is stringified while matching, and the
+ * case is folded per chunk while matching.
  */
 export function* buildIndex(
   ctx: RowModelContext,
@@ -78,51 +92,92 @@ export function* buildIndex(
   const cols = resolveColumns(ctx.columns)
   const declared = cols.list.some((c) => (c.def as { search?: unknown }).search !== undefined)
   const keys: Key[] = []
-  const values: (readonly string[])[] = []
+  const reads: Read[] = []
   for (const col of cols.list) {
     if (cols.byId.get(col.id) !== col) continue
     const w = (col.def as { search?: unknown }).search
     const weight = declared ? (typeof w === 'number' && w > 0 ? w : 0) : 1
     if (weight === 0) continue
-    const formatted = ctx.getFormattedValues(col.id)
-    if (!formatted) continue
+    let read: Read | undefined
+    if (!col.format) {
+      const values = ctx.getColumnValues(col.id)
+      if (values instanceof Float64Array) read = numberReader(values)
+    }
+    if (!read) {
+      const formatted = ctx.getFormattedValues(col.id)
+      if (!formatted) continue
+      read = (r) => formatted[r] ?? ''
+    }
     keys.push({ name: `c${keys.length}`, weight })
-    values.push(formatted)
+    reads.push(read)
     yield
   }
   if (keys.length === 0) return null
-
   const fold = !config.caseSensitive
-  const n = ctx.data.length
-  const items = new Array<Item>(n)
-  for (let r = 0; r < n; r++) {
-    const o = { i: r } as Item
-    for (let k = 0; k < keys.length; k++) {
-      const v = (values[k] as readonly string[])[r] ?? ''
-      ;(o as Record<string, string>)[(keys[k] as Key).name] = fold ? v.toLowerCase() : v
-    }
-    items[r] = o
-    if (r % CHUNK === CHUNK - 1) yield
+  const at = (k: number, r: number) => {
+    const v = (reads[k] as Read)(r)
+    return fold ? v.toLowerCase() : v
   }
-  return useExSearch ? exSearchIndex(items, keys, config) : containsIndex(items, keys, config)
+  return useExSearch
+    ? exSearchIndex(ctx.data.length, keys, at, config)
+    : containsIndex(keys, at, config)
 }
 
-/** Matches `items` chunk by chunk (`score` decides alone, so chunks match like the whole). */
+/** Matches `rows` chunk by chunk (`score` decides alone, so chunks match like the whole). */
 function* chunked(
-  items: readonly Item[],
-  matchChunk: (chunk: readonly Item[]) => readonly Hit[],
+  rows: Uint32Array,
+  matchChunk: (chunk: Uint32Array) => readonly Hit[],
 ): Generator<undefined, Uint32Array, undefined> {
-  if (items.length <= CHUNK) return rankHits(matchChunk(items))
+  if (rows.length <= CHUNK) return rankHits(matchChunk(rows))
   const hits: Hit[] = []
-  for (let k = 0; k < items.length; k += CHUNK) {
-    for (const h of matchChunk(items.slice(k, k + CHUNK))) hits.push(h)
+  for (let k = 0; k < rows.length; k += CHUNK) {
+    for (const h of matchChunk(rows.subarray(k, k + CHUNK))) hits.push(h)
     yield
   }
   return rankHits(hits)
 }
 
-function exSearchIndex(items: Item[], keys: readonly Key[], config: MatchConfig): SearchIndex {
-  // Values are already folded when not case-sensitive (buildIndex), and so is the query below.
+/**
+ * The projection as ex-search reads it: an array (iteration, `length`, index reads) of `{ i, c0, … }`
+ * items, each built when read and not kept. It shows every row of `data` (`size`), or one chunk of
+ * rows while that chunk is matched; ex-search holds this one view (`setData` once).
+ */
+function projection(size: number, keys: readonly Key[], at: (k: number, r: number) => string) {
+  let rows: Uint32Array | undefined
+  // Never written, and its own `length` stays 0: `length` is read through the trap below (setting
+  // a large `length` would allocate a backing store).
+  const target: Item[] = []
+  const length = () => (rows ? rows.length : size)
+  const item = (j: number): Item => {
+    const r = rows ? (rows[j] as number) : j
+    const o = { i: r } as Record<string, string | number>
+    for (let k = 0; k < keys.length; k++) o[(keys[k] as Key).name] = at(k, r)
+    return o as Item
+  }
+  const items = new Proxy(target, {
+    get(t, p, receiver) {
+      if (p === 'length') return length()
+      const j = arrayIndex(p, length())
+      return j >= 0 ? item(j) : Reflect.get(t, p, receiver)
+    },
+    has: (t, p) => arrayIndex(p, length()) >= 0 || Reflect.has(t, p),
+  })
+  return {
+    items,
+    /** Shows `chunk` (row indices), or every row again (`undefined`). */
+    show(chunk: Uint32Array | undefined) {
+      rows = chunk
+    },
+  }
+}
+
+function exSearchIndex(
+  size: number,
+  keys: readonly Key[],
+  at: (k: number, r: number) => string,
+  config: MatchConfig,
+): SearchIndex {
+  // Values are folded per chunk when not case-sensitive (buildIndex), and so is the query below.
   const engine = new ExSearch<Item>({
     keys: keys.map((k) => ({ name: k.name, weight: k.weight })),
     threshold: config.threshold,
@@ -132,41 +187,46 @@ function exSearchIndex(items: Item[], keys: readonly Key[], config: MatchConfig)
     // stable and avoids radix's score quantisation.
     sortAlgorithm: 'tim',
   })
-  let current: readonly Item[] = items
-  engine.setData(items)
+  const view = projection(size, keys, at)
+  engine.setData(view.items)
   return {
-    items,
-    match(subset, query) {
+    match(rows, query) {
       const q = config.caseSensitive ? query : query.toLowerCase()
-      return chunked(subset, (chunk) => {
-        if (chunk !== current) {
-          engine.setData(chunk as Item[])
-          current = chunk
+      return chunked(rows, (chunk) => {
+        view.show(chunk)
+        try {
+          // Results are copies of the items (`Omit<Item, …>` drops `i` from the type, not the value).
+          return engine.search(q) as unknown as readonly Hit[]
+        } finally {
+          view.show(undefined)
         }
-        // Results are copies of the items (`Omit<Item, …>` drops `i` from the type, not the value).
-        return engine.search(q) as unknown as readonly Hit[]
       })
     },
   }
 }
 
 /** The fallback when ex-search is missing or incompatible: exact 1 · prefix 0.8 · substring 0.65. */
-function containsIndex(items: Item[], keys: readonly Key[], config: MatchConfig): SearchIndex {
+function containsIndex(
+  keys: readonly Key[],
+  at: (k: number, r: number) => string,
+  config: MatchConfig,
+): SearchIndex {
   return {
-    items,
-    match(subset, query) {
-      // Item values are folded already (buildIndex).
+    match(rows, query) {
+      // Values are folded per chunk (buildIndex).
       const q = config.caseSensitive ? query : query.toLowerCase()
-      return chunked(subset, (chunk) => {
+      return chunked(rows, (chunk) => {
         const hits: Hit[] = []
-        for (const item of chunk) {
+        for (let j = 0; j < chunk.length; j++) {
+          const r = chunk[j] as number
           let best = 0
-          for (const k of keys) {
-            const v = String(item[k.name] ?? '')
+          for (let k = 0; k < keys.length; k++) {
+            const v = at(k, r)
             const raw = v === q ? 1 : v.startsWith(q) ? 0.8 : v.includes(q) ? 0.65 : 0
-            if (raw * k.weight > best) best = raw * k.weight
+            const w = (keys[k] as Key).weight
+            if (raw * w > best) best = raw * w
           }
-          if (best > 0 && best >= config.threshold) hits.push({ i: item.i, score: best })
+          if (best > 0 && best >= config.threshold) hits.push({ i: r, score: best })
         }
         return hits
       })

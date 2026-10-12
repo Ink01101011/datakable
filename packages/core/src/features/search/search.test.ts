@@ -173,6 +173,55 @@ describe('search(): client matching (§6.3)', () => {
     expect(ids(t)).toEqual([4])
   })
 
+  it('a numeric column matches its formatted value: NaN as "NaN", null / undefined as empty', async () => {
+    const data = [
+      { n: 12 },
+      { n: Number.NaN },
+      { n: null },
+      { n: undefined },
+      { n: -0 },
+      { n: 1.5 },
+    ]
+    const t = createTable({
+      data,
+      columns: [{ key: 'n', search: 1 }],
+      features: [search({ threshold: 0.9, fuzzyMaxDistance: 0 })],
+    })
+    const at = () => t.getRowModel().rows.map((r) => r.index)
+    await t.setSearch('nan')
+    expect(at()).toEqual([1])
+    await t.setSearch('null')
+    expect(at()).toEqual([])
+    await t.setSearch('0')
+    expect(at()).toEqual([4])
+    await t.setSearch('1.5')
+    expect(at()).toEqual([5])
+    const clean = createTable({
+      data: [{ n: 7 }, { n: 70 }, { n: -0 }],
+      columns: [{ key: 'n', search: 1 }],
+      features: [search({ threshold: 0.75, fuzzyMaxDistance: 0 })],
+    })
+    await clean.setSearch('7')
+    expect(clean.getRowModel().rows.map((r) => r.index)).toEqual([0, 1])
+    await clean.setSearch('0')
+    expect(clean.getRowModel().rows.map((r) => r.index)).toEqual([2])
+  })
+
+  it('matches across chunks of rows like over the whole (case folded per chunk)', async () => {
+    const data = Array.from({ length: 10_000 }, (_, i) => ({ id: i, name: `Item ${i}` }))
+    const t = createTable({
+      data,
+      columns: [{ key: 'name', search: 1 }, { key: 'id' }],
+      features: [search({ threshold: 0.75, fuzzyMaxDistance: 0 })],
+    })
+    await t.setSearch('ITEM 9999')
+    expect(t.getRowModel().rows.map((r) => r.index)).toEqual([9999])
+    await t.setSearch('item 500')
+    expect(t.getRowModel().rows.map((r) => r.index)).toEqual([
+      500, 5000, 5001, 5002, 5003, 5004, 5005, 5006, 5007, 5008, 5009,
+    ])
+  })
+
   it('only weighted columns are searched when any column declares a weight', async () => {
     const t = make()
     await t.setSearch('52')

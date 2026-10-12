@@ -17,7 +17,7 @@ import type { ColumnCache } from './column-cache'
 import { type ResolvedColumn, type ResolvedColumns, resolveColumns } from './columns'
 import { checkStep, indexPrint, stepDiagnostics } from './dev-checks'
 import { allRows } from './indices'
-import { Row, type RowIssue, type RowSource } from './row'
+import { lazyRows, Row, type RowIssue, type RowSource } from './row'
 import type { Slicer } from './slice'
 import { inStepDiagnosticSetsError } from './status-rule'
 import type { RowModel, RowModelStatus } from './types'
@@ -120,7 +120,7 @@ interface Built<T> {
 /**
  * The index-based pipeline (§3.3, §9.1): each step consumes and produces a `Uint32Array` of row
  * indices, is memoised on (input reference, own slice, columns), and `Row` objects are created only
- * for the final (visible) indices.
+ * for the final (visible) indices, each when it is first read.
  */
 export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
   /**
@@ -246,6 +246,8 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
       },
       { cause: keyError },
     )
+    keyFailures.reset()
+    keyError = undefined
   }
 
   function build(
@@ -270,23 +272,24 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
       return prev.model
     }
     const source = rowSource(resolveColumns(columns))
-    const rows = new Array<Row<T>>(indices.length)
     keyFailures.reset()
-    try {
-      if (keys?.data !== data || keys.rowKey !== rowKey) {
-        keys = { data, rowKey, keyOf: resolveRowKeys(data, rowKey, host.emit, keyFailed) }
-      }
-      const keyOf = keys.keyOf
-      for (let i = 0; i < indices.length; i++) {
-        const r = indices[i] as number
-        const original = data[r] as T
-        rows[i] = new Row<T>(source, r, keyOf(original, r), original)
-      }
-      reportKeyFailures()
-    } finally {
-      keyFailures.reset()
-      keyError = undefined
+    if (keys?.data !== data || keys.rowKey !== rowKey) {
+      keys = { data, rowKey, keyOf: resolveRowKeys(data, rowKey, host.emit, keyFailed) }
     }
+    const keyOf = keys.keyOf
+    reportKeyFailures()
+    // A data array whose rows cannot be read fails this run (the last good row model is kept),
+    // not a later read of `rows[i]`.
+    for (let i = 0; i < indices.length; i++) void data[indices[i] as number]
+    // Rows are built when read (§9.3: no Row per visible row up front). The key scan above read
+    // every key; one that throws only now is reported now.
+    const rows = lazyRows(indices.length, (i) => {
+      const r = indices[i] as number
+      const original = data[r] as T
+      const row = new Row<T>(source, r, keyOf(original, r), original)
+      reportKeyFailures()
+      return row
+    })
     const m: RowModel<T> = { rows, filteredCount, totalCount: data.length, status, isInitialLoad }
     last = { model: m, data, indices, columns, rowKey }
     return m

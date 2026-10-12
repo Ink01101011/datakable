@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { search } from '../features/search/search'
 import { createTable } from '../table/create-table'
 import { minFilter, numSort, pager } from './test-features'
 
@@ -53,6 +54,48 @@ describe('pipeline memory (100k rows)', () => {
     expect(m.filteredCount).toBe(data.filter((r) => r.age >= 10).length)
     expect(mb).toBeLessThanOrEqual(5)
     // Keep the table and the data alive until after the measurement.
+    expect(t.getData()).toBe(data)
+  })
+
+  it('filter + sort, unpaginated (90k visible rows) stays ≤ 5 MB: rows are built when read', () => {
+    const data = makeData()
+    const before = used()
+    const t = createTable({
+      data,
+      rowKey: 'id',
+      columns: [{ key: 'id' }, { key: 'age' }, { key: 'name' }],
+      features: [minFilter('age'), numSort('age')],
+    })
+    const api = t as unknown as Record<string, (v: unknown) => void>
+    api.setMin?.(10)
+    api.setSort?.('desc')
+    const m = t.getRowModel()
+    const mb = (used() - before) / MB
+    console.info(`[F2] unpaginated pipeline memory at 100k rows: ${mb.toFixed(2)} MB`)
+    expect(m.rows).toHaveLength(m.filteredCount)
+    expect(m.rows[0]?.original.age).toBe(99)
+    expect(mb).toBeLessThanOrEqual(5)
+    expect(t.getData()).toBe(data)
+  })
+
+  it('filter + sort + client search stays ≤ 5 MB: no per-row projection is kept', async () => {
+    const data = makeData()
+    const before = used()
+    const t = createTable({
+      data,
+      rowKey: 'id',
+      columns: [{ key: 'id' }, { key: 'age' }, { key: 'name' }],
+      features: [minFilter('age'), search(), numSort('age'), pager(10)],
+    })
+    const api = t as unknown as Record<string, (v: unknown) => void>
+    api.setMin?.(10)
+    api.setSort?.('desc')
+    await t.setSearch('Name 99')
+    const m = t.getRowModel()
+    const mb = (used() - before) / MB
+    console.info(`[F2] search pipeline memory at 100k rows: ${mb.toFixed(2)} MB`)
+    expect(m.filteredCount).toBeGreaterThan(0)
+    expect(mb).toBeLessThanOrEqual(5)
     expect(t.getData()).toBe(data)
   })
 })

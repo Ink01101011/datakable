@@ -20,7 +20,8 @@ export const NO_ISSUES: readonly RowIssue[] = Object.freeze([])
 
 /**
  * One visible row (§6.6). Created only for the rows `getRowModel()` returns, never for the whole
- * data set (§9.1); the methods live on the prototype, so a row costs its four fields.
+ * data set (§9.1), and only when read ({@link lazyRows}); the methods live on the prototype, so a
+ * row costs its four fields.
  */
 export class Row<T = unknown> {
   /** The row's `rowKey` value (the row index without `rowKey`). */
@@ -77,3 +78,52 @@ export type FlaggedInvalidRow = Row<unknown> & { readonly valid: false }
 
 /** `getRowModel().rows` under `invalidRows: 'flag'` (§5.1): narrow on `row.valid`. */
 export type FlaggedRow<T> = ValidRow<T> | FlaggedInvalidRow
+
+/**
+ * An empty array of `length` without a backing store: setting `length` (or `new Array(n)`)
+ * allocates `n` slots; a write at `n - 1` then deleting it leaves sparse (dictionary) elements. V8
+ * turns it back into a plain array once it is filled.
+ */
+function sparse<R>(length: number): R[] {
+  const a: R[] = []
+  if (length > 0) {
+    a[length - 1] = undefined as R
+    delete a[length - 1]
+  }
+  return a
+}
+
+/** `p` as an index below `length` (a canonical array index string), else `-1`. */
+export function arrayIndex(p: string | symbol, length: number): number {
+  const i = typeof p === 'string' ? Number(p) : -1
+  return i >= 0 && i < length && String(i) === p ? i : -1
+}
+
+/**
+ * `RowModel.rows` without a `Row` per visible row up front (§9.3 memory: 90k rows unpaginated): a
+ * real array (`Array.isArray`, `length`, index reads, iteration, every array method) over a sparse
+ * target that builds row `i` with `make(i)` the first time it is read and keeps it, so identity is
+ * stable. `Object.keys` / `ownKeys` build every row first.
+ */
+export function lazyRows<R>(length: number, make: (i: number) => R): R[] {
+  const t = sparse<R>(length)
+  /** Builds row `i` (an index from {@link arrayIndex}; `-1` is not one) unless it exists. */
+  const build = (i: number) => {
+    if (i >= 0 && !(i in t)) t[i] = make(i)
+  }
+  return new Proxy(t, {
+    get(_, p, receiver) {
+      build(arrayIndex(p, length))
+      return Reflect.get(t, p, receiver)
+    },
+    has: (_, p) => arrayIndex(p, length) >= 0 || Reflect.has(t, p),
+    getOwnPropertyDescriptor(_, p) {
+      build(arrayIndex(p, length))
+      return Reflect.getOwnPropertyDescriptor(t, p)
+    },
+    ownKeys() {
+      for (let i = 0; i < length; i++) build(i)
+      return Reflect.ownKeys(t)
+    },
+  })
+}
