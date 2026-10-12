@@ -64,7 +64,7 @@ const builtins: { [K in keyof BuiltinOperations]: Fallback<K> } = {
   'column:batch': {
     describe:
       "the column's cells use the slot fallback ('' for format, undefined for accessor, " +
-      'non-matching for filterFn)',
+      'non-matching for filterFn, missing (sorted last) for sortBy)',
     value: () => undefined,
   },
   'async:request': {

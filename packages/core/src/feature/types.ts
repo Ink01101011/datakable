@@ -1,5 +1,6 @@
 import type { OptionsDefinition } from '../catalog/options'
 import type { Emit } from '../diagnostics/types'
+import type { CellSlot } from '../intercept/cell-batch'
 import type { Interceptor } from '../intercept/define'
 import type { OpName } from '../intercept/operations'
 import type { RowIssue } from '../pipeline/row'
@@ -86,6 +87,14 @@ export interface RowModelContext<T = unknown> {
    * `undefined` for a valid row. Absent in every other mode (no row is flagged there).
    */
   readonly flagged?: (index: number) => readonly RowIssue[] | undefined
+  /**
+   * Runs `body` as one `column:batch` of column `id` (§3.4): a per-cell user callback of a feature
+   * (`sortBy`, a custom filter fn) is intercepted once per column per run, never per cell. `body`
+   * loops over `rows` with an inline `try/catch` and reports its own failures; `where` is
+   * `columns[<index>].<slot>`. An interceptor may skip `body`: start from the slot fallback.
+   * Returns `false` (and does not run `body`) when `id` is not a column.
+   */
+  batch(id: string, slot: CellSlot, rows: Uint32Array, body: () => void): boolean
 }
 
 // --- the feature contract ------------------------------------------------------------------------

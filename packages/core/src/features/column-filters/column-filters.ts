@@ -163,7 +163,17 @@ function filterRows(
     failures.reset()
     first.error = undefined
     try {
-      n = apply(c, values, ctx.data, src, n, out)
+      if (c.kind === 'custom') {
+        // A user callback per cell: one `filterFn` column:batch (§3.4). A skipped batch keeps
+        // the slot fallback: no row matches.
+        const rows = src.subarray(0, n)
+        const dst = out
+        let k = 0
+        ctx.batch(id, 'filterFn', rows, () => {
+          k = apply(c, values, ctx.data, rows, rows.length, dst)
+        })
+        n = k
+      } else n = apply(c, values, ctx.data, src, n, out)
       if (failures.count > 0) report(ctx, c, id, String((filter as RawFilter).type), index)
     } finally {
       failures.reset()
