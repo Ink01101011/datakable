@@ -2,6 +2,9 @@ import type { ColumnDef, LooseRow, Path } from '../column'
 import type { RedactFn, RedactLevel } from '../diagnostics/redact'
 import type { Diagnostic } from '../diagnostics/types'
 import type { AnyFeature } from '../feature/types'
+import type { InvalidRow } from '../ingest/schema'
+import type { InvalidRowsMode } from '../ingest/schema-codes'
+import type { StandardSchemaV1 } from '../ingest/standard-schema'
 import type { Interceptor } from '../intercept/define'
 import type { OpName } from '../intercept/operations'
 import type { RowModel } from '../pipeline/types'
@@ -38,6 +41,18 @@ export interface TableOptions<T, S extends TableState = TableState> {
   name?: string
   data?: readonly T[]
   columns?: readonly ColumnDef<T>[]
+  /**
+   * A Standard Schema v1 (zod, valibot, arktype, …) every row is validated with (§5.1); the row
+   * type is its output. An async schema sets `status: 'validating'` while it runs. Read once, at
+   * creation.
+   */
+  schema?: StandardSchemaV1<unknown, T>
+  /**
+   * What happens to rows that fail `schema` (§5.1): `'drop'` (default) removes them, `'flag'` keeps
+   * them with `row.valid === false`, `'throw'` throws `DatakableSchemaError`. All three list them in
+   * `getInvalidRows()`. Read once, at creation; no effect without `schema`.
+   */
+  invalidRows?: InvalidRowsMode
   /** Row identity (§5.2). Read by redaction here; key handling is the ingest's. */
   rowKey?: Path<LooseRow<T>> | ((row: T) => string | number)
   /**
@@ -71,14 +86,22 @@ export interface TableOptions<T, S extends TableState = TableState> {
   diagnostics?: TableDiagnosticsOptions
 }
 
-export interface Table<T, S extends TableState = TableState> {
+export interface Table<
+  T,
+  S extends TableState = TableState,
+  M extends InvalidRowsMode = 'drop',
+  /** The element type `setOptions({ data })` accepts: `unknown` (raw input) with a schema. */
+  In = T,
+> {
   /** The current immutable snapshot; the same reference until a slice changes. */
   getState(): S
   setState(updater: Updater<S>): void
   /** Returns the unsubscribe function. One throwing listener never stops the others. */
   subscribe(listener: Listener<S>): () => void
   /** Merges `options` into the current ones (`table:setOptions`). */
-  setOptions(options: Partial<Omit<TableOptions<T, S>, 'features'>>): void
+  setOptions(
+    options: Partial<Omit<TableOptions<T, S>, 'features' | 'data'>> & { data?: readonly In[] },
+  ): void
   getOptions(): Readonly<TableOptions<T, S>>
   /** The ingested data (the previous data while an async ingest is pending or failed). */
   getData(): readonly T[]
@@ -86,7 +109,12 @@ export interface Table<T, S extends TableState = TableState> {
    * The row model (§6.6): the visible rows (`Row` objects for the current page only), the counts
    * and the status. The same object until data, state or columns change the result.
    */
-  getRowModel(): RowModel<T>
+  getRowModel(): RowModel<T, M>
+  /**
+   * The rows that failed `schema` in the current data (§5.1), in every `invalidRows` mode:
+   * `{ index, raw, issues }` with `index` into `options.data`. Empty without a schema.
+   */
+  getInvalidRows(): readonly InvalidRow[]
   /** Oldest first, at most 100 entries. */
   getDiagnostics(): Diagnostic[]
   /** Releases listeners. Later mutating calls are no-ops that report `DK_TABLE_DESTROYED`. */

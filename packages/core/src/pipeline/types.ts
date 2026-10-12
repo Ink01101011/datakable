@@ -1,4 +1,5 @@
-import type { Row } from './row'
+import type { InvalidRowsMode } from '../ingest/schema-codes'
+import type { FlaggedRow, Row } from './row'
 
 /**
  * `getRowModel().status` (§6.6). Any diagnostic that affects the row model sets `'error'`; the last
@@ -7,10 +8,15 @@ import type { Row } from './row'
  */
 export type RowModelStatus = 'idle' | 'validating' | 'pending' | 'searching' | 'fetching' | 'error'
 
+/** The row type of `getRowModel().rows`: a {@link FlaggedRow} union under `invalidRows: 'flag'`. */
+export type RowOf<T, M extends InvalidRowsMode = 'drop'> = [M] extends ['flag']
+  ? FlaggedRow<T>
+  : Row<T>
+
 /** What `table.getRowModel()` returns (§6.6). The same object until the row model changes. */
-export interface RowModel<T> {
+export interface RowModel<T, M extends InvalidRowsMode = 'drop'> {
   /** The visible rows only (the current page when paginated). */
-  readonly rows: readonly Row<T>[]
+  readonly rows: readonly RowOf<T, M>[]
   /** Rows left after filter and search (before pagination). */
   readonly filteredCount: number
   /** Rows after ingest. */

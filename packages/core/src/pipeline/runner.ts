@@ -2,6 +2,7 @@ import { compilePath, getValue } from '../column/get-value'
 import type { Emit } from '../diagnostics/types'
 import { featureDiagnostics } from '../feature/codes'
 import type { AnyFeature, RowModelContext } from '../feature/types'
+import { joinIssuePath, pathTouches } from '../ingest/schema'
 import { CellFailures } from '../intercept/cell-batch'
 import { errorName } from '../intercept/classify'
 import { type ContextBase, createContext } from '../intercept/context'
@@ -11,7 +12,7 @@ import type { TableState } from '../table/types'
 import { createColumnCache } from './column-cache'
 import { type ResolvedColumn, type ResolvedColumns, resolveColumns } from './columns'
 import { allRows } from './indices'
-import { Row, type RowKey, type RowSource } from './row'
+import { Row, type RowIssue, type RowKey, type RowSource } from './row'
 import type { RowModel, RowModelStatus } from './types'
 
 void featureDiagnostics
@@ -35,6 +36,13 @@ export interface PipelineHost {
   getRowKey(): unknown
   /** `RowModel.isInitialLoad`: no data applied yet (§6.6). */
   isInitialLoad(): boolean
+  /**
+   * The table's status outside the pipeline (`'validating'`, `'error'` after a failed ingest, …);
+   * a step failing in this run makes the row model `'error'` regardless.
+   */
+  status(): RowModelStatus
+  /** Schema issues of a flagged row by data index (`invalidRows: 'flag'`); else `undefined`. */
+  issues(index: number): readonly RowIssue[] | undefined
 }
 
 export interface Pipeline<T> {
@@ -129,6 +137,24 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
           reportCell(col, index, e, 'accessor')
           return undefined
         }
+      },
+      issues: (index) => host.issues(index),
+      cellIssues(issues, id) {
+        const col = cols.byId.get(id)
+        if (!col?.path) return EMPTY
+        let out: RowIssue[] | undefined
+        for (const issue of issues) {
+          let p: string
+          try {
+            p = joinIssuePath(issue.path)
+          } catch {
+            p = ''
+          }
+          if (!pathTouches(p, col.id)) continue
+          out ??= []
+          out.push(issue)
+        }
+        return out ?? EMPTY
       },
     }
     sources.set(cols, s)
@@ -303,7 +329,7 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
         indices = step(f, indices)
       }
       if (filteredCount < 0) filteredCount = indices.length
-      result = build(data, indices, columns, filteredCount, failed ? 'error' : 'idle')
+      result = build(data, indices, columns, filteredCount, failed ? 'error' : host.status())
       return indices
     })
     if (result) model = result

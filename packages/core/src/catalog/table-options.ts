@@ -1,7 +1,9 @@
+import { isStandardSchema } from '../ingest/schema'
 import type { TableOptions } from '../table/types'
 import { defineOptions, type OptionRule } from './options'
 
 const REDACT_LEVELS = ['safe', 'keys', 'full'] as const
+const INVALID_ROWS = ['drop', 'flag', 'throw'] as const
 
 /**
  * The table's options (§3.5). Typed against `TableOptions`: a new table option without an entry
@@ -11,6 +13,24 @@ const schema = {
   name: { type: 'string', once: true },
   data: { type: 'array' },
   columns: { type: 'array' },
+  schema: {
+    // arktype schemas are functions.
+    type: ['object', 'function'],
+    check: isStandardSchema,
+    expected:
+      "a Standard Schema v1 (an object with '~standard': { version: 1, validate }), " +
+      'e.g. a zod, valibot or arktype schema',
+    once: true,
+  },
+  invalidRows: {
+    type: 'string',
+    oneOf: INVALID_ROWS,
+    once: true,
+    noEffect: (v: string, all) =>
+      v !== 'drop' && all.schema === undefined
+        ? `invalidRows: '${v}' applies to rows that fail options.schema, and no schema is set`
+        : undefined,
+  },
   rowKey: { type: ['string', 'function'] },
   features: { type: 'array', once: true },
   initialState: { type: 'object', once: true },
