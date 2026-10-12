@@ -20,7 +20,8 @@ interface ContextOf<O extends OpName> extends ContextBase {
   where: string
   /** Scratch space shared by the interceptors of one call (e.g. timings). */
   meta: Map<string, unknown>
-  signal?: AbortSignal
+  /** Always present (possibly `undefined`) so pooled ctxs keep one object shape. */
+  signal?: AbortSignal | undefined
 }
 
 /** The ctx an interceptor receives. For several ops it is a union narrowed by `ctx.op`. */
@@ -43,10 +44,13 @@ export function createContext<O extends OpName>(
     phase: base.phase,
     emit: base.emit,
     meta: new Map(),
+    signal,
   }
-  if (signal) ctx.signal = signal
   return ctx as InterceptorContext<O>
 }
+
+/** Emitter of a released ctx: the table's own emitter is dropped so the pool does not retain it. */
+const released: Emit = () => {}
 
 export interface ContextPool {
   /** Takes a ctx from the free list (or makes one) and fills it. Release it when the call ends. */
@@ -80,15 +84,19 @@ export function createContextPool(max = 16): ContextPool {
       ctx.trigger = base.trigger
       ctx.phase = base.phase
       ctx.emit = base.emit
-      if (signal) ctx.signal = signal
+      ctx.signal = signal
       return ctx as unknown as InterceptorContext<typeof op>
     },
     release(ctx) {
       if (free.length >= max) return
       const c = ctx as ContextOf<OpName>
       c.meta.clear()
-      delete c.signal
+      // Assigned, never deleted: `delete` changes the object shape (deopts the hot path). A free
+      // ctx must not keep the table, its emitter or a signal alive.
+      c.signal = undefined
       c.input = undefined
+      c.table = undefined
+      c.emit = released
       free.push(c)
     },
     get size() {
