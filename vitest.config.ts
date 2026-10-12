@@ -13,14 +13,18 @@ export default defineConfig({
     },
   },
   test: {
-    typecheck: {
-      enabled: true,
-      include: ['packages/**/*.test-d.{ts,tsx}'],
-    },
+    // Each project owns its own *.test-d files; a root-level typecheck.include
+    // would be inherited via `extends: true` and run every type test twice.
+    typecheck: { enabled: true },
     projects: [
       {
         extends: true,
-        test: { name: 'core', environment: 'node', include: ['packages/core/**/*.test.ts'] },
+        test: {
+          name: 'core',
+          environment: 'node',
+          include: ['packages/core/**/*.test.ts'],
+          typecheck: { include: ['packages/core/**/*.test-d.ts'] },
+        },
       },
       {
         extends: true,
@@ -28,6 +32,12 @@ export default defineConfig({
           name: 'react',
           environment: 'happy-dom',
           include: ['packages/react/**/*.test.{ts,tsx}', 'packages/datakable/**/*.test.{ts,tsx}'],
+          typecheck: {
+            include: [
+              'packages/react/**/*.test-d.{ts,tsx}',
+              'packages/datakable/**/*.test-d.{ts,tsx}',
+            ],
+          },
         },
       },
     ],
