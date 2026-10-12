@@ -24,6 +24,8 @@ export default defineConfig({
     '!src/**/*.bench.ts',
     '!src/column/test-utils.ts',
     '!src/pipeline/test-features.ts',
+    // Fault-injection helpers and the code → test map are test-only.
+    '!src/fault-injection/**',
   ],
   format: ['esm', 'cjs'],
   // tsup injects `baseUrl` for the dts pass, which TS 6 flags as deprecated.
