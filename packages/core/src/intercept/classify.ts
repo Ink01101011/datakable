@@ -29,8 +29,14 @@ export function callUser<A, R>(slot: string, fn: (arg: A) => R, arg: A, row?: nu
 
 export type ErrorClass = 'DK_CALLBACK_FAILED' | 'DK_INTERNAL' | 'DK_UNKNOWN'
 
-/** A stack frame in DataKable's own code: `@datakable/*`, `node_modules/datakable`, the repo. */
-const OWN_FRAME = /[\\/@]datakable[\w.-]*[\\/]/i
+/**
+ * A stack frame in DataKable's own code: the `@datakable/*` packages (also their bundled chunks and
+ * CDN URLs), `node_modules/datakable/`, and Vite optimized deps (`.vite/deps/@datakable_core.js`,
+ * `.vite/deps/datakable.js`). A user folder named `datakable*` is not DataKable code. A Vite shared
+ * chunk (`.vite/deps/chunk-*.js`) or an app bundle that inlined DataKable cannot be attributed.
+ */
+const OWN_FRAME =
+  /@datakable[\\/_]|[\\/]node_modules[\\/]datakable[\\/]|[\\/]\.vite[\\/]deps[\\/]datakable[._]/i
 /** A stack line that is a frame: V8 `    at fn (file:1:2)` or SpiderMonkey/JSC `fn@file:1:2`. */
 const FRAME = /:\d+:\d+\)?\s*$/
 
