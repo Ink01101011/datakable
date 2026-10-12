@@ -73,4 +73,37 @@ describe('createContextPool', () => {
     pool.release(b)
     expect(pool.size).toBe(1)
   })
+
+  it('keeps a stable shape and drops table / emit references on release', () => {
+    const pool = createContextPool()
+    const ac = new AbortController()
+    const table = { name: 'tbl' }
+    const emit = () => {}
+    const a = pool.acquire(
+      'async:request',
+      { source: 'fetcher' },
+      'fetcher',
+      { ...base, table, emit },
+      ac.signal,
+    )
+    const keys = Object.keys(a)
+    pool.release(a)
+    expect(Object.keys(a)).toEqual(keys)
+    expect(a.signal).toBeUndefined()
+    expect(a.table).toBeUndefined()
+    expect(a.emit).not.toBe(emit)
+    expect(a.input).toBeUndefined()
+    const b = pool.acquire('column:batch', batchInput('x'), 'x', base)
+    expect(b).toBe(a)
+    expect(b.signal).toBeUndefined()
+    expect(b.emit).toBe(base.emit)
+    expect(b.table).toBe('tbl')
+  })
+
+  it('a fresh ctx has the same keys as a pooled one', () => {
+    const fresh = createContext('pipeline:run', { rowCount: 1 }, 'pipeline', base)
+    const ac = new AbortController()
+    const withSignal = createContext('async:request', { source: 'fetcher' }, 'f', base, ac.signal)
+    expect(Object.keys(fresh)).toEqual(Object.keys(withSignal))
+  })
 })

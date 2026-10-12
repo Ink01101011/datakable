@@ -1,0 +1,394 @@
+import { DatakableError, defaultPhase } from '../diagnostics/build'
+import { DEV } from '../diagnostics/env'
+import { createDiagnostics } from '../diagnostics/hub'
+import type { RedactionOptions } from '../diagnostics/redact'
+import type { Trigger } from '../diagnostics/types'
+import { errorBoundary } from '../intercept/boundary'
+import { callUser, errorName } from '../intercept/classify'
+import { type ContextBase, createContext } from '../intercept/context'
+import { FALLBACK } from '../intercept/fallbacks'
+import type { OpInput, OpName, OpResult } from '../intercept/operations'
+import { type Core, createInterceptorRuntime } from '../intercept/runtime'
+import { tableDiagnostics } from './codes'
+import {
+  type ControlledState,
+  type Listener,
+  type Table,
+  type TableOptions,
+  type TableState,
+  UPDATE_DEPTH_LIMIT,
+  type Updater,
+} from './types'
+
+// Referencing the definitions keeps them in the bundle (`sideEffects: false`).
+void tableDiagnostics
+
+const EMPTY: readonly never[] = []
+
+const isThenable = (v: unknown): v is PromiseLike<unknown> =>
+  v != null && typeof (v as { then?: unknown }).then === 'function'
+
+const freeze = <S extends object>(s: S): S => (DEV ? Object.freeze(s) : s)
+
+/** Column id: `key` for key columns, `id` for accessor columns. */
+const columnId = (c: { key?: unknown; id?: unknown }): unknown => c.key ?? c.id
+
+/**
+ * Creates the table store (§3.2): immutable state snapshots, controlled slices, isolated listeners,
+ * a re-entrancy guard and `destroy()`. Every unit of work runs as an operation (§3.4) through the
+ * table's interceptor runtime, with the errorBoundary outermost and diagnostics on a per-table hub.
+ *
+ * `ctx.where` is always a constant option path or method name (`options`, `options.data`,
+ * `setState`, `destroy`): it reaches fingerprints, docs URLs and issue links unredacted, so it must
+ * never carry row keys or cell values.
+ */
+export function createTable<T, S extends TableState = TableState>(
+  initialOptions: TableOptions<T, S>,
+): Table<T, S> {
+  let options: TableOptions<T, S> = { ...initialOptions }
+  let destroyed = false
+  let trigger: Trigger = 'init'
+  /** Pipeline run id; the pipeline (T09) increments it. */
+  const run = 0
+  let data: readonly T[] = EMPTY
+  let ingestSeq = 0
+
+  let controlled = new Set<string>()
+  let snapshot: S
+  /** The snapshot listeners last saw (`prev` of the next notification). */
+  let notified: S
+  /** A committed change (state or data) not yet notified. */
+  let pending = false
+  let notifying = false
+  let rounds = 0
+  let loopReported = false
+  let current: number | undefined
+  let listenerSeq = 0
+  const listeners = new Map<number, Listener<S>>()
+
+  const table: Table<T, S> = {
+    getState: () => snapshot,
+    setState,
+    subscribe,
+    setOptions,
+    getOptions: () => options,
+    getData: () => data,
+    getDiagnostics: () => hub.getDiagnostics(),
+    destroy,
+  }
+
+  // Redaction (§8.2): `diagnostics.redact` gives the level or a custom rule; column defs give the
+  // sensitive columns and whether the rowKey column is sensitive. Both are read per emit, so
+  // `setOptions({ columns })` is followed.
+  const redactOption = options.diagnostics?.redact
+  const redaction: RedactionOptions = {
+    ...(typeof redactOption === 'string' ? { level: redactOption } : {}),
+    ...(typeof redactOption === 'function' ? { redact: redactOption } : {}),
+    sensitiveColumns,
+    rowKeySensitive: () =>
+      typeof options.rowKey === 'string' && sensitiveColumns().includes(options.rowKey),
+  }
+  const hub = createDiagnostics({
+    ...(options.name === undefined ? {} : { name: options.name }),
+    table,
+    onDiagnostic: (d) => options.onDiagnostic?.(d),
+    ...(options.strict === undefined ? {} : { strict: options.strict }),
+    getContext: () => ({ trigger, run }),
+    getDataRef: () => data,
+    redaction,
+  })
+  const runtime = createInterceptorRuntime({
+    interceptors: options.interceptors ?? [],
+    emit: hub.emit,
+  })
+  runtime.installBoundary(errorBoundary)
+  hub.attach(runtime)
+
+  function sensitiveColumns(): string[] {
+    const out: string[] = []
+    for (const c of options.columns ?? EMPTY) {
+      const id = columnId(c as { key?: unknown; id?: unknown })
+      if (c.sensitive && typeof id === 'string') out.push(id)
+    }
+    return out
+  }
+
+  function base(): ContextBase {
+    return { table, run, trigger, phase: defaultPhase(), emit: hub.emit }
+  }
+
+  function op<O extends OpName>(
+    name: O,
+    input: OpInput<O>,
+    where: string,
+    core: Core<O>,
+    fallback?: unknown,
+  ): OpResult<O> {
+    const ctx = createContext(name, input, where, base())
+    if (fallback !== undefined) ctx.meta.set(FALLBACK, fallback)
+    return runtime.run(name, ctx, core)
+  }
+
+  function withTrigger<R>(t: Trigger, fn: () => R): R {
+    const prev = trigger
+    trigger = t
+    try {
+      return fn()
+    } finally {
+      trigger = prev
+    }
+  }
+
+  // --- state -------------------------------------------------------------------------------------
+
+  function controlledKeys(state: ControlledState<S> | undefined): Set<string> {
+    const keys = new Set<string>()
+    if (state) for (const k of Object.keys(state)) if (state[k] !== undefined) keys.add(k)
+    return keys
+  }
+
+  /** `s` with the controlled slices from `options.state`; `s` itself when none differ. */
+  function overlay(s: S): S {
+    let next: TableState | undefined
+    const state = options.state as TableState | undefined
+    if (state) {
+      for (const k of controlled) {
+        if (!Object.is(s[k], state[k])) {
+          next ??= { ...s }
+          next[k] = state[k]
+        }
+      }
+    }
+    return next ? freeze(next as S) : s
+  }
+
+  function commit(next: S) {
+    snapshot = next
+    pending = true
+  }
+
+  function warnControlled(dropped: string[] | undefined) {
+    if (options.onStateChange || controlled.size === 0) return
+    const slices = dropped ?? [...controlled]
+    hub.emit('DK_CONTROLLED_WITHOUT_HANDLER', { slices, dropped: dropped !== undefined })
+  }
+
+  function syncControlled() {
+    controlled = controlledKeys(options.state)
+    const next = overlay(snapshot)
+    if (next !== snapshot) commit(next)
+    warnControlled(undefined)
+  }
+
+  function dispatch(updater: Updater<S>) {
+    const partial: Partial<S> =
+      typeof updater === 'function' ? callUser('setState', updater, snapshot) : updater
+    if (partial === null || typeof partial !== 'object') return
+    let next: TableState | undefined
+    let changes: TableState | undefined
+    let dropped: string[] | undefined
+    for (const k of Object.keys(partial)) {
+      const v = (partial as TableState)[k]
+      if (Object.is(snapshot[k], v)) continue
+      if (controlled.has(k)) {
+        if (options.onStateChange) {
+          changes ??= {}
+          changes[k] = v
+        } else {
+          dropped ??= []
+          dropped.push(k)
+        }
+        continue
+      }
+      next ??= { ...snapshot }
+      next[k] = v
+    }
+    // The owner is told first: if onStateChange throws, nothing is committed (state unchanged).
+    if (changes && options.onStateChange) {
+      const c = changes as Partial<S>
+      callUser('onStateChange', options.onStateChange, (prev: Partial<S>) => ({ ...prev, ...c }))
+    }
+    if (next) commit(freeze(next as S))
+    if (dropped) warnControlled(dropped)
+  }
+
+  /**
+   * Notifies listeners until no change is pending. Updates made by listeners are committed at once
+   * and notified in the next round (not nested), so every listener sees rounds in order.
+   */
+  function flush() {
+    if (notifying || !pending) return
+    notifying = true
+    let rethrow: unknown
+    try {
+      while (pending) {
+        pending = false
+        rounds++
+        const prev = notified
+        const state = snapshot
+        notified = state
+        for (const [id, listener] of [...listeners]) {
+          current = id
+          try {
+            listener(state, prev)
+          } catch (e) {
+            // strict: a DatakableError (e.g. DK_UPDATE_LOOP) thrown inside the listener.
+            if (e instanceof DatakableError) {
+              rethrow ??= e
+              continue
+            }
+            try {
+              const name = errorName(e)
+              hub.emit(
+                'DK_LISTENER_FAILED',
+                { listener: id, ...(name === undefined ? {} : { errorName: name }) },
+                { cause: e },
+              )
+            } catch (strictError) {
+              rethrow ??= strictError
+            }
+          }
+        }
+      }
+    } finally {
+      notifying = false
+      rounds = 0
+      loopReported = false
+      current = undefined
+    }
+    if (rethrow !== undefined) throw rethrow
+  }
+
+  /** `false` (and one `DK_UPDATE_LOOP`) when a re-entrant update would exceed the depth limit. */
+  function admit(slices: string[]): boolean {
+    if (!notifying || rounds < UPDATE_DEPTH_LIMIT) return true
+    if (!loopReported) {
+      loopReported = true
+      hub.emit('DK_UPDATE_LOOP', {
+        limit: UPDATE_DEPTH_LIMIT,
+        slices,
+        ...(current === undefined ? {} : { listener: current }),
+      })
+    }
+    return false
+  }
+
+  function destroyedCall(method: string) {
+    withTrigger(`api:${method}`, () => hub.emit('DK_TABLE_DESTROYED', { method }))
+  }
+
+  // --- data --------------------------------------------------------------------------------------
+
+  function setData(next: readonly T[]) {
+    if (next === data) return
+    data = next
+    pending = true
+    // T09 seam: run `pipeline:run` here with ctx.meta[FALLBACK] = the last good row model.
+  }
+
+  /** `data:ingest` with the previous data as fallback; an async result is applied if still latest. */
+  function ingest() {
+    const seq = ++ingestSeq
+    withTrigger('data-change', () => {
+      const out = op(
+        'data:ingest',
+        { data: options.data ?? EMPTY },
+        'options.data',
+        (ctx) => ctx.input.data as readonly unknown[],
+        data,
+      )
+      if (!isThenable(out)) {
+        setData(out as readonly T[])
+        return
+      }
+      Promise.resolve(out).then(
+        (d) => {
+          if (seq !== ingestSeq || destroyed) return
+          withTrigger('data-change', () => {
+            setData(d as readonly T[])
+            flush()
+          })
+        },
+        // The boundary already reported it; only a strict DatakableError gets here. No unhandled
+        // rejection either way (§8.6).
+        () => {},
+      )
+    })
+  }
+
+  // --- API ---------------------------------------------------------------------------------------
+
+  function setState(updater: Updater<S>) {
+    if (destroyed) return destroyedCall('setState')
+    if (!admit(typeof updater === 'function' ? [] : Object.keys(updater ?? {}))) return
+    withTrigger('api:setState', () => {
+      void op('state:dispatch', { updater }, 'setState', (): undefined => {
+        dispatch(updater)
+      })
+      flush()
+    })
+  }
+
+  function subscribe(listener: Listener<S>): () => void {
+    if (destroyed) {
+      destroyedCall('subscribe')
+      return () => {}
+    }
+    const id = ++listenerSeq
+    listeners.set(id, listener)
+    return () => {
+      listeners.delete(id)
+    }
+  }
+
+  function setOptions(partial: Partial<TableOptions<T, S>>) {
+    if (destroyed) return destroyedCall('setOptions')
+    if (!admit(Object.keys(partial.state ?? {}))) return
+    withTrigger('setOptions', () => {
+      const previous = options
+      const next = { ...options, ...partial }
+      void op('table:setOptions', { options: next, previous }, 'options', (): undefined => {
+        options = next
+        if (next.interceptors !== previous.interceptors) {
+          runtime.setInterceptors(next.interceptors ?? [])
+        }
+        if ('state' in partial || 'onStateChange' in partial) syncControlled()
+        if (next.data !== previous.data) ingest()
+      })
+      flush()
+    })
+  }
+
+  function destroy() {
+    if (destroyed) return
+    withTrigger('api:destroy', () => {
+      try {
+        void op('table:destroy', undefined, 'destroy', (): undefined => {
+          destroyed = true
+        })
+      } finally {
+        // Even if an interceptor skipped the core: the table is destroyed.
+        destroyed = true
+        ingestSeq++
+        listeners.clear()
+      }
+    })
+  }
+
+  // --- init --------------------------------------------------------------------------------------
+
+  controlled = controlledKeys(options.state)
+  // T08 seam: feature `initialState()` slices go under `options.initialState`.
+  snapshot = overlay(freeze({ ...options.initialState } as S))
+  notified = snapshot
+  withTrigger('init', () => {
+    // `void`: sync ops never return a promise (op kinds, §3.4).
+    void op('table:init', { options }, 'options', (): undefined => {
+      // Ingest first: dedupe is per data reference, so warnings follow the initial data.
+      ingest()
+      warnControlled(undefined)
+    })
+  })
+  pending = false
+  return table
+}
