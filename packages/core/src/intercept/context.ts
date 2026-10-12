@@ -1,3 +1,4 @@
+import type { Emit, Phase, Trigger } from '../diagnostics/types'
 import type { OpInput, OpName } from './operations'
 
 /** Values that describe the table run rather than the single call; same as diagnostics context (§8.1). */
@@ -6,10 +7,10 @@ export interface ContextBase {
   table: unknown
   /** Pipeline run id — joins explain() and diagnostics. */
   run: number
-  trigger: 'init' | 'data-change' | 'setOptions' | 'hydrate' | 'fetch' | `api:${string}`
-  phase: 'ssr' | 'hydrate' | 'client'
-  /** Emits a diagnostic. Loosely typed until the catalog lands (T05). */
-  emit: (code: string, details?: Record<string, unknown>) => void
+  trigger: Trigger
+  phase: Phase
+  /** Emits a catalog diagnostic; `details` is typed by the code (diagnostics/catalog.ts). */
+  emit: Emit
 }
 
 interface ContextOf<O extends OpName> extends ContextBase {

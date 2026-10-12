@@ -1,8 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
+import { DatakableError } from '../diagnostics/build'
 import { type ContextBase, createContext } from './context'
 import { defineInterceptor, type Interceptor } from './define'
-import type { OpName } from './operations'
+import { type OpName, registerOperation } from './operations'
 import { createInterceptorRuntime } from './runtime'
+
+declare module './operations' {
+  interface Operations {
+    'test:late-hot': { kind: 'sync'; input: undefined; output: undefined }
+  }
+}
 
 const base: ContextBase = {
   table: undefined,
@@ -281,6 +288,75 @@ describe('createInterceptorRuntime', () => {
       expect(warn).toHaveBeenCalledTimes(1)
       warn.mockRestore()
     })
+
+    it('checks a hot op registered after the runtime was created, when it compiles', () => {
+      const onHotWarning = vi.fn()
+      const all = defineInterceptor({ name: 'all', on: '*', intercept: (_c, n) => n() })
+      const rt = createInterceptorRuntime({ interceptors: [all], onHotWarning })
+      onHotWarning.mockClear()
+      registerOperation('test:late-hot', { kind: 'sync', hot: true })
+      rt.run('test:late-hot', createContext('test:late-hot', undefined, 'late', base), () => {})
+      expect(onHotWarning.mock.calls.map((c) => c[0].op)).toEqual(['test:late-hot'])
+    })
+
+    it('warns once per interceptor and op, across recompiles', () => {
+      const onHotWarning = vi.fn()
+      const i = onBatch()
+      const rt = createInterceptorRuntime({ interceptors: [i], onHotWarning })
+      rt.setInterceptors([i])
+      rt.setInterceptors([i, tag('other', [])])
+      expect(onHotWarning).toHaveBeenCalledTimes(1)
+    })
+
+    it('with emit: routes the warning to DK_HOT_INTERCEPTOR instead of the console', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const emit = vi.fn()
+      createInterceptorRuntime({ interceptors: [onBatch()], emit })
+      expect(warn).not.toHaveBeenCalled()
+      expect(emit).toHaveBeenCalledWith('DK_HOT_INTERCEPTOR', {
+        interceptor: 'perf',
+        op: 'column:batch',
+      })
+      warn.mockRestore()
+    })
+  })
+
+  it('with emit: a failing interceptor is reported as DK_INTERCEPTOR_FAILED with the ctx run', () => {
+    const emit = vi.fn()
+    const err = new Error('nope')
+    const rt = createInterceptorRuntime({
+      emit,
+      interceptors: [
+        defineInterceptor({
+          name: 'bad',
+          on: ['pipeline:step'],
+          intercept() {
+            throw err
+          },
+        }),
+      ],
+    })
+    expect(rt.run('pipeline:step', stepCtx(), coreStep)).toEqual(new Uint32Array([1, 2]))
+    expect(emit).toHaveBeenCalledWith(
+      'DK_INTERCEPTOR_FAILED',
+      { interceptor: 'bad', op: 'pipeline:step', slot: 'features.sorting' },
+      { cause: err, run: 1, trigger: 'init', phase: 'client' },
+    )
+  })
+
+  it('unknown op and a second boundary throw DatakableError with a code', () => {
+    const rt = createInterceptorRuntime()
+    // @ts-expect-error not a registered op
+    expect(() => rt.run('nope:op', stepCtx(), coreStep)).toThrow(DatakableError)
+    const b = defineInterceptor({ name: 'b', on: '*', hot: true, intercept: (_c, n) => n() })
+    rt.installBoundary(b)
+    let caught: unknown
+    try {
+      rt.installBoundary(b)
+    } catch (e) {
+      caught = e
+    }
+    expect((caught as DatakableError).code).toBe('DK_INTERNAL')
   })
 
   it('throws on an op that is not registered at runtime', () => {
