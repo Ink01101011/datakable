@@ -6,7 +6,6 @@ import {
   type FeatureTypes,
   type Path,
   type TableOptions,
-  type TableState,
 } from '../index'
 
 // R4 review: a feature written as "one file" against the public API only.
