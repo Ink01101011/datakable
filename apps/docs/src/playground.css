@@ -1,0 +1,55 @@
+/* Playground chrome only. The tables stay unstyled apart from a few data-* hooks below. */
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  line-height: 1.4;
+}
+main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 16px;
+}
+.example {
+  margin-block: 32px;
+}
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-block: 8px;
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+th,
+td {
+  padding: 4px 8px;
+  text-align: left;
+  border-bottom: 1px solid #ddd;
+}
+[data-sort] {
+  background: #f3f6ff;
+}
+.badge {
+  font-family: ui-monospace, monospace;
+}
+.badge[data-status="error"] {
+  color: #b00020;
+}
+tr[data-invalid] {
+  background: #fff4f4;
+}
+td[data-invalid] {
+  color: #b00020;
+}
+[aria-busy="true"] tbody {
+  opacity: 0.6;
+}
+.diagnostics li[data-level="error"] code {
+  color: #b00020;
+}
+.diagnostics li[data-level="warn"] code {
+  color: #8a5a00;
+}

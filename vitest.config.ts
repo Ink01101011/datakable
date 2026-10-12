@@ -48,6 +48,18 @@ export default defineConfig({
           },
         },
       },
+      {
+        extends: true,
+        // The playground (apps/docs) imports `datakable`: map it to source like the packages.
+        resolve: {
+          alias: [{ find: /^datakable$/, replacement: src('datakable') }],
+        },
+        test: {
+          name: 'docs',
+          environment: 'happy-dom',
+          include: ['apps/docs/**/*.test.{ts,tsx}'],
+        },
+      },
     ],
   },
 })
