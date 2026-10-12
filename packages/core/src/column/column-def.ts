@@ -18,7 +18,10 @@ type StringFilter = { type: 'equals' } | { type: 'in' } | { type: 'contains' }
 /** Filter kinds for boolean values. */
 type BooleanFilter = { type: 'equals' }
 
-/** Filter kinds allowed for a column whose value type is `V` (spec §4.1, §6.1). */
+/**
+ * Filter kinds allowed for a column whose value type is `V` (spec §4.1, §6.1). Arrays of
+ * primitives take their element's kinds (an array cell matches if any element matches).
+ */
 export type FilterFor<V> =
   IsLoose<V> extends true
     ? LooseFilter
@@ -28,7 +31,9 @@ export type FilterFor<V> =
         ? StringFilter
         : NonNullable<V> extends boolean
           ? BooleanFilter
-          : never
+          : NonNullable<V> extends readonly (infer E)[]
+            ? FilterFor<E>
+            : never
 
 /** Values the default formatter can render: primitives, `Date`, arrays of those. */
 type Displayable = Primitive | readonly Primitive[]
