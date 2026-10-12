@@ -98,6 +98,23 @@ const methods: MethodCase[] = [
     returns: (v) => expect(Array.isArray(v)).toBe(true),
   },
   { method: 'refetch', call: (t) => t.refetch(), returns: (v) => outcome(v, OUTCOMES) },
+  // --- explain (§8.4) ---
+  {
+    method: 'explain',
+    call: (t) => t.explain(),
+    returns: (v) => {
+      expect(v).toBeTypeOf('object')
+      expect(String(v)).toBeTypeOf('string')
+    },
+  },
+  {
+    method: 'explainRow',
+    call: (t) => t.explainRow('p1'),
+    returns: (v) => {
+      expect(typeof (v as { found: unknown }).found).toBe('boolean')
+      expect(String(v)).toBeTypeOf('string')
+    },
+  },
   // --- Row (§6.6) ---
   {
     method: 'Row.getValue',

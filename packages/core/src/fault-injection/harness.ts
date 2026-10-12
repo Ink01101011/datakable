@@ -61,6 +61,8 @@ export type AnyTable = {
   getInvalidRows(): readonly unknown[]
   getDiagnostics(): Diagnostic[]
   refetch(): Promise<{ status: string }>
+  explain(): object
+  explainRow(key: unknown): { found: boolean }
   destroy(): void
 } & { [M in FeatureMethod]: Method }
 
