@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Diagnostic } from '../diagnostics/types'
+import { defineFeature } from '../feature/define'
 import { createTable } from './create-table'
 
 /**
@@ -38,5 +39,28 @@ describe('production: option validation is off', () => {
     const t = createTable({ data: [{ id: 1 }] })
     t.setOptions({ name: 'late' })
     expect('name' in t.getOptions()).toBe(false)
+  })
+})
+
+describe('production: development checks are off (changed 2026-10-13 for §9.3)', () => {
+  it('version checks (§8.5): an unmet requires.core does not throw', () => {
+    const f = defineFeature({
+      name: 'future',
+      stage: 'none',
+      requires: { core: '^99.0.0' },
+      initialState: () => 0,
+      createApi: () => ({}),
+    })
+    expect(() => createTable({ data: [], features: [f] })).not.toThrow()
+  })
+
+  it('data checks (§5.3): an unknown column path is not reported', () => {
+    const seen: Diagnostic[] = []
+    createTable({
+      data: [{ id: 1, name: 'a' }],
+      columns: [{ key: 'nmae' as never }],
+      onDiagnostic: (d) => seen.push(d),
+    }).getRowModel()
+    expect(seen.map((d) => d.code)).toEqual([])
   })
 })

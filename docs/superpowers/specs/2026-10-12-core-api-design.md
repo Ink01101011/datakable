@@ -258,6 +258,8 @@ Measured problem this fixes: with plain `any[]`, `Path<any>` resolves to `string
 
 ### 5.3 Data checks (on `data:ingest`)
 
+*(Changed 2026-10-13 for §9.3: the data checks are developer hints and run in development builds only, like `DK_DATA_MUTATED` already did; `DK_PERF_HINT` comes from the tracer, also development.)*
+
 | Check | Code |
 |---|---|
 | Column path absent in all rows | `DK_COLUMN_PATH_NOT_FOUND` with a nearest-path suggestion (Levenshtein via `ex-search` `Scorer.levenshtein`) |
@@ -605,7 +607,7 @@ table.explainRow(42)
   - `defineDeprecation` catalog → `DK_DEPRECATED` once per API per session, carrying `since`, `removeIn`, the replacement and an optional codemod;
   - deprecated for ≥ 1 minor before removal in the next major; the changeset must name the replacement.
 - **Error codes are public API:** never reused or redefined. Retired codes stay documented, marked with their removal version.
-- **Conflicts:**
+- **Conflicts** *(changed 2026-10-13 for §9.3: these are development checks, stripped from production builds)*:
   - the global registry detects duplicate cores (`DK_DUPLICATE_CORE`);
   - version comparison across the fixed group (`DK_VERSION_MISMATCH`);
   - feature-detection of `exsorted` / `ex-search` / `kk-debounce` capabilities (`DK_DEP_INCOMPATIBLE`);

@@ -243,10 +243,12 @@ export function createTable<T, S extends TableState>(
   hub.attach(runtime)
   // Dev check (§5.3): the same `data` array passed again with changed contents (DK_DATA_MUTATED).
   const dataCheck = DEV ? createDataMutationCheck(hub.emit) : undefined
-  // Feature `requires.core` (throws DK_FEATURE_INCOMPATIBLE), duplicate cores, version mismatch.
-  checkVersions(features, hub.emit, hub.table)
+  // Feature `requires.core` (throws DK_FEATURE_INCOMPATIBLE), duplicate cores, version mismatch
+  // (§8.5): development checks (changed 2026-10-13 for §9.3).
+  if (DEV) checkVersions(features, hub.emit, hub.table)
   // Ingest data checks (§5.3) and zero-config columns (§4.1): both read only the first rows.
-  const dataChecks = createDataChecks(hub.emit)
+  // The data checks are developer hints: development only (changed 2026-10-13 for §9.3).
+  const dataChecks = DEV ? createDataChecks(hub.emit) : undefined
   const derivedColumns = createDerivedColumns()
   // Schema ingest (§5.1): `schema` and `invalidRows` are read once (validated above). The step
   // comes with the schema (`withSchema`, `@datakable/core/schema`): a table without one never
@@ -461,7 +463,7 @@ export function createTable<T, S extends TableState>(
     data = next
     pending = true
     // After `data` is set: diagnostics dedupe per data reference.
-    dataChecks.check(data, options.columns)
+    dataChecks?.check(data, options.columns)
     // The pipeline runs before the next notification (or on getRowModel), as `pipeline:run` with
     // ctx.meta[FALLBACK] = the last good row model (pipeline/runner.ts).
     rowModelDirty = true
@@ -759,7 +761,7 @@ export function createTable<T, S extends TableState>(
         if (next.data !== previous.data) ingest()
         else {
           if ('data' in partial) dataCheck?.check(next.data)
-          if (next.columns !== previous.columns) dataChecks.check(data, next.columns)
+          if (next.columns !== previous.columns) dataChecks?.check(data, next.columns)
         }
       })
       flush()
