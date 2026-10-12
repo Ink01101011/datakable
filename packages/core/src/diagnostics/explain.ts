@@ -6,6 +6,7 @@ import type { RowKey } from '../pipeline/row'
 import type { RunRecord } from '../pipeline/runner'
 import type { RowModel, RowModelStatus } from '../pipeline/types'
 import { DEV } from './env'
+import type { explainDetail } from './explain-detail'
 import { formatRowExplanation, formatTableExplanation } from './explain-text'
 import {
   type RedactionOptions,
@@ -35,6 +36,8 @@ export interface ExplainHost {
   schema(): SchemaOutcome | undefined
   diagnostics(): readonly Diagnostic[]
   readonly redaction: RedactionOptions
+  /** Why a step removed a row (`explainDetail`): it comes with the features (their runtime). */
+  readonly detail?: typeof explainDetail
 }
 
 /** One step of {@link TableExplanation}: counts only. */
@@ -127,7 +130,7 @@ const pipelineSteps = (features: readonly AnyFeature[]) =>
 const isServer = (f: AnyFeature) => f.mode === 'server'
 
 /** `{ pageIndex, pageSize }` of the first paginate-stage slice that has them. */
-function pageOf(host: ExplainHost): { index: number; size: number } | undefined {
+export function pageOf(host: ExplainHost): { index: number; size: number } | undefined {
   for (const f of host.features) {
     if (f.stage !== 'paginate') continue
     const s = host.state()[f.name] as { pageIndex?: unknown; pageSize?: unknown } | undefined
@@ -138,10 +141,10 @@ function pageOf(host: ExplainHost): { index: number; size: number } | undefined 
   return undefined
 }
 
-const pageCount = (rows: number, size: number) => Math.ceil(rows / size)
+export const pageCount = (rows: number, size: number) => Math.ceil(rows / size)
 
 /** Clamped like pagination does (the page actually shown). */
-const shownPage = (index: number, count: number) => Math.max(0, Math.min(index, count - 1))
+export const shownPage = (index: number, count: number) => Math.max(0, Math.min(index, count - 1))
 
 /** `table.explain()` (§8.4): the last run's counts, with tracer timings when it was traced. */
 export function explainTable(host: ExplainHost): TableExplanation {
@@ -275,7 +278,7 @@ export function explainRow(host: ExplainHost, key: RowKey): RowExplanation {
       continue
     }
     removedBy = f.name
-    const detail = why(host, f, rec.input, index, r, where)
+    const detail = host.detail?.(host, f, rec.input, index, r, where)
     steps.push({ ...base, outcome: 'removed', ...(detail ? { detail } : {}) })
   }
   const e: RowExplanation = {
@@ -293,70 +296,4 @@ export function explainRow(host: ExplainHost, key: RowKey): RowExplanation {
     toString: () => (DEV ? formatRowExplanation(e) : JSON.stringify(e)),
   }
   return e
-}
-
-/** Why step `f` removed row `index` (redacted), per stage; `undefined` when nothing more is known. */
-function why(
-  host: ExplainHost,
-  f: AnyFeature,
-  input: Uint32Array,
-  index: number,
-  r: Redactor,
-  where: Location,
-): Record<string, unknown> | undefined {
-  const slice = host.state()[f.name]
-  if (f.stage === 'paginate') {
-    const p = pageOf(host)
-    if (!p) return undefined
-    const count = pageCount(input.length, p.size)
-    return {
-      page: Math.floor(input.indexOf(index) / p.size) + 1,
-      pageCount: count,
-      currentPage: shownPage(p.index, count) + 1,
-    }
-  }
-  if (f.stage === 'search') {
-    const s = slice as { query?: unknown } | undefined
-    const values = f.options?.values
-    return {
-      queryLength: typeof s?.query === 'string' ? s.query.trim().length : 0,
-      ...(typeof values?.searchFn === 'function'
-        ? { searchFn: true }
-        : { threshold: typeof values?.threshold === 'number' ? values.threshold : 0.3 }),
-    }
-  }
-  if (f.name === 'validity') return { validity: slice, flagged: host.schema()?.flagged?.has(index) }
-  if (f.name !== 'columnFilters' || slice === null || typeof slice !== 'object') return undefined
-  // Each column filter replayed alone on this row names the ones that reject it. The step is pure
-  // (other features may keep caches, so only this one is replayed); the replay context drops
-  // diagnostics and runs batches without interceptors.
-  const rowModel = f.rowModel as NonNullable<AnyFeature['rowModel']>
-  const ctx = host.replay(f.name)
-  const one = Uint32Array.of(index)
-  const filters: Record<string, unknown>[] = []
-  for (const [column, filter] of Object.entries(slice as Record<string, unknown>)) {
-    if (filter === undefined) continue
-    let kept: number
-    try {
-      kept = rowModel(one, { [column]: filter }, ctx).length
-    } catch {
-      kept = 0
-    }
-    if (kept > 0) continue
-    const value = (filter as { value?: unknown } | null)?.value
-    const cell = ctx.getColumnValues(column)?.[index]
-    const shown = redactDetails(
-      { column, value, cell },
-      { value: 'value', cell: 'value' },
-      where,
-      r,
-    )
-    filters.push({
-      column,
-      type: String((filter as { type?: unknown } | null)?.type),
-      value: shown.value,
-      cell: shown.cell,
-    })
-  }
-  return filters.length > 0 ? { filters } : undefined
 }

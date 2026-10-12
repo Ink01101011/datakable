@@ -96,6 +96,8 @@ Constraint: state and API shapes must be hoisted generic types. Using `this` ins
 
 **Default preset:** `defaultFeatures = [columnFilters(), validity(), search(), sorting(), pagination()]`. Passing `features` replaces the preset entirely.
 
+**Feature runtime** *(changed 2026-10-13 for §9.3)*: the machinery only features need — stage ordering and API install, the column cache and time-slicing behind `RowModelContext`, and `explainRow`'s per-step details — is the *feature runtime*. `defineFeature` (which every built-in feature uses) loads it, so a table without features does not bundle it. A feature object built without `defineFeature` works as before once any feature module is loaded; when none is, `createTable` throws naming `defineFeature()`.
+
 ### 3.4 Interceptor architecture
 
 Every unit of work is an **operation** with a declared contract and fallback. Cross-cutting behaviour is implemented as interceptors over operations, never inline at call sites.

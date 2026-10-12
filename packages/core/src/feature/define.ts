@@ -1,3 +1,9 @@
+import { explainDetail } from '../diagnostics/explain-detail'
+import { createColumnCache } from '../pipeline/column-cache'
+import { createSlicer } from '../pipeline/slice'
+import { initialSlices, installApis } from './install'
+import { orderFeatures } from './order'
+import { featureRuntime } from './runtime'
 import type {
   AnyRow,
   Feature,
@@ -6,6 +12,17 @@ import type {
   FixedTypes,
   RowModelContext,
 } from './types'
+
+// Features bring their runtime (§3.3, changed 2026-10-13 for §9.3): loading defineFeature installs
+// it, so a table without features never bundles it.
+featureRuntime.current ??= {
+  orderFeatures,
+  initialSlices,
+  installApis,
+  createColumnCache,
+  createSlicer,
+  explainDetail,
+}
 
 /** A feature whose state `S` and API `A` do not depend on the row type (inferred). */
 export interface FixedFeatureDefinition<Name extends string, S, A>

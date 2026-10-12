@@ -7,8 +7,7 @@ import { createDiagnostics } from '../diagnostics/hub'
 import type { RedactionOptions } from '../diagnostics/redact'
 import { tracer } from '../diagnostics/tracer'
 import type { Trigger } from '../diagnostics/types'
-import { initialSlices, installApis } from '../feature/install'
-import { orderFeatures } from '../feature/order'
+import { runtimeFor } from '../feature/runtime'
 import type { AnyFeature, ApiOf, SliceUpdater, TableStateFor } from '../feature/types'
 import { createDataChecks } from '../ingest/data-checks'
 import { createDerivedColumns } from '../ingest/derive-columns'
@@ -216,7 +215,9 @@ export function createTable<T, S extends TableState>(
   // Features (§3.3) are read once, at creation. `features` is the listed order (API install, conflict
   // reports); `pipeline` is stage order for the runner. Duplicates throw here (config error).
   const features: readonly AnyFeature[] = options.features ?? EMPTY
-  const pipeline = orderFeatures(features, hub.table)
+  // The feature runtime comes with the features (`defineFeature`): none for a table without.
+  const rt = runtimeFor(features)
+  const pipeline = rt ? rt.orderFeatures(features, hub.table) : EMPTY
   // Data modes (§7.1): DK_MODE_ORDER (a config error, development). A fetcher without a server-mode
   // feature (DK_FETCHER_WITHOUT_SERVER_MODE) is checked by the server source.
   if (DEV) checkModeOrder(pipeline, hub.table)
@@ -473,6 +474,7 @@ export function createTable<T, S extends TableState>(
 
   const runner = createPipeline<T>({
     runtime,
+    featureRuntime: rt,
     emit: hub.emit,
     features: pipeline,
     listed: features,
@@ -509,6 +511,7 @@ export function createTable<T, S extends TableState>(
     schema: () => schemaOutcome,
     diagnostics: () => hub.getDiagnostics(),
     redaction,
+    ...(rt ? { detail: rt.explainDetail } : {}),
   }
 
   /**
@@ -883,10 +886,16 @@ export function createTable<T, S extends TableState>(
 
   controlled = controlledKeys(options.state)
   // Feature `initialState()` slices, with `options.initialState` on top per slice.
-  snapshot = overlay(freeze(initialSlices(features, options.initialState, hub.emit) as S))
+  snapshot = overlay(
+    freeze(
+      (rt
+        ? rt.initialSlices(features, options.initialState, hub.emit)
+        : { ...options.initialState }) as S,
+    ),
+  )
   notified = snapshot
   // Merges the feature APIs onto the table; a name clash throws DK_FEATURE_API_CONFLICT.
-  installApis(features, {
+  rt?.installApis(features, {
     table: table as unknown as Table<unknown, TableState>,
     tableName: hub.table,
     emit: hub.emit,
