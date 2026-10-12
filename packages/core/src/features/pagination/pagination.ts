@@ -1,5 +1,6 @@
 import { defineOptions } from '../../catalog/options'
 import { keepDiagnostics } from '../../diagnostics/catalog'
+import { DEV } from '../../diagnostics/env'
 import { describeValue } from '../../diagnostics/redact'
 import { defineFeature } from '../../feature/define'
 import type { FeatureContext } from '../../feature/types'
@@ -121,7 +122,11 @@ export const pagination = (opts: PaginationOptions = {}) => {
     name: NAME,
     stage: 'paginate',
     mode,
-    options: defineOptions(paginationOptions, opts),
+    options: defineOptions(
+      // The option validator runs in development only (§9.3): production drops the schema.
+      DEV ? paginationOptions : ({} as typeof paginationOptions),
+      opts,
+    ),
     interceptors: [interceptor],
     initialState: (): PaginationState => ({ pageIndex: 0, pageSize: initialSize }),
     // After destroy(): the getters still return their declared types (no pages, no navigation).

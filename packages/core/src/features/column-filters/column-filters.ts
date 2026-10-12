@@ -1,5 +1,6 @@
 import { defineOptions } from '../../catalog/options'
 import { keepDiagnostics } from '../../diagnostics/catalog'
+import { DEV } from '../../diagnostics/env'
 import { defineFeature } from '../../feature/define'
 import type { RowModelContext } from '../../feature/types'
 import { CellFailures } from '../../intercept/cell-batch'
@@ -231,7 +232,11 @@ export const columnFilters = (opts: ColumnFiltersOptions = {}) =>
     name: 'columnFilters',
     stage: 'filter',
     mode: opts.mode ?? 'client',
-    options: defineOptions(columnFiltersOptions, opts),
+    options: defineOptions(
+      // The option validator runs in development only (§9.3): production drops the schema.
+      DEV ? columnFiltersOptions : ({} as typeof columnFiltersOptions),
+      opts,
+    ),
     initialState: () => ({}),
     createApi: (ctx) => ({
       setColumnFilter: (id, filter) =>

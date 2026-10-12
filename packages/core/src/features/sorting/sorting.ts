@@ -114,7 +114,8 @@ const sortingOptions = {
   algorithm: {
     type: ['string', 'function'],
     oneOf: ALGORITHMS,
-    expected: `one of ${ALGORITHMS.map((a) => `'${a}'`).join(', ')}, or (indices, compare) => indices`,
+    // A literal (not built from ALGORITHMS): a module-level call would keep the schema in production.
+    expected: "one of 'auto', 'tim', 'radix', 'counting', 'native', or (indices, compare) => indices",
   },
   debug: { type: 'boolean' },
   mode: modeOption,
@@ -297,7 +298,11 @@ export const sorting = (opts: SortingOptions = {}) => {
     name: 'sorting',
     stage: 'sort',
     mode: opts.mode ?? 'client',
-    options: defineOptions(sortingOptions, opts),
+    options: defineOptions(
+      // The option validator runs in development only (§9.3): production drops the schema.
+      DEV ? sortingOptions : ({} as typeof sortingOptions),
+      opts,
+    ),
     initialState: () => ({ by: [] }),
     // After destroy(): still a declared value (`aria-sort` reads it during teardown renders).
     destroyedResult: { getSortDirection: () => false },

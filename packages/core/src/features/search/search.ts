@@ -3,6 +3,7 @@ import { throttle } from 'kk-debounce/throttle'
 import { optionDiagnostics } from '../../catalog/codes'
 import { defineOptions } from '../../catalog/options'
 import { keepDiagnostics } from '../../diagnostics/catalog'
+import { DEV } from '../../diagnostics/env'
 import { defineFeature } from '../../feature/define'
 import type { AnyRow, RowModelContext } from '../../feature/types'
 import { defineInterceptor } from '../../intercept/define'
@@ -312,7 +313,11 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
     name: 'search',
     stage: 'search',
     mode: opts.mode ?? 'client',
-    options: defineOptions(searchOptions, server ? { ...opts, typing } : opts),
+    options: defineOptions(
+      // The option validator runs in development only (§9.3): production drops the schema.
+      DEV ? searchOptions : ({} as typeof searchOptions),
+      server ? { ...opts, typing } : opts,
+    ),
     initialState: (): SearchState => ({ input: '', query: '', status: 'idle' }),
     // After destroy(): still a promise, so `setSearch(q).then(…)` never throws.
     destroyedResult: { setSearch: settledSuperseded, flushSearch: settledSuperseded },
