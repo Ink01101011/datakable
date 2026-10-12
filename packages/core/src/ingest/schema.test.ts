@@ -5,6 +5,7 @@ import { defineFeature } from '../feature/define'
 import type { AnyFeature } from '../feature/types'
 import { createTable } from '../table/create-table'
 import { DatakableSchemaError } from './schema'
+import type { SchemaIssueColumn } from './schema-codes'
 import { makeSchema, type User, userCheck, userSchema } from './test-schemas'
 
 let seen: Diagnostic[]
@@ -71,6 +72,39 @@ describe("schema: invalidRows 'drop' (default)", () => {
     expect(d.impact).toContain('removed')
     expect(d.fix.join('\n')).toContain('columns[1]')
     expect(d.fix.join('\n')).toContain("invalidRows: 'flag'")
+  })
+
+  it('maps issue paths to columns like getCellIssues does (segments, not strings) (R7)', () => {
+    // One segment 'address.city' is not the two-segment key address.city; 'tags' is not 'tagsAll'.
+    const schema = makeSchema<unknown>((v) => {
+      const r = v as { id: number }
+      if (r.id === 1) return { issues: [{ message: 'Bad', path: ['address.city'] }] }
+      if (r.id === 2) return { issues: [{ message: 'Bad', path: ['tags', 0] }] }
+      return { issues: [{ message: 'Bad', path: [{ key: 'address' }] }] }
+    })
+    const t = createTable({
+      schema,
+      invalidRows: 'flag',
+      data: [{ id: 1 }, { id: 2 }, { id: 3 }],
+      // The schema's output type is unknown here: the keys are not checked against it.
+      columns: [{ key: 'address.city' }, { key: 'tagsAll' }, { key: 'tags' }] as never,
+      onDiagnostic,
+    })
+    const rows = t.getRowModel().rows
+    const columns = find('DK_SCHEMA_INVALID_ROW')?.details.columns as SchemaIssueColumn[]
+    const byPath = (p: string) => columns.find((c) => c.path === p)
+    // Each mapped column is one getCellIssues reports the issue for, and vice versa.
+    expect(rows[0]?.getCellIssues('address.city')).toEqual([])
+    expect(byPath('address.city')).toEqual({ path: 'address.city', count: 1 })
+    expect(rows[1]?.getCellIssues('tags')).toHaveLength(1)
+    expect(byPath('tags.0')).toEqual({ path: 'tags.0', column: 'tags', index: 2, count: 1 })
+    expect(rows[2]?.getCellIssues('address.city')).toHaveLength(1)
+    expect(byPath('address')).toEqual({
+      path: 'address',
+      column: 'address.city',
+      index: 0,
+      count: 1,
+    })
   })
 
   it('getInvalidRows() is empty without a schema and after valid data replaces invalid data', () => {

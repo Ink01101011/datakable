@@ -176,6 +176,8 @@ describe('createDiagnostics: dedupe, buffer, sinks', () => {
     expect(() => hub.emit('DK_TEST_ROW', { index: 2, key: 1n })).not.toThrow()
     expect(error).toHaveBeenCalledTimes(1)
     expect(hub.getDiagnostics()).toHaveLength(2)
+    // Development prints the error itself (production: its name only, console-scrub.prod.test.ts).
+    expect(error.mock.calls[0]?.[1]).toBeInstanceOf(Error)
   })
 
   it('strict rethrows error level as DatakableError, not warn/info', () => {

@@ -143,7 +143,7 @@ defineInterceptor({
 | `errorBoundary` | `*` | catch → classify → emit → registry fallback |
 | `slotContract` | `column:batch` | checks callback return values against `defineSlot` (`DK_CALLBACK_BAD_RETURN`) |
 | `asyncControl` | `async:request` | AbortController per request, latest-wins, timeout, superseded handling |
-| `tracer` | `pipeline:*`, `state:dispatch` | timings and per-step counts for `explain()`; off in prod unless `trace: true` |
+| `tracer` | `pipeline:*`, `state:dispatch` | timings and per-step counts for `explain()`; installed in development, off in prod unless opted in with `interceptors: [tracer()]` (there is no `trace` option, T25) |
 | `optionValidator` | `table:init`, `table:setOptions` (called directly, before the chain runs) | reads `defineOptions`: unknown / invalid / no-effect options, mode ordering, version and feature compatibility. Not installed as a chain interceptor: it must run before the runtime is built from unchecked options, and a config error must throw to the caller instead of being caught by `errorBoundary` (decided at R5, 2026-10-12) |
 | `deprecation` | `table:*`, `state:dispatch` (called directly via `warnDeprecated`) | reads `defineDeprecation`; same reasoning as `optionValidator` |
 | `devChecks` (dev only) | `data:ingest`, `pipeline:step` | data mutation, comparator sanity, feature output and mutation checks |
@@ -455,6 +455,8 @@ type Location =
   | { kind: 'feature'; name: string }
   | { kind: 'option'; path: string }
   | { kind: 'row'; index: number; key?: string }      // key hashed under 'safe'
+  | { kind: 'interceptor'; name: string; op: string } // an interceptor on an op (T05)
+  | { kind: 'operation'; op: string; slot?: string }  // an op / public method, e.g. render:cell at columns[1].cell
 
 interface DiagnosticContext {
   table: string                   // options.name, else "table#n"
@@ -509,7 +511,7 @@ interface DiagnosticContext {
 
 ### 8.3 Diagnostic catalog
 
-Every code requires: a `defineDiagnostic` entry, an anchor in `docs/errors.md`, and at least one fault-injection test. CI fails otherwise.
+Every code requires: a `defineDiagnostic` entry, an anchor in `docs/errors.md`, and at least one fault-injection test. CI fails otherwise (T38: `packages/datakable/src/errors-doc.test.tsx` checks every code of the core + react registries against `docs/errors.md` — section, anchor, a runnable or fixture example whose output must match what DataKable prints, a non-empty `where` and `fix` — and `fault-injection/injected-by.ts`; `pnpm check:catalog` checks that every code is registered in the built dist and in consumer bundles of both packages).
 
 Each code's section in `docs/errors.md` has: problem / common causes / fix / example.
 
@@ -520,13 +522,16 @@ Each code's section in `docs/errors.md` has: problem / common causes / fix / exa
 | | `DK_COLUMN_PATH_NOT_FOUND` | warn | path absent in all rows | did-you-mean path |
 | | `DK_COLUMN_PATH_PARTIAL` | info | path absent in some rows | count + samples; `format` default |
 | | `DK_INCONSISTENT_ROW_SHAPE` | info | zero-config key sets differ | lists the differing keys |
+| | | | | the three data checks above inspect the first 50 rows (`INGEST_SAMPLE`) |
 | | `DK_UNRENDERABLE_VALUE` | warn | object/function value without cell/format | renders `''` |
 | | `DK_DATA_MUTATED` | warn | same data reference, mutated (dev) | tells the developer to pass a new array |
 | Schema | `DK_SCHEMA_INVALID_ROW` | error | validation issues | per `invalidRows`; `fix` maps the schema issue path to the affected column, gives the row count, and says whether the rows were dropped or flagged |
 | | `DK_SCHEMA_CRASHED` | error | the schema threw | synthetic issue; per `invalidRows` |
 | Features | `DK_FILTER_TYPE_MISMATCH` | warn | filter kind vs value type | non-match; suggests coercion or another kind |
 | | `DK_SORT_COMPARATOR_INVALID` | warn | `sortFn` returns NaN or is inconsistent (dev, sampled) | falls back to the default comparator |
-| | `DK_SORT_STRATEGY` | info | algorithm chosen (debug) | — |
+| | `DK_SORT_STRATEGY` | info | algorithm chosen (`sorting({ debug: true })`) | — |
+| | `DK_INVALID_PAGINATION` | warn | `setPageIndex` / `setPageSize` / the pagination state got a value that is not an integer in range | call ignored / slice replaced |
+| | `DK_INVALID_VALIDITY` | warn | `setValidity` / the validity state got a value other than `'all' \| 'valid' \| 'invalid'` | call ignored / read as `'all'` |
 | | `DK_SEARCH_FAILED` | error | `searchFn` rejected or threw | previous results kept |
 | Async | `DK_FETCH_FAILED` | error | fetcher rejected or threw | previous rows kept |
 | | `DK_FETCH_ABORTED` | info | superseded request (debug) | — |
@@ -535,10 +540,12 @@ Each code's section in `docs/errors.md` has: problem / common causes / fix / exa
 | | `DK_ROW_COUNT_MISSING` | warn | server-mode pagination with no fetcher and no `rowCount` option | page count from `data.length` (one page); pass `rowCount` |
 | Callbacks & plugins | `DK_CALLBACK_FAILED` | error | any user callback threw (`where` = slot + row) | slot fallback |
 | | `DK_CALLBACK_BAD_RETURN` | warn | slot contract violated (e.g. `format` returned a non-string, `cell` returned a Promise) | coerced / fallback |
-| | `DK_FEATURE_FAILED` | error | a feature `rowModel` / `createApi` threw | step passes through |
+| | `DK_FEATURE_FAILED` | error | a feature `rowModel` / `createApi` / `initialState` threw | step passes through / API missing / slice starts `undefined` |
 | | `DK_FEATURE_BAD_OUTPUT` | error | `rowModel` returned a non-index-array | step passes through |
 | | `DK_FEATURE_MUTATED_INPUT` | warn | `rowModel` mutated its input (dev) | — |
 | | `DK_INTERCEPTOR_FAILED` | error | an interceptor threw | interceptor skipped |
+| | `DK_HOT_INTERCEPTOR` | warn | an interceptor attached to a hot op (`column:batch`, also via `'*'`) without `hot: true` (dev) | still runs; states the measured cost |
+| | `DK_OPERATION_CONFLICT` | error (config) | `registerOperation` of a name already registered with another kind / hot flag | the first registration stays |
 | | `DK_LISTENER_FAILED` | error | a subscribe listener threw | other listeners still run |
 | Options & config | `DK_UNKNOWN_OPTION` | warn | unknown option key | did-you-mean |
 | | `DK_INVALID_OPTION` | error (config) | wrong runtime type or range | names the accepted values |
@@ -550,6 +557,7 @@ Each code's section in `docs/errors.md` has: problem / common causes / fix / exa
 | | `DK_FEATURE_INCOMPATIBLE` | error (config) | `requires.core` unmet | required version |
 | | `DK_CONTROLLED_WITHOUT_HANDLER` | warn | `state` slice passed without `onStateChange` | interactions are frozen; how to fix |
 | | `DK_UNSTABLE_COLUMNS` | warn | new `columns` reference every render with the same shape (react, dev) | `useMemo` / hoist |
+| | `DK_UNSTABLE_OPTION` | warn | new `data` / `fetcher` / `rowKey` / feature function option reference on consecutive renders (react, dev) | `useMemo` / `useCallback` / hoist |
 | | `DK_STATE_UNKNOWN_KEY` | warn | `initialState` / state references a missing column or slice | key ignored |
 | Lifecycle & SSR | `DK_TABLE_DESTROYED` | warn | API used after `destroy()` | no-op |
 | | `DK_UPDATE_LOOP` | error | re-entrant updates exceed the depth limit | update dropped |
@@ -560,6 +568,7 @@ Each code's section in `docs/errors.md` has: problem / common causes / fix / exa
 | | `DK_DUPLICATE_CORE` | error | two core copies registered on `globalThis[Symbol.for('datakable')]` | `pnpm why` / dedupe / overrides |
 | | `DK_VERSION_MISMATCH` | warn | core / react / datakable versions differ | the aligning command |
 | | `DK_DEP_INCOMPATIBLE` | warn | a dependency was overridden to an incompatible version (feature-detected) | native or contains fallback; supported range |
+| Redaction | `DK_UNSAFE_REDACTION` | warn | `diagnostics.redact: 'full'` in a production build (§8.2) | still applied; use `'safe'` / `'keys'` |
 | Environment & perf | `DK_ENV_FALLBACK` | info | missing `Intl.Collator` locale, `AbortSignal.any`, `Worker` or `scheduler.yield` | names the fallback used |
 | | `DK_PERF_HINT` | info | a measured step exceeds its budget | server mode / worker suggestion with numbers |
 | Catch-all | `DK_INTERNAL` | error | an unclassified throw from DataKable code | "likely a DataKable bug" + prefilled GitHub issue link (version, run, `explain()` summary, redacted context) |

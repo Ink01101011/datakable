@@ -16,7 +16,7 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "check:pkg": "pnpm -r --filter \"./packages/*\" check:pkg && pnpm check:consumer && pnpm check:styles",
-    "check:catalog": "pnpm --filter @datakable/core check:catalog",
+    "check:catalog": "pnpm --filter @datakable/core --filter @datakable/react check:catalog",
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "pnpm build && changeset publish",

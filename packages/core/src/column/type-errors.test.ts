@@ -182,5 +182,9 @@ describe('JSDoc on cell / format', () => {
     const docs = ts.displayPartsToString(details?.documentation)
     expect(docs).toContain(lead)
     expect(docs.split(rule)).toHaveLength(2)
+    // The whole block once: a reworded second copy would repeat the lead or another line.
+    expect(docs.split(lead)).toHaveLength(2)
+    const lines = docs.split('\n').filter((l) => l.trim() !== '')
+    expect(new Set(lines).size).toBe(lines.length)
   })
 })
