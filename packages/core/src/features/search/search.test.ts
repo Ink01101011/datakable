@@ -280,7 +280,13 @@ describe('search(): pipeline (§3.3)', () => {
   })
 
   it('no searchable column: rows pass through with DK_OPTION_NO_EFFECT (once)', async () => {
-    const t = createTable({ data: users, onDiagnostic, features: [search()] })
+    // Every column declares weight 0 (zero-config would now derive searchable columns, T12).
+    const t = createTable({
+      data: users,
+      columns: [{ key: 'name', search: 0 }],
+      onDiagnostic,
+      features: [search()],
+    })
     await t.setSearch('ada')
     expect(ids(t)).toEqual([0, 1, 2, 3, 4])
     await t.setSearch('bob')

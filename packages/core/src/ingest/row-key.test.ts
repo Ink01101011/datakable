@@ -204,8 +204,9 @@ describe('rowKey: DK_MISSING_ROW_KEY', () => {
     ] as { id?: unknown; uuid: string }[]
     const t = createTable({ data, rowKey: 'id' as never, onDiagnostic })
     expect(keys(t)).toEqual([1, '#1', '#2', '#3', '#4', 'ok'])
-    expect(codes()).toEqual(['DK_MISSING_ROW_KEY'])
-    const d = seen[0] as Diagnostic
+    // Zero-config + a row without `id` also differs in shape (T12, §5.3): reported separately.
+    expect(codes()).toEqual(['DK_INCONSISTENT_ROW_SHAPE', 'DK_MISSING_ROW_KEY'])
+    const d = seen.find((x) => x.code === 'DK_MISSING_ROW_KEY') as Diagnostic
     expect(d.level).toBe('error')
     expect(d.details).toMatchObject({
       path: 'id',
@@ -272,7 +273,9 @@ describe('rowKey: a throwing getter on the key path', () => {
     })
     const t = createTable({ data: [{ id: 1 }, bad as { id: number }], rowKey: 'id', onDiagnostic })
     expect(keys(t)).toEqual([1, '#1'])
-    expect(codes()).toEqual(['DK_CALLBACK_FAILED'])
-    expect(seen[0]?.details).toMatchObject({ slot: 'rowKey', rows: [1], count: 1 })
+    // The getter row has no enumerable keys, so zero-config also reports its shape (T12, §5.3).
+    expect(codes()).toEqual(['DK_INCONSISTENT_ROW_SHAPE', 'DK_CALLBACK_FAILED'])
+    const d = seen.find((x) => x.code === 'DK_CALLBACK_FAILED')
+    expect(d?.details).toMatchObject({ slot: 'rowKey', rows: [1], count: 1 })
   })
 })
