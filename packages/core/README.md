@@ -455,10 +455,12 @@ names the step that removed it. Both are plain objects; `String(…)` gives the 
 | `destroy()` | release listeners; later calls are no-ops (`DK_TABLE_DESTROYED`) |
 
 Options: `data`, `columns`, `rowKey` (a path or `(row) => string | number`; duplicates and missing
-keys are reported and get fallback keys), `features`, `schema`, `invalidRows`, `initialState`,
-controlled `state` + `onStateChange`, `interceptors`, `fetcher`, `rowCount`, `timeout`, `name`,
-`onDiagnostic`, `strict`, `diagnostics`. Unknown options are reported with a
-did-you-mean; invalid values throw `DatakableConfigError` naming the accepted values.
+keys are reported and get fallback keys), `features`, `schema` (`withSchema`, from
+`@datakable/core/schema`), `invalidRows`, `initialState`, controlled `state` + `onStateChange`,
+`interceptors`, `fetcher` (`withFetcher`, from `@datakable/core/server`), `rowCount`, `timeout`,
+`name`, `onDiagnostic`, `strict`, `diagnostics`. In development, unknown options are reported with a
+did-you-mean and invalid values throw `DatakableConfigError` naming the accepted values; production
+builds skip these checks (like the data checks and version checks) to stay small.
 
 ## License
 

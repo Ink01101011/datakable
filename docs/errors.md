@@ -89,6 +89,15 @@ In development, the console prints one collapsed group per diagnostic:
   [`DK_SORT_COMPARATOR_INVALID`](#dk_sort_comparator_invalid),
   [`DK_HOT_INTERCEPTOR`](#dk_hot_interceptor), and React's
   [`DK_UNSTABLE_COLUMNS`](#dk_unstable_columns) / [`DK_UNSTABLE_OPTION`](#dk_unstable_option).
+  Also (since 2026-10-13, to keep the production bundle small, §9.3) the option validator —
+  [`DK_UNKNOWN_OPTION`](#dk_unknown_option), [`DK_INVALID_OPTION`](#dk_invalid_option) and its
+  [`DK_OPTION_NO_EFFECT`](#dk_option_no_effect) reports —, [`DK_MODE_ORDER`](#dk_mode_order), the
+  version checks [`DK_FEATURE_INCOMPATIBLE`](#dk_feature_incompatible),
+  [`DK_DUPLICATE_CORE`](#dk_duplicate_core) and [`DK_VERSION_MISMATCH`](#dk_version_mismatch),
+  and the data checks [`DK_COLUMN_PATH_NOT_FOUND`](#dk_column_path_not_found),
+  [`DK_COLUMN_PATH_PARTIAL`](#dk_column_path_partial) and
+  [`DK_INCONSISTENT_ROW_SHAPE`](#dk_inconsistent_row_shape). A production `setOptions` still keeps
+  the read-once options.
   The tracer, which reports [`DK_PERF_HINT`](#dk_perf_hint), runs in development; in production
   only with `interceptors: [tracer()]`.
 - **Production only:** [`DK_UNSAFE_REDACTION`](#dk_unsafe_redaction).
@@ -318,7 +327,7 @@ prints (development console):
 
 ### DK_COLUMN_PATH_NOT_FOUND
 
-`warn` · fault test: [data-checks.test.ts](../packages/core/src/ingest/data-checks.test.ts)
+`warn` · development only · fault test: [data-checks.test.ts](../packages/core/src/ingest/data-checks.test.ts)
 
 **Problem.** A column's `key` path exists in none of the first 50 rows (`INGEST_SAMPLE`). The column reads `undefined` in every row and renders `''`. The fix suggests the closest existing paths (did-you-mean).
 
@@ -363,7 +372,7 @@ prints (development console):
 
 ### DK_COLUMN_PATH_PARTIAL
 
-`info` · fault test: [data-checks.test.ts](../packages/core/src/ingest/data-checks.test.ts)
+`info` · development only · fault test: [data-checks.test.ts](../packages/core/src/ingest/data-checks.test.ts)
 
 **Problem.** A column's `key` path is missing in some of the first 50 rows (`INGEST_SAMPLE`). Those cells read `undefined` and the default formatter renders `''`. Reported with the count and the first row indices.
 
@@ -407,7 +416,7 @@ prints (development console):
 
 ### DK_INCONSISTENT_ROW_SHAPE
 
-`info` · fault test: [data-checks.test.ts](../packages/core/src/ingest/data-checks.test.ts)
+`info` · development only · fault test: [data-checks.test.ts](../packages/core/src/ingest/data-checks.test.ts)
 
 **Problem.** Zero-config columns (no `columns` option) are derived from the rows' keys, and the first 50 rows (`INGEST_SAMPLE`) do not all have the same keys. The columns are the union of the keys; missing cells render `''`.
 
@@ -1609,7 +1618,7 @@ prints (development console):
 
 ### DK_UNKNOWN_OPTION
 
-`warn` · fault test: [options.test.ts](../packages/core/src/catalog/options.test.ts)
+`warn` · development only · fault test: [options.test.ts](../packages/core/src/catalog/options.test.ts)
 
 **Problem.** An option key is not an option of the table (or of the feature it was passed to). It is ignored. The fix suggests the closest name, and names the feature that owns the option when it was passed to the table instead.
 
@@ -1648,7 +1657,7 @@ prints (development console):
 
 ### DK_INVALID_OPTION
 
-`error` · config: thrown at creation · fault test: [options.test.ts](../packages/core/src/catalog/options.test.ts)
+`error` · development only · config: thrown at creation · fault test: [options.test.ts](../packages/core/src/catalog/options.test.ts)
 
 **Problem.** An option has the wrong runtime type or is out of range. At creation the table is not created (`DatakableConfigError`); in `setOptions()` the call is rejected and the previous options are kept. The fix names the accepted values (and the closest one, for enums).
 
@@ -1685,7 +1694,7 @@ DatakableConfigError: DK_INVALID_OPTION: options.timeout must be a number of mil
 
 `warn` · fault test: [options.test.ts](../packages/core/src/catalog/options.test.ts)
 
-**Problem.** An option is valid but ignored in this configuration (`invalidRows` without `schema`, `rowCount` with a `fetcher` or without server pagination, `initialData` with `data`, …). Also reported when `setOptions()` changes a read-once option: `name`, `schema`, `invalidRows`, `features`, `initialState`, `timeout`, `initialData`, `strict` and `diagnostics` keep the value the table was created with.
+**Problem.** An option is valid but ignored in this configuration (`invalidRows` without `schema`, `rowCount` with a `fetcher` or without server pagination, `initialData` with `data`, …). Also reported when `setOptions()` changes a read-once option: `name`, `schema`, `invalidRows`, `features`, `initialState`, `timeout`, `initialData`, `strict` and `diagnostics` keep the value the table was created with. The option validator's reports are development only; a feature's own (a `search` with no searchable column, `validity` outside flag mode) are reported in every build, and a production `setOptions` still keeps the read-once values.
 
 **Common causes.**
 
@@ -1721,7 +1730,7 @@ prints (development console):
 
 ### DK_MODE_ORDER
 
-`error` · config: thrown at creation · fault test: [fetcher.test.ts](../packages/core/src/source/fetcher.test.ts)
+`error` · development only · config: thrown at creation · fault test: [fetcher.test.ts](../packages/core/src/source/fetcher.test.ts)
 
 **Problem.** A client-mode feature runs before a server-mode one in the pipeline (filter → search → sort → paginate). The client step would only see the rows the server returned, so the table is not created.
 
@@ -1877,7 +1886,7 @@ DatakableConfigError: DK_FEATURE_API_CONFLICT: feature "quickSort" exposes "togg
 
 ### DK_FEATURE_INCOMPATIBLE
 
-`error` · config: thrown at creation · fault test: [versioning.test.ts](../packages/core/src/versioning/versioning.test.ts)
+`error` · development only · config: thrown at creation · fault test: [versioning.test.ts](../packages/core/src/versioning/versioning.test.ts)
 
 **Problem.** A feature declares `requires: { core: '<range>' }` and the installed core does not satisfy it (or the range is not valid semver). The table is not created.
 
@@ -2369,7 +2378,7 @@ prints (development console):
 
 ### DK_DUPLICATE_CORE
 
-`error` · fault test: [versioning.test.ts](../packages/core/src/versioning/versioning.test.ts)
+`error` · development only · fault test: [versioning.test.ts](../packages/core/src/versioning/versioning.test.ts)
 
 **Problem.** Two copies of `@datakable/core` are loaded in one page (detected through a global registry). Each table works with its own copy, but plugins built against the other copy may be ignored or fail registry checks, and the bundle ships core twice. One known false positive: a dev server's hot module reload that re-runs core reports it once.
 
@@ -2400,7 +2409,7 @@ Needs two copies of core in one bundle (the test loads core twice). Built from i
 
 ### DK_VERSION_MISMATCH
 
-`warn` · fault test: [versioning.test.ts](../packages/core/src/versioning/versioning.test.ts)
+`warn` · development only · fault test: [versioning.test.ts](../packages/core/src/versioning/versioning.test.ts)
 
 **Problem.** `@datakable/core`, `@datakable/react` and `datakable` are released together with one version, and the installed ones differ. It may work, but APIs and types between them can disagree.
 
