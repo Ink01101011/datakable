@@ -6,11 +6,11 @@
   "author": "Supakit Kitjanabumrungsak",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/OWNER/datakable.git",
+    "url": "git+https://github.com/Ink01101011/datakable.git",
     "directory": "packages/datakable"
   },
-  "homepage": "https://github.com/OWNER/datakable#readme",
-  "bugs": "https://github.com/OWNER/datakable/issues",
+  "homepage": "https://github.com/Ink01101011/datakable#readme",
+  "bugs": "https://github.com/Ink01101011/datakable/issues",
   "keywords": [
     "react",
     "datatable",
