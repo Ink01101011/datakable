@@ -23,7 +23,8 @@
   "type": "module",
   "sideEffects": [
     "./dist/messages.js",
-    "./dist/messages.cjs"
+    "./dist/messages.cjs",
+    "./dist/styles.css"
   ],
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -59,6 +60,7 @@
         "default": "./dist/messages.cjs"
       }
     },
+    "./styles.css": "./dist/styles.css",
     "./package.json": "./package.json"
   },
   "files": [
@@ -68,7 +70,7 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "typecheck": "tsc -p tsconfig.json",
-    "check:pkg": "publint --strict && attw --pack . --profile node16"
+    "check:pkg": "publint --strict && attw --pack . --profile node16 --exclude-entrypoints styles.css"
   },
   "dependencies": {
     "@datakable/core": "workspace:^",

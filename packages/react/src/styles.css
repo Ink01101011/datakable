@@ -1,0 +1,221 @@
+/*
+ * datakable/styles.css (also @datakable/react/styles.css): an optional default look for
+ * <DataTable />. Import it once; without it the table ships no CSS at all.
+ *
+ * It styles only the hooks <DataTable /> renders (data-* / aria-* attributes and the semantic
+ * elements). Every selector sits in :where(), so it has zero specificity and any rule of yours
+ * wins. Theme it through the --dk-* custom properties on [data-datakable].
+ */
+
+:where([data-datakable]) {
+  --dk-font-size: 0.875rem;
+  --dk-fg: #1f2328;
+  --dk-muted: #59636e;
+  --dk-bg: #fff;
+  --dk-subtle: #f6f8fa;
+  --dk-border: #d1d9e0;
+  --dk-accent: #0969da;
+  --dk-danger: #d1242f;
+  --dk-danger-bg: #ffebe9;
+  --dk-radius: 6px;
+  --dk-cell-py: 0.5rem;
+  --dk-cell-px: 0.75rem;
+
+  font-size: var(--dk-font-size);
+  color: var(--dk-fg);
+  background: var(--dk-bg);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-color-scheme: dark) {
+  :where([data-datakable]) {
+    --dk-fg: #f0f6fc;
+    --dk-muted: #9198a1;
+    --dk-bg: #0d1117;
+    --dk-subtle: #151b23;
+    --dk-border: #3d444d;
+    --dk-accent: #4493f8;
+    --dk-danger: #f85149;
+    --dk-danger-bg: #25171c;
+  }
+}
+
+/* Table */
+
+:where([data-datakable] table) {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+:where([data-datakable] caption) {
+  padding: var(--dk-cell-py) var(--dk-cell-px);
+  color: var(--dk-muted);
+  text-align: start;
+}
+
+:where([data-datakable] th, [data-datakable] td) {
+  padding: var(--dk-cell-py) var(--dk-cell-px);
+  border-bottom: 1px solid var(--dk-border);
+  text-align: start;
+}
+
+:where([data-datakable] thead th) {
+  background: var(--dk-subtle);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+:where([data-datakable] tbody tr:hover) {
+  background: var(--dk-subtle);
+}
+
+/* Buttons (pagination, retry) */
+
+:where([data-datakable] button) {
+  font: inherit;
+  color: inherit;
+  padding: 0.25rem 0.625rem;
+  background: var(--dk-bg);
+  border: 1px solid var(--dk-border);
+  border-radius: var(--dk-radius);
+  cursor: pointer;
+}
+
+:where([data-datakable] button:disabled) {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+:where([data-datakable] button:focus-visible, [data-datakable] input:focus-visible) {
+  outline: 2px solid var(--dk-accent);
+  outline-offset: 1px;
+}
+
+/* Sort headers (aria-sort) */
+
+:where([data-datakable] th[aria-sort] button) {
+  font-weight: inherit;
+  padding: 0;
+  background: none;
+  border: 0;
+}
+
+:where([data-datakable] th[aria-sort="ascending"], [data-datakable] th[aria-sort="descending"]) {
+  color: var(--dk-accent);
+}
+
+:where([data-datakable] [data-dk-sort-indicator]) {
+  font-size: 0.75em;
+}
+
+/* Search + spinner (pending / searching) */
+
+:where([data-datakable] [data-dk-search]) {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+:where([data-datakable] [data-dk-search] input) {
+  font: inherit;
+  color: inherit;
+  min-width: 12rem;
+  padding: 0.375rem 0.625rem;
+  background: var(--dk-bg);
+  border: 1px solid var(--dk-border);
+  border-radius: var(--dk-radius);
+}
+
+:where([data-datakable] [data-dk-spinner]) {
+  width: 1em;
+  height: 1em;
+  border: 2px solid var(--dk-border);
+  border-top-color: var(--dk-accent);
+  border-radius: 50%;
+  animation: dk-spin 0.7s linear infinite;
+}
+
+@keyframes dk-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+/* States: Loading / Empty / Error rows, refresh indicator over stale rows */
+
+:where([data-datakable] [data-dk-state] td) {
+  padding: 2rem var(--dk-cell-px);
+  color: var(--dk-muted);
+  text-align: center;
+}
+
+:where([data-datakable] tr[data-dk-state]:hover) {
+  background: none;
+}
+
+:where([data-datakable] [data-dk-state="loading"] td) {
+  font-style: italic;
+}
+
+:where([data-datakable] [data-dk-state="error"] td) {
+  color: var(--dk-danger);
+}
+
+:where([data-datakable] [data-dk-refresh]) {
+  margin-bottom: 0.5rem;
+  color: var(--dk-muted);
+}
+
+:where([data-datakable] [data-dk-refresh][data-status="error"]) {
+  padding: 0.375rem var(--dk-cell-px);
+  color: var(--dk-danger);
+  background: var(--dk-danger-bg);
+  border-radius: var(--dk-radius);
+}
+
+:where([data-datakable][aria-busy="true"]:not([data-initial-load="true"]) tbody) {
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+
+/* Flagged rows and cells (invalidRows: 'flag') */
+
+:where([data-datakable] tr[data-invalid="true"]) {
+  background: var(--dk-danger-bg);
+}
+
+:where([data-datakable] td[data-invalid="true"]) {
+  color: var(--dk-danger);
+  box-shadow: inset 2px 0 var(--dk-danger);
+}
+
+:where([data-datakable] [data-dk-invalid-marker]) {
+  color: var(--dk-danger);
+}
+
+/* Pagination */
+
+:where([data-datakable] [data-dk-pagination]) {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+:where([data-datakable] [data-dk-page]) {
+  color: var(--dk-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :where([data-datakable] [data-dk-spinner]) {
+    /* A still ring instead of a spinning one. */
+    animation: none;
+    border-color: var(--dk-accent);
+  }
+
+  :where([data-datakable] *) {
+    transition: none;
+  }
+}

@@ -225,6 +225,12 @@ over stale rows otherwise. Rows flagged by a schema (`invalidRows: 'flag'`) get
 (`DK_CALLBACK_FAILED`); a component that throws while rendering the body shows the Error state
 with a retry (`DK_RENDER_FAILED`) instead of unmounting the page.
 
+For a default look, import `datakable/styles.css` once (e.g. `import 'datakable/styles.css'` in
+your app entry). It styles only those hooks, every rule has zero specificity (`:where()`), so
+your own CSS always wins, and it themes through `--dk-*` custom properties (`--dk-accent`,
+`--dk-border`, `--dk-danger`, …) with a dark set under `prefers-color-scheme: dark`. Without that
+import, DataKable adds no CSS at all.
+
 ## SSR
 
 ```tsx
@@ -300,6 +306,7 @@ startTable(table)
 | `datakable` | `useDataTable` and `createTable` with the default preset, plus everything from `@datakable/react` and `@datakable/core` |
 | `datakable/core` | `@datakable/core` as is (no preset by default) |
 | `datakable/messages` | side-effect import: full diagnostic text in production |
+| `datakable/styles.css` | optional stylesheet for `<DataTable />` (~1 kB gzip) |
 
 ## License
 

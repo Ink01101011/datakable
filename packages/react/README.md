@@ -98,7 +98,8 @@ export function Users({ users }: { users: User[] }) {
 for the features installed (this package installs none by default). Pass `table={useDataTable(…)}`
 to render a table you set up yourself, `components` to replace the search input, pager or states,
 and style it through the `data-*` hooks (`data-status`, `data-initial-load`, `data-sort`,
-`data-invalid`). A `cell` that throws renders `⚠` in that cell (`DK_CALLBACK_FAILED`); a component
+`data-invalid`), or import the optional `@datakable/react/styles.css` (zero-specificity rules,
+themed through `--dk-*` custom properties). A `cell` that throws renders `⚠` in that cell (`DK_CALLBACK_FAILED`); a component
 that throws inside the body shows the Error state with a retry (`DK_RENDER_FAILED`).
 
 ## SSR
