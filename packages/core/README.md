@@ -114,7 +114,9 @@ The features are also exported from `@datakable/core` itself. The pipeline alway
   `query` is the applied value; `typing` sets `immediate` / `debounce` / `throttle`, `wait`,
   `minLength` and `commitOn: 'enter'`. `setSearch` / `flushSearch` return a promise of
   `{ status: 'applied' | 'superseded' | 'error' }` and never reject. A `searchFn` replaces the
-  built-in matching (sync or async; the previous results stay while it runs).
+  built-in matching (sync or async; the previous results stay while it runs). Wrap it with
+  `withSearchFn()` from `@datakable/core/search-async`, so client search does not bundle the
+  async engine: `search({ searchFn: withSearchFn(async ({ query, signal }) => …) })`.
 - **Sorting:** asc → desc → none; nulls, `NaN` and invalid dates always last; strings with
   `Intl.Collator` (numeric). `algorithm: 'auto'` (default) picks a stable algorithm per sort.
 - **Pagination:** `setPageSize` keeps the first visible row on screen; the page index resets when
