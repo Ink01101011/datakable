@@ -2,7 +2,7 @@
 
 Type-safe generic DataTable for React. Zero-config by default, headless when you need it.
 
-> 🚧 Early development — the API is not stable yet. See the [repository](https://github.com/OWNER/datakable) for progress.
+> 🚧 Early development — the API is not stable yet. See the [repository](https://github.com/Ink01101011/datakable) for progress.
 
 ## License
 
