@@ -382,17 +382,22 @@ search({
 
 ### 6.6 Row model output
 
-`getRowModel()` returns `{ rows: Row<T>[] /* visible page only */, filteredCount, totalCount, status }`.
+`getRowModel()` returns `{ rows: Row<T>[] /* visible page only */, filteredCount, totalCount, status, isInitialLoad }`.
 
-`status: 'idle' | 'validating' | 'pending' | 'searching' | 'error'`
+`status: 'idle' | 'validating' | 'pending' | 'searching' | 'fetching' | 'error'`
 
 | Status | Meaning |
 |---|---|
 | `'idle'` | the row model is current |
 | `'validating'` | an async schema is running (§5.1) |
 | `'pending'` | a search debounce is waiting, or time-sliced work is in progress (§9.1) |
-| `'searching'` | an async request (`searchFn`, fetcher) is in flight |
+| `'searching'` | an async `searchFn` request is in flight |
+| `'fetching'` | a `fetcher` request is in flight (initial load, or page / sort / filter / query change in server mode) |
 | `'error'` | a diagnostic affected the row model; the last good row model is shown |
+
+`isInitialLoad: boolean` is `true` until the table has had rows to show for the first time (data given at creation, `initialData`, or the first fetcher / `searchFn` result applied). It lets the UI choose between a full loading state (`fetching` + `isInitialLoad`, nothing to show yet) and a refresh indicator over stale rows (`fetching` + `!isInitialLoad`). It never goes back to `true`; an empty applied result counts as loaded (the UI shows Empty, not Loading). If the first request fails, `status` is `'error'` and `isInitialLoad` stays `true`, so the UI can show an error with nothing behind it.
+
+**Status is never silent** (decided 2026-10-12): every change of `status` or `isInitialLoad` produces a new row model and notifies subscribers, so a UI bound to `getRowModel()` always reflects what the table is doing. When two activities overlap, the most specific in-flight one wins: `error` > `fetching` > `searching` > `validating` > `pending` > `idle`.
 
 **Rule:** any diagnostic that affects the row model sets `status: 'error'`.
 
@@ -673,7 +678,7 @@ The bundle budgets are estimates from measured dependency sizes plus an assumed 
     - header sort buttons with `aria-sort`;
     - a search input bound to `input`, with a `pending` / `searching` spinner, Enter = `flushSearch`, Esc = `clearSearch`;
     - pagination controls;
-    - empty / loading / error states;
+    - empty / loading / error states, driven by `status` + `isInitialLoad` (§6.6): `Loading` when `isInitialLoad` and `fetching`/`searching`/`validating`; a refresh indicator (`data-status`) over stale rows otherwise; `Error` when `status === 'error'` and `isInitialLoad`; `Empty` when loaded with zero rows;
     - `data-invalid` / `aria-invalid` on flagged rows and cells.
 - **Customisation:** unstyled, with `data-*` hooks only. An optional `datakable/styles.css` is available. `components={{ SearchInput, Pagination, Empty, Loading, Error }}` overrides the defaults.
 - **Errors:** an error boundary around the body (`DK_RENDER_FAILED`), and per-cell `cell` throws render `⚠` (`DK_CALLBACK_FAILED`).
