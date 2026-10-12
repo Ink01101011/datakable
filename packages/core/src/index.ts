@@ -14,6 +14,7 @@ export type {
   SortAlgorithm,
 } from './column'
 export { type CompiledPath, compilePath, defaultFormat, getValue } from './column'
+export * from './diagnostics'
 export * from './intercept'
 export type { ColumnKey, RowData } from './types'
 export { VERSION } from './version'

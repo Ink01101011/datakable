@@ -1,3 +1,6 @@
+import { throwConfigError } from '../diagnostics/build'
+import type { Diagnostic } from '../diagnostics/types'
+
 /**
  * Operation registry (spec §3.4). Every unit of work is an operation with a declared kind
  * (sync / async / either) and typed input + output. Cross-cutting behaviour is attached as
@@ -48,7 +51,8 @@ export interface BuiltinOperations {
     input: { source: 'fetcher' | 'searchFn'; params?: unknown }
     output: unknown
   }
-  'diagnostic:emit': { kind: 'sync'; input: { diagnostic: unknown }; output: undefined }
+  /** The enriched diagnostic; interceptors may rewrite it (redaction) or drop it (skip `next`). */
+  'diagnostic:emit': { kind: 'sync'; input: { diagnostic: Diagnostic }; output: undefined }
 }
 
 /** Open for declaration merging; every entry must satisfy `OpSpec`. */
@@ -89,7 +93,11 @@ const builtins: { [K in keyof BuiltinOperations]: OperationInfo } = {
 }
 for (const [name, info] of Object.entries(builtins)) registry.set(name, info)
 
-/** Registers an op at runtime. Identical re-registration is a no-op; a conflicting one throws. */
+/**
+ * Registers an op at runtime. Identical re-registration is a no-op; a conflicting one throws
+ * `DatakableConfigError` (`DK_OPERATION_CONFLICT`). The registry is process-wide (ops are code, not
+ * table state); diagnostics stay per table because each runtime reports through its own emitter.
+ */
 export function registerOperation<O extends OpName>(
   name: O,
   info: { kind: Operations[O]['kind']; hot: boolean },
@@ -97,10 +105,13 @@ export function registerOperation<O extends OpName>(
   const prev = registry.get(name)
   if (prev) {
     if (prev.kind === info.kind && prev.hot === info.hot) return
-    // TODO(T05): becomes a DatakableConfigError with its own diagnostic code.
-    throw new Error(
-      `Operation "${name}" is already registered as ${prev.kind}${prev.hot ? ' (hot)' : ''}`,
-    )
+    throwConfigError('DK_OPERATION_CONFLICT', {
+      op: name,
+      kind: info.kind,
+      hot: info.hot,
+      previousKind: prev.kind,
+      previousHot: prev.hot,
+    })
   }
   registry.set(name, { kind: info.kind, hot: info.hot })
 }

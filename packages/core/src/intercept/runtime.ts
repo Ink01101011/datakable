@@ -1,3 +1,7 @@
+import { internalError } from '../diagnostics/build'
+import { HOT_COST } from '../diagnostics/codes'
+import { DEV } from '../diagnostics/env'
+import type { Emit } from '../diagnostics/types'
 import type { InterceptorContext } from './context'
 import type { Interceptor } from './define'
 import { getOperation, listOperations, type OpName, type OpResult } from './operations'
@@ -13,15 +17,23 @@ export interface HotOpWarning {
 export interface InterceptorRuntimeOptions {
   interceptors?: readonly Interceptor<OpName>[]
   /**
-   * An interceptor threw (or its promise rejected); it was skipped. T06 turns this into
-   * DK_INTERCEPTOR_FAILED. Default: console.error.
+   * The table's diagnostic emitter. When given, the default hooks below report through it:
+   * `DK_INTERCEPTOR_FAILED` and (dev only) `DK_HOT_INTERCEPTOR`. Without it they use the console.
+   */
+  emit?: Emit
+  /**
+   * An interceptor threw (or its promise rejected); it was skipped. Overrides the default report
+   * (`DK_INTERCEPTOR_FAILED` via `emit`, else console.error).
    */
   onInterceptorError?: (
     error: unknown,
     interceptor: Interceptor<OpName>,
     ctx: InterceptorContext,
   ) => void
-  /** An interceptor is attached to a hot op without `hot: true`. T05 routes it to diagnostics. */
+  /**
+   * An interceptor is attached to a hot op without `hot: true` (checked when the op's chain is
+   * compiled, once per interceptor + op). Overrides the default (`DK_HOT_INTERCEPTOR` via `emit`).
+   */
   onHotWarning?: (warning: HotOpWarning) => void
   /** Called each time a chain is compiled (tracing / tests). `length` counts the boundary too. */
   onCompile?: (op: string, length: number) => void
@@ -48,12 +60,6 @@ const direct: Chain = (ctx, core) => core(ctx)
 
 const isThenable = (v: unknown): v is PromiseLike<unknown> =>
   v != null && typeof (v as { then?: unknown }).then === 'function'
-
-// Measured by intercept/chain.bench.ts (Apple M4 Pro, Node 25.2.1): one pass-through interceptor
-// adds ~10 ns per call; spec §9.2 measured +15% when the same wrapping is done per cell.
-const HOT_COST =
-  '~10 ns per call per interceptor (+15% on a per-cell format call, spec §9.2) on top of ' +
-  'the interceptor body, which runs columns × pipeline runs times'
 
 const attaches = (i: Interceptor<OpName>, op: string) =>
   i.on === '*' || (i.on as readonly string[]).includes(op)
@@ -109,22 +115,32 @@ function wrap(
   }
 }
 
-const defaultInterceptorError = (error: unknown, i: Interceptor<OpName>, ctx: AnyCtx) => {
-  // TODO(T06): replaced by DK_INTERCEPTOR_FAILED through diagnostic:emit.
-  console.error(`[DataKable] interceptor "${i.name}" failed on ${ctx.op} and was skipped`, error)
-}
-
-const defaultHotWarning = (w: HotOpWarning) => {
-  // TODO(T05): routed to diagnostics and stripped in production.
-  console.warn(`[DataKable] ${w.message}`)
-}
-
 export function createInterceptorRuntime(
   options: InterceptorRuntimeOptions = {},
 ): InterceptorRuntime {
-  const onError = options.onInterceptorError ?? defaultInterceptorError
-  const onHotWarning = options.onHotWarning ?? defaultHotWarning
-  const { onCompile } = options
+  const { emit, onCompile } = options
+  const onError =
+    options.onInterceptorError ??
+    ((error: unknown, i: Interceptor<OpName>, ctx: AnyCtx) => {
+      if (emit) {
+        emit(
+          'DK_INTERCEPTOR_FAILED',
+          { interceptor: i.name, op: ctx.op, slot: ctx.where },
+          { cause: error, run: ctx.run, trigger: ctx.trigger, phase: ctx.phase },
+        )
+      } else {
+        console.error(
+          `[DataKable] interceptor "${i.name}" failed on ${ctx.op} and was skipped`,
+          error,
+        )
+      }
+    })
+  const onHotWarning =
+    options.onHotWarning ??
+    ((w: HotOpWarning) => {
+      if (emit) emit('DK_HOT_INTERCEPTOR', { interceptor: w.interceptor.name, op: w.op })
+      else console.warn(`[DataKable] ${w.message}`)
+    })
   const report = (error: unknown, i: Interceptor<OpName>, ctx: AnyCtx) => {
     try {
       onError(error, i, ctx)
@@ -136,13 +152,41 @@ export function createInterceptorRuntime(
   let list: readonly Interceptor<OpName>[] = []
   let boundary: Interceptor<OpName> | undefined
   const chains = new Map<string, Chain>()
+  /** (interceptor, op) pairs already warned about, so recompiles do not repeat the warning. */
+  const warned = new WeakMap<Interceptor<OpName>, Set<string>>()
+
+  function warnHot(i: Interceptor<OpName>, op: string) {
+    let ops = warned.get(i)
+    if (ops?.has(op)) return
+    if (!ops) {
+      ops = new Set()
+      warned.set(i, ops)
+    }
+    ops.add(op)
+    try {
+      onHotWarning({
+        interceptor: i,
+        op,
+        message:
+          `Interceptor "${i.name}" is attached to hot op "${op}" without hot: true. ` +
+          `It runs once per column per pipeline run; measured cost: ${HOT_COST}. ` +
+          'Never loop per cell inside it. Set hot: true to accept the cost, ' +
+          'or attach it to a cold op.',
+      })
+    } catch {
+      // A warning must never break compilation.
+    }
+  }
 
   function compile(op: string): Chain {
     const info = getOperation(op)
-    // TODO(T05): becomes a diagnostic code (internal error: unregistered op).
-    if (!info) throw new Error(`Unknown operation "${op}": register it with registerOperation()`)
+    if (!info) {
+      throw internalError(op, `Unknown operation "${op}": register it with registerOperation()`)
+    }
     const mine = list.filter((i) => attaches(i, op))
     if (boundary && attaches(boundary, op)) mine.unshift(boundary)
+    // Checked here, not when the list is set, so ops registered after creation are covered too.
+    if (DEV && info.hot) for (const i of mine) if (!i.hot) warnHot(i, op)
     const mayBeAsync = info.kind !== 'sync'
     const chain = mine.reduceRight<Chain>((inner, i) => wrap(i, inner, mayBeAsync, report), direct)
     chains.set(op, chain)
@@ -155,27 +199,8 @@ export function createInterceptorRuntime(
     for (const op of listOperations()) compile(op)
   }
 
-  function warnHot(interceptors: readonly Interceptor<OpName>[]) {
-    for (const i of interceptors) {
-      if (i.hot) continue
-      for (const op of listOperations()) {
-        if (!getOperation(op)?.hot || !attaches(i, op)) continue
-        onHotWarning({
-          interceptor: i,
-          op,
-          message:
-            `Interceptor "${i.name}" is attached to hot op "${op}" without hot: true. ` +
-            `It runs once per column per pipeline run; measured cost: ${HOT_COST}. ` +
-            'Never loop per cell inside it. Set hot: true to accept the cost, ' +
-            'or attach it to a cold op.',
-        })
-      }
-    }
-  }
-
   function setInterceptors(next: readonly Interceptor<OpName>[]) {
     list = [...next]
-    warnHot(list)
     compileAll()
   }
 
@@ -188,11 +213,14 @@ export function createInterceptorRuntime(
     },
     setInterceptors,
     installBoundary(b) {
-      // TODO(T05): becomes a diagnostic code.
-      if (boundary)
-        throw new Error(`A boundary interceptor is already installed ("${boundary.name}")`)
+      if (boundary) {
+        throw internalError(
+          '*',
+          `A boundary interceptor is already installed ("${boundary.name}"); ` +
+            `"${b.name}" was rejected`,
+        )
+      }
       boundary = b
-      warnHot([b])
       compileAll()
     },
   }
