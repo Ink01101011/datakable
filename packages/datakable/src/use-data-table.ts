@@ -15,6 +15,7 @@ import {
   useDataTable as useBareDataTable,
 } from '@datakable/react'
 import { useRef } from 'react'
+import { registerDatakable } from './register'
 
 /**
  * `useDataTable` with the default preset (§3.3, §10): `useDataTable({ data })` alone sorts,
@@ -39,6 +40,7 @@ export function useDataTable<
   ApiOf<Fs, SchemaRow<T, Sch>>
 >
 export function useDataTable(options: { features?: readonly AnyFeature[] | undefined }): unknown {
+  registerDatakable()
   const preset = useRef<readonly AnyFeature[] | null>(null)
   // `features` is read once, at creation: the preset is built once per component instance.
   if (options.features === undefined) preset.current ??= createDefaultFeatures()

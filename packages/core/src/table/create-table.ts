@@ -40,7 +40,7 @@ import {
 import { checkVersions } from '../versioning/registry'
 import { tableDiagnostics } from './codes'
 import { createDataMutationCheck, dataMutationDiagnostics } from './data-mutation'
-import { setTableInternals } from './internals'
+import { deferral, setTableInternals } from './internals'
 import {
   type ControlledState,
   type Listener,
@@ -71,9 +71,11 @@ export type SchemaRow<T, Sch> = [Sch] extends [StandardSchemaV1]
  */
 export type CreateTableOptions<T, S extends TableState, Sch, M extends InvalidRowsMode> = Omit<
   TableOptions<SchemaRow<T, Sch>, S>,
-  'data' | 'schema' | 'invalidRows' | 'fetcher'
+  'data' | 'schema' | 'invalidRows' | 'fetcher' | 'initialData'
 > & {
   data?: readonly ([Sch] extends [StandardSchemaV1] ? unknown : T)[]
+  /** With a schema, the raw rows (validated like `data`). */
+  initialData?: readonly ([Sch] extends [StandardSchemaV1] ? unknown : T)[]
   /** With a schema, the fetcher returns raw rows (validated like `data`). */
   fetcher?: Fetcher<[Sch] extends [StandardSchemaV1] ? unknown : T>
   // Without an inferred schema (explicit type arguments, a `TableOptions<T>` object) these keep
@@ -137,6 +139,16 @@ export function createTable<T, S extends TableState>(
   let fetchedParams: FetchKey | undefined
   /** Rows of the current data that failed the schema (`getInvalidRows`, §5.1). */
   let schemaOutcome: SchemaOutcome | undefined
+  /**
+   * SSR (§7.2): `options.initialData` until the creation ingest read it (`undefined` with `data`),
+   * then its ingested rows while they are the table's data (`initialRows`).
+   */
+  let initialInput = options.data === undefined ? options.initialData : undefined
+  let initialRows: readonly unknown[] | undefined
+  /** `createDeferred` (§7.2): the async work waiting for `startTable`; `undefined` once started. */
+  let waiting: Set<'fetcher' | 'searchFn'> | undefined = deferral.depth > 0 ? new Set() : undefined
+  /** Every source deferred since creation (`DK_SSR_ASYNC_DEFERRED`). */
+  const deferredSources: ('fetcher' | 'searchFn')[] = []
 
   let controlled = new Set<string>()
   let snapshot: S
@@ -495,7 +507,8 @@ export function createTable<T, S extends TableState>(
     if (inflight.fetcher > 0) return 'fetching'
     if (inflight.searchFn > 0 || search === 'searching') return 'searching'
     if (validatingSeq !== 0) return 'validating'
-    return search === 'pending' ? 'pending' : 'idle'
+    // Deferred async work (SSR, §7.2) waits for the client: 'pending'.
+    return search === 'pending' || (waiting !== undefined && waiting.size > 0) ? 'pending' : 'idle'
   }
 
   /** The `status` of the first search-stage slice that reports one (§6.3). */
@@ -542,7 +555,7 @@ export function createTable<T, S extends TableState>(
    * Applies the result of the latest `data:ingest`. A fallback (the boundary set `FAILED`) keeps
    * the previous data, sets `status: 'error'` and never marks the table loaded (§6.6, §8.6).
    */
-  function applyIngest(out: readonly unknown[], failed: boolean, given: boolean) {
+  function applyIngest(out: readonly unknown[], failed: boolean, given: boolean, initial = false) {
     if (validatingSeq !== 0) {
       validatingSeq = 0
       touch()
@@ -558,6 +571,8 @@ export function createTable<T, S extends TableState>(
     }
     schemaOutcome = schemaIngest?.outcome(out)
     setData(out as readonly T[], given)
+    // `initialData` is the initial async result only while it is the data (§7.2).
+    initialRows = initial ? out : undefined
   }
 
   /**
@@ -567,7 +582,11 @@ export function createTable<T, S extends TableState>(
    */
   function ingest(fetched?: readonly unknown[]) {
     const seq = ++ingestSeq
-    const given = fetched !== undefined || options.data !== undefined
+    // At creation, `initialData` stands in for a missing `data` (§7.2); read once.
+    const initial = fetched === undefined && initialInput !== undefined
+    const input = fetched ?? (initial ? initialInput : options.data)
+    initialInput = undefined
+    const given = input !== undefined
     const source: Trigger = fetched ? 'fetch' : 'data-change'
     // A validation still in flight is superseded (its result is discarded): not 'validating' now,
     // unless this ingest's own schema step goes async.
@@ -579,8 +598,8 @@ export function createTable<T, S extends TableState>(
       withTrigger(source, () => {
         const ctx = createContext(
           'data:ingest',
-          { data: fetched ?? options.data ?? EMPTY },
-          fetched ? 'fetcher' : 'options.data',
+          { data: input ?? EMPTY },
+          fetched ? 'fetcher' : initial ? 'options.initialData' : 'options.data',
           base(),
         )
         ctx.meta.set(FALLBACK, data)
@@ -599,13 +618,13 @@ export function createTable<T, S extends TableState>(
         })
         sync = false
         if (!isThenable(out)) {
-          applyIngest(out, ctx.meta.has(FAILED), given)
+          applyIngest(out, ctx.meta.has(FAILED), given, initial)
           return
         }
         const settle = (d: readonly unknown[], failed: boolean) => {
           if (seq !== ingestSeq || destroyed) return
           withTrigger(source, () => {
-            applyIngest(d, failed, given)
+            applyIngest(d, failed, given, initial)
             flush()
           })
         }
@@ -805,6 +824,8 @@ export function createTable<T, S extends TableState>(
     if (typeof fetcher !== 'function' || destroyed) return
     const params = fetchParams(serverFeatures, snapshot)
     if (!force && fetchedParams && sameParams(fetchedParams, params)) return
+    // Deferred (SSR, §7.2): no request until startTable; then the latest params are fetched.
+    if (defer('fetcher')) return
     fetchedParams = params
     let result: FetchOutcome['status'] | undefined
     const done = (): FetchOutcome => ({ status: result ?? (destroyed ? 'superseded' : 'error') })
@@ -878,12 +899,40 @@ export function createTable<T, S extends TableState>(
     return true
   }
 
+  /** `true` (and `source` recorded as waiting) while deferred (§7.2). */
+  function defer(source: 'fetcher' | 'searchFn'): boolean {
+    if (waiting === undefined) return false
+    if (!waiting.has(source)) {
+      waiting.add(source)
+      if (!deferredSources.includes(source)) deferredSources.push(source)
+      // 'pending' is never silent (§6.6).
+      touch()
+    }
+    return true
+  }
+
+  /** `startTable` (§7.2): the deferred work starts; listeners see the new status at once. */
+  function start() {
+    if (waiting === undefined || destroyed) return
+    const had = waiting.size > 0
+    waiting = undefined
+    if (!had) return
+    // The pipeline re-runs: 'pending' ends and the search feature's check starts its searchFn.
+    touch()
+    withTrigger('hydrate', () => flush())
+  }
+
   setTableInternals(table, {
     request,
     features: pipeline,
     rowCount: () => (typeof options.fetcher === 'function' ? fetchedRowCount : options.rowCount),
     hasFetcher: () => typeof options.fetcher === 'function',
     emit: hub.emit,
+    defer,
+    deferred: () => deferredSources,
+    start,
+    initialRows: () =>
+      initialRows !== undefined && initialRows === data ? initialRows : undefined,
   })
 
   // --- init --------------------------------------------------------------------------------------
@@ -908,6 +957,11 @@ export function createTable<T, S extends TableState>(
       ingest()
       warnControlled(undefined)
     })
+    // initialData answers the initial server state (§7.2): no first request, its total as rowCount.
+    if (options.initialData !== undefined && options.data === undefined) {
+      fetchedParams = fetchParams(serverFeatures, snapshot)
+      fetchedRowCount = options.rowCount ?? options.initialData.length
+    }
     // Server source (§7.1): the first request starts now ('fetching', isInitialLoad: true).
     void syncFetch()
   })

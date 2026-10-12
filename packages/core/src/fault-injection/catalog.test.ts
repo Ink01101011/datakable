@@ -9,8 +9,8 @@ import { getDiagnosticDefinition, listDiagnosticCodes } from '../index'
  * test. `docs/errors.md` anchors are T38's check, on top of this one.
  *
  * §8.3 codes not registered by core yet (no entry needed until they are): DK_UNSTABLE_COLUMNS,
- * DK_RENDER_FAILED (react), DK_STATE_UNKNOWN_KEY, DK_HYDRATION_MISMATCH, DK_SSR_ASYNC_DEFERRED
- * (SSR, T32), DK_ENV_FALLBACK, DK_PERF_HINT (T29).
+ * DK_RENDER_FAILED (react), DK_ENV_FALLBACK, DK_PERF_HINT (T29). DK_HYDRATION_MISMATCH is defined
+ * in core and emitted by `@datakable/react` (its injecting test is there).
  */
 const HARNESS = 'fault-injection/slots.test.ts'
 
@@ -39,6 +39,7 @@ const injectedBy: Record<string, string> = {
   DK_FETCHER_WITHOUT_SERVER_MODE: 'source/fetcher.test.ts',
   DK_FILTER_TYPE_MISMATCH: 'features/column-filters/column-filters.test.ts',
   DK_HOT_INTERCEPTOR: 'intercept/runtime.test.ts',
+  DK_HYDRATION_MISMATCH: '../../react/src/hydrate.test.tsx',
   DK_INCONSISTENT_ROW_SHAPE: 'ingest/data-checks.test.ts',
   DK_INTERCEPTOR_FAILED: HARNESS,
   DK_INTERNAL: 'intercept/boundary.test.ts',
@@ -56,6 +57,8 @@ const injectedBy: Record<string, string> = {
   DK_SEARCH_FAILED: HARNESS,
   DK_SORT_COMPARATOR_INVALID: HARNESS,
   DK_SORT_STRATEGY: 'features/sorting/strategy.test.ts',
+  DK_SSR_ASYNC_DEFERRED: 'table/ssr.test.ts',
+  DK_STATE_UNKNOWN_KEY: 'features/column-filters/column-filters.test.ts',
   DK_TABLE_DESTROYED: 'table/create-table.test.ts',
   DK_UNKNOWN: 'intercept/boundary.test.ts',
   DK_UNKNOWN_OPTION: 'catalog/options.test.ts',

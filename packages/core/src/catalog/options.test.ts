@@ -98,6 +98,7 @@ describe('defineOptions', () => {
         'diagnostics',
         'features',
         'fetcher',
+        'initialData',
         'initialState',
         'interceptors',
         'invalidRows',

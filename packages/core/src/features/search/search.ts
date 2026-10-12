@@ -474,6 +474,16 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
       /** (query, data) last handed to searchFn: `check()` never retries it in a loop. */
       let tried: { query: string; data: readonly unknown[] } | undefined
       let scheduled = false
+      /**
+       * SSR (§7.2): the initial query whose result is `initialData` (no searchFn call for it). Without
+       * initialData, a deferred table (`createDeferred`) waits for `startTable` to search it.
+       */
+      let seeded: string | undefined
+      if (searchFn && applied().trim() !== '') {
+        const opts = ctx.table.getOptions()
+        if (opts.initialData !== undefined && opts.data === undefined) seeded = applied()
+        else getTableInternals(table).defer('searchFn')
+      }
 
       /** Ends the in-flight search without its result (its waiters: `'superseded'`). */
       const abortAttempt = () => {
@@ -594,6 +604,16 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
         const r = results.get(table)
         if (r && r.query === query && r.data === data) return
         if (tried && tried.query === query && tried.data === data) return
+        const internals = getTableInternals(table)
+        if (seeded !== undefined) {
+          const initial = seeded === query && internals.initialRows() === data
+          seeded = undefined
+          if (initial) {
+            results.set(table, { query, data, hits: { rows: data } })
+            return
+          }
+        }
+        if (internals.defer('searchFn')) return
         scheduled = true
         queueMicrotask(() => {
           scheduled = false
