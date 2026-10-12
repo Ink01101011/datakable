@@ -1,14 +1,48 @@
-import { type DiagnosticMessages, defineDiagnostic, defineSlot } from '@datakable/core'
+import {
+  type DiagnosticMessages,
+  defineDiagnostic,
+  defineSlot,
+  registerOperation,
+} from '@datakable/core'
 
 declare module '@datakable/core' {
   interface DiagnosticCatalog {
     DK_RENDER_FAILED: {
-      /** The render operation: `render:table` (the `<DataTable />` body boundary). */
-      op: 'render:table'
+      /**
+       * The render operation: `render:cell` (a cell's boundary: a component returned by `cell` /
+       * `invalidCell`) or `render:table` (the body boundary: a component outside the cells).
+       */
+      op: 'render:table' | 'render:cell'
+      /** `render:cell`: the slot whose component threw, `columns[1].cell`. */
+      slot?: string
+      /** `render:cell`: the column id. */
+      column?: string
+      /** `render:cell`: the row's index in the data (the first failure; later ones are deduped). */
+      row?: number
       /** `error.name` only; the full error is `context.cause`. */
       errorName?: string
     }
   }
+
+  /** §3.4: React error boundaries, not interceptor chains (nothing runs interceptors on them). */
+  interface Operations {
+    'render:table': { kind: 'sync'; input: undefined; output: undefined }
+    'render:cell': {
+      kind: 'sync'
+      input: { column: string; slot: 'cell' | 'invalidCell'; row: number }
+      output: undefined
+    }
+  }
+}
+
+/**
+ * Registers `render:table` / `render:cell` (§3.4: owned by `@datakable/react`, not core). Neither
+ * is hot: no interceptor chain runs per cell, so `on: '*'` interceptors get no hot-op warning for
+ * them. Idempotent (an identical re-registration is a no-op).
+ */
+export function registerRenderOperations(): void {
+  registerOperation('render:table', { kind: 'sync', hot: false })
+  registerOperation('render:cell', { kind: 'sync', hot: false })
 }
 
 // No @types/node here: declare just what is read.
@@ -35,17 +69,33 @@ export const invalidCellSlot = defineSlot({
 export const renderMessages: DiagnosticMessages<'DK_RENDER_FAILED'> = {
   DK_RENDER_FAILED: {
     problem: (d) =>
-      `a component rendered inside the table body threw${d.errorName ? ` ${d.errorName}` : ''} ` +
-      '(a child of a column cell / invalidCell)',
-    impact: () =>
-      'the table body shows the Error state; the header, search and pagination keep working, and ' +
-      'the body renders again on the next row model or Retry',
-    fix: () => [
-      'find the throwing component in context.cause (passed to onDiagnostic) and make it total: ' +
-        'guard null / undefined / unexpected values instead of throwing',
-      'a throw in the cell function itself is caught per cell (⚠, DK_CALLBACK_FAILED); wrap ' +
-        'components that can throw in your own error boundary for a per-cell fallback',
-    ],
+      d.op === 'render:cell'
+        ? `a component returned by ${d.slot} (column "${d.column}") threw` +
+          `${d.errorName ? ` ${d.errorName}` : ''} while rendering row #${d.row}`
+        : `a component rendered inside the table body threw${d.errorName ? ` ${d.errorName}` : ''} ` +
+          '(outside the cells: a components.Empty / Loading / Error part)',
+    impact: (d) =>
+      d.op === 'render:cell'
+        ? 'that cell renders ⚠; the other cells and rows, the header, search, pagination and the ' +
+          "table API keep working, and the cell renders again when its row's data or the columns " +
+          'change'
+        : 'the table body shows the Error state; the header, search and pagination keep working, ' +
+          'and the body renders again on the next row model or Retry',
+    fix: (d) =>
+      d.op === 'render:cell'
+        ? [
+            `find the throwing component in context.cause (passed to onDiagnostic) and make it ` +
+              `total: guard null / undefined / unexpected values of column "${d.column}" ` +
+              'instead of throwing',
+            'for your own fallback instead of ⚠, wrap the component in an error boundary inside ' +
+              `${d.slot}`,
+          ]
+        : [
+            'find the throwing component in context.cause (passed to onDiagnostic) and make it ' +
+              'total: guard null / undefined / unexpected values instead of throwing',
+            'a component returned by a column cell / invalidCell is caught per cell (⚠); a throw in ' +
+              'the cell function itself is DK_CALLBACK_FAILED',
+          ],
   },
 }
 
@@ -55,7 +105,8 @@ export const renderDiagnostics = [
     {
       code: 'DK_RENDER_FAILED',
       level: 'error',
-      where: (d) => ({ kind: 'operation', op: d.op }),
+      where: (d) =>
+        d.slot ? { kind: 'operation', op: d.op, slot: d.slot } : { kind: 'operation', op: d.op },
     },
     // Written out (not an imported flag) so a consumer's bundler folds it while parsing (§8.2).
     process.env.NODE_ENV !== 'production' && renderMessages.DK_RENDER_FAILED,

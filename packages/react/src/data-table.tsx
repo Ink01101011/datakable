@@ -23,11 +23,23 @@ import {
   useLayoutEffect,
   useMemo,
 } from 'react'
-import { cellSlot, invalidCellSlot, renderDiagnostics } from './render-codes'
+import {
+  cellSlot,
+  invalidCellSlot,
+  registerRenderOperations,
+  renderDiagnostics,
+} from './render-codes'
 import { type UseDataTableOptions, useDataTable } from './use-data-table'
 
 // The codes this module emits (bundlers keep the definitions; see core's `keepDiagnostics`).
 keepDiagnostics(renderDiagnostics, boundaryDiagnostics, slotDiagnostics)
+
+/**
+ * The ops its boundaries stand for (§3.4: `render:table`, `render:cell`), registered on the first
+ * render rather than at import: the dist is one file, so a top-level call would also ship in
+ * hook-only bundles (`useDataTable` without `<DataTable />`).
+ */
+let opsRegistered = false
 
 // No @types/node here: declare just what is read.
 declare const process: { env: { NODE_ENV?: string } }
@@ -78,7 +90,10 @@ export interface LoadingProps {
 /** Props of `components.Error`: the first load failed, or the body failed to render. */
 export interface ErrorProps {
   status: RowModelStatus
-  /** `'load'`: `status === 'error'` on the first load. `'render'`: a cell component threw. */
+  /**
+   * `'load'`: `status === 'error'` on the first load. `'render'`: a component in the body outside
+   * the cells threw (a component inside a cell renders `⚠` in that cell only).
+   */
   reason: 'load' | 'render'
   /** `'load'`: `refetch()`. `'render'`: renders the body again. */
   retry(): void
@@ -162,6 +177,10 @@ export function DataTable<
 export function DataTable(
   props: DataTableOwnProps & { table?: DataTableSource | undefined },
 ): ReactNode {
+  if (!opsRegistered) {
+    opsRegistered = true
+    registerRenderOperations()
+  }
   if (props.table !== undefined) {
     return (
       <DataTableView table={props.table} components={props.components} caption={props.caption} />
@@ -320,8 +339,17 @@ function report(table: object, failures: readonly Failure[]) {
   }
 }
 
-/** Renders one cell's content; a throwing or contract-breaking callback renders `⚠`. */
-function cellContent(col: Column, row: DataTableRow, failures: Failure[]): ReactNode {
+/**
+ * Renders one cell's content; a throwing or contract-breaking callback renders `⚠`. An object
+ * returned by `cell` / `invalidCell` (an element, an array) may hold components that throw while
+ * React renders them, so it gets its own boundary; primitives cannot, so they get none (no cost).
+ */
+function cellContent(
+  col: Column,
+  row: DataTableRow,
+  failures: Failure[],
+  table: object,
+): ReactNode {
   const def = col.def
   const value = row.getValue(col.id)
   const issues = row.valid ? undefined : row.getCellIssues(col.id)
@@ -331,7 +359,7 @@ function cellContent(col: Column, row: DataTableRow, failures: Failure[]): React
       if (def.invalidCell) {
         slot = 'invalidCell'
         const out = def.invalidCell({ original: row.original, value, issues })
-        if (matchesSlot(invalidCellSlot, out)) return out
+        if (matchesSlot(invalidCellSlot, out)) return guard(out, table, col, row, 'invalidCell')
         return bad(failures, col, row, slot, 'a value (not a Promise)', out)
       }
       return (
@@ -345,7 +373,7 @@ function cellContent(col: Column, row: DataTableRow, failures: Failure[]): React
     }
     if (def.cell) {
       const out = def.cell({ row: row.original, value })
-      if (matchesSlot(cellSlot, out)) return out
+      if (matchesSlot(cellSlot, out)) return guard(out, table, col, row, 'cell')
       return bad(failures, col, row, slot, 'a value (not a Promise)', out)
     }
     if (def.format) {
@@ -360,6 +388,22 @@ function cellContent(col: Column, row: DataTableRow, failures: Failure[]): React
     failures.push({ slot: `columns[${col.index}].${slot}`, column: col.id, row: row.index, error })
     return WARN
   }
+}
+
+/** Wraps object content in a per-cell boundary (`render:cell`); primitives pass through as-is. */
+function guard(
+  out: ReactNode,
+  table: object,
+  col: Column,
+  row: DataTableRow,
+  slot: 'cell' | 'invalidCell',
+): ReactNode {
+  if (typeof out !== 'object' || out === null) return out
+  return (
+    <CellBoundary table={table} col={col} slot={slot} row={row.index} original={row.original}>
+      {out}
+    </CellBoundary>
+  )
 }
 
 function bad(
@@ -451,7 +495,7 @@ function DataTableView(props: {
                 aria-invalid={broken ? 'true' : undefined}
                 title={broken ? issueTitle(issues) : undefined}
               >
-                {cellContent(col, row, failures)}
+                {cellContent(col, row, failures, table)}
               </td>
             )
           })}
@@ -550,7 +594,7 @@ function stateRow(span: number, kind: string, content: ReactNode) {
   )
 }
 
-// --- body error boundary (DK_RENDER_FAILED) ------------------------------------------------------
+// --- error boundaries (DK_RENDER_FAILED) ---------------------------------------------------------
 
 interface BoundaryProps {
   table: object
@@ -561,8 +605,9 @@ interface BoundaryProps {
 }
 
 /**
- * Catches a component that throws inside the body (§10): reports `DK_RENDER_FAILED` and shows the
- * Error state; the header, search and pagination keep working.
+ * Catches a component that throws inside the body outside any cell boundary (§10: a
+ * `components.Empty` / `Loading` / `Error` part): reports `DK_RENDER_FAILED` (`render:table`) and
+ * shows the Error state; the header, search and pagination keep working.
  */
 class BodyBoundary extends Component<BoundaryProps, { failed: boolean; key: unknown }> {
   override state = { failed: false, key: this.props.resetKey }
@@ -592,6 +637,70 @@ class BodyBoundary extends Component<BoundaryProps, { failed: boolean; key: unkn
 
   override render() {
     return this.state.failed ? this.props.fallback(this.retry) : this.props.children
+  }
+}
+
+interface CellBoundaryProps {
+  table: object
+  col: Column
+  slot: 'cell' | 'invalidCell'
+  /** The row's index in the data (`row.index`). */
+  row: number
+  /** The row's data: a new object (or new columns) renders a failed cell again. */
+  original: unknown
+  children: ReactNode
+}
+
+interface CellBoundaryState {
+  failed: boolean
+  original: unknown
+  def: ColumnLike
+}
+
+/**
+ * One cell's boundary (`render:cell`, §3.4): a component returned by `cell` / `invalidCell` that
+ * throws renders `⚠` in that cell only and reports `DK_RENDER_FAILED` (deduped per column); the
+ * other cells, rows and the table keep working. Only wraps object content (see `guard`).
+ */
+class CellBoundary extends Component<CellBoundaryProps, CellBoundaryState> {
+  override state: CellBoundaryState = {
+    failed: false,
+    original: this.props.original,
+    def: this.props.col.def,
+  }
+
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+
+  static getDerivedStateFromProps(props: CellBoundaryProps, state: CellBoundaryState) {
+    return props.original === state.original && props.col.def === state.def
+      ? null
+      : { failed: false, original: props.original, def: props.col.def }
+  }
+
+  override componentDidCatch(error: unknown) {
+    const { table, col, slot, row } = this.props
+    try {
+      emitTableDiagnostic(
+        table,
+        'DK_RENDER_FAILED',
+        {
+          op: 'render:cell',
+          slot: `columns[${col.index}].${slot}`,
+          column: col.id,
+          row,
+          ...(error instanceof Error ? { errorName: error.name } : {}),
+        },
+        { cause: error },
+      )
+    } catch {
+      // Not a table made by createTable: nothing to report to.
+    }
+  }
+
+  override render() {
+    return this.state.failed ? WARN : this.props.children
   }
 }
 
