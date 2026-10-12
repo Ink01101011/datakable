@@ -4,6 +4,12 @@ import { buildDiagnostic, DatakableError, defaultPhase, formatWhere } from './bu
 import type { DiagnosticCode, DiagnosticDetails } from './catalog'
 import { createConsoleSink } from './console'
 import { DEV } from './env'
+import {
+  DK_UNSAFE_REDACTION,
+  type RedactionOptions,
+  type RedactLevel,
+  resolveRedaction,
+} from './redact'
 import { RingBuffer } from './ring-buffer'
 import type { Diagnostic, DiagnosticStateSummary, EmitOptions, Phase, Trigger } from './types'
 
@@ -34,7 +40,17 @@ export interface DiagnosticsOptions {
   console?: boolean
   /** Text builders + dev console format. Default: `process.env.NODE_ENV !== 'production'`. */
   dev?: boolean
-  /** Redaction step, runs before dedupe and sinks. The safe/keys/full policy lands with T26. */
+  /**
+   * Redaction policy (§8.2, `diagnostics.redact`): a level or `{ level, redact(path, value),
+   * sensitiveColumns, rowKeySensitive }`. Default `'keys'` in development, `'safe'` in production.
+   * Applied while the diagnostic is built, so `diagnostic:emit` interceptors, the `redact` seam and
+   * every sink only see redacted data. `'full'` in production warns (`DK_UNSAFE_REDACTION`).
+   */
+  redaction?: RedactLevel | RedactionOptions
+  /**
+   * Extra whole-diagnostic rewrite after the `diagnostic:emit` interceptors, before dedupe and
+   * sinks. It receives already-redacted data; `fingerprint` is not recomputed.
+   */
   redact?: (d: Diagnostic) => Diagnostic
   /** Ring buffer size behind getDiagnostics(). Default 100. */
   bufferSize?: number
@@ -68,8 +84,9 @@ export interface Diagnostics {
 let tableSeq = 0
 
 /**
- * One per table. Pipeline (§8.2): enrich (build + context) → `diagnostic:emit` interceptors →
- * redact → dedupe (aggregates `occurrences`) → ring buffer → sinks (onDiagnostic, console) → strict.
+ * One per table. Pipeline (§8.2): enrich + redact (build: context, policy redaction, then text,
+ * where, fingerprint and docs from the redacted data) → `diagnostic:emit` interceptors → `redact`
+ * seam → dedupe (aggregates `occurrences`) → ring buffer → sinks (onDiagnostic, console) → strict.
  */
 export function createDiagnostics(options: DiagnosticsOptions = {}): Diagnostics {
   const table = options.name ?? `table#${++tableSeq}`
@@ -130,6 +147,13 @@ export function createDiagnostics(options: DiagnosticsOptions = {}): Diagnostics
     return d
   }
 
+  // Resolved per emit: sensitive columns and the rowKey can change with setOptions.
+  const redactor = () => {
+    const r = resolveRedaction(options.redaction, dev)
+    r.onError = fail
+    return r
+  }
+
   const emit: Diagnostics['emit'] = (code, details, opts = {}) => {
     let out: Diagnostic | undefined
     try {
@@ -146,6 +170,7 @@ export function createDiagnostics(options: DiagnosticsOptions = {}): Diagnostics
         ...(opts.cause === undefined ? {} : { cause: opts.cause }),
         ...(opts.causedBy === undefined ? {} : { causedBy: opts.causedBy }),
         dev,
+        redaction: redactor(),
       })
       // Emits made while the chain runs (e.g. DK_INTERCEPTOR_FAILED for an interceptor on
       // diagnostic:emit) skip the chain, so a broken logger cannot recurse.
@@ -177,6 +202,10 @@ export function createDiagnostics(options: DiagnosticsOptions = {}): Diagnostics
     }
     if (strict && out?.level === 'error') throw new DatakableError(out)
     return out
+  }
+
+  if (!dev && resolveRedaction(options.redaction, dev).level === 'full') {
+    emit(DK_UNSAFE_REDACTION.code, { level: 'full' })
   }
 
   return {

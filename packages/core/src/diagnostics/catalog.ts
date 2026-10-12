@@ -1,3 +1,4 @@
+import type { RedactField } from './redact'
 import type { DiagnosticLevel, Location } from './types'
 
 /**
@@ -29,6 +30,12 @@ export interface DiagnosticDefinition<C extends DiagnosticCode = DiagnosticCode>
   fix(details: DiagnosticDetails<C>): string[]
   /** Overrides the default `docs/errors.md#<code>` URL. */
   readonly docs?: string
+  /**
+   * Detail fields that carry user data (row keys, cell values, schema issues, thrown errors), so
+   * redaction (§8.2) rewrites them before `where`, the text builders or any sink see them. See
+   * `RedactField`. Fields not listed are logged as-is.
+   */
+  readonly redact?: { readonly [K in keyof DiagnosticDetails<C>]?: RedactField }
 }
 
 const registry = new Map<string, DiagnosticDefinition>()

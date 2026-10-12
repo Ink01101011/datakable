@@ -26,6 +26,10 @@
  *
  * Reference the exported definition from the emitting module so bundlers keep it
  * (`sideEffects: false`).
+ *
+ * Redaction (§8.2): declare every detail field that carries user data on the definition, e.g.
+ * `redact: { key: 'rowKey', value: 'value', issues: 'schemaIssues', error: 'error' }`. The builders
+ * then receive redacted values, and `where`, fingerprint and docs URL are built after redaction.
  */
 export {
   type BuildInput,
@@ -50,6 +54,21 @@ export {
   type DiagnosticsOptions,
   type LiveDiagnosticContext,
 } from './hub'
+export {
+  DK_UNSAFE_REDACTION,
+  describeValue,
+  hashRowKey,
+  REDACTED,
+  type RedactField,
+  type RedactFn,
+  type RedactionOptions,
+  type RedactLevel,
+  type Redactor,
+  resolveRedaction,
+  SENSITIVE,
+  scrubError,
+  scrubSchemaIssue,
+} from './redact'
 export { toSafeJson } from './safe-json'
 export type {
   Diagnostic,
