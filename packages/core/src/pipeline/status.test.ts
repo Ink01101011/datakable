@@ -1,10 +1,13 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineFeature } from '../feature/define'
 import type { AnyFeature } from '../feature/types'
+import { columnFilters } from '../features/column-filters/column-filters'
 import { pagination } from '../features/pagination'
+import { search } from '../features/search/search'
 import { makeSchema } from '../ingest/test-schemas'
 import { defineInterceptor } from '../intercept/define'
 import { createTable } from '../table/create-table'
+import { getTableInternals } from '../table/internals'
 
 beforeEach(() => {
   vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -297,5 +300,105 @@ describe("'fetching' is never silent (§6.6, §7.1)", () => {
     await tick()
     expect(seen.map((s) => s[0])).toEqual(['validating', 'idle'])
     expect(t.getRowModel().isInitialLoad).toBe(false)
+  })
+})
+
+describe('overlapping sources compose: error > fetching > searching > validating > pending > idle', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('fetch + searchFn + async schema + debounced search: the top source wins, each change notifies once', async () => {
+    vi.useFakeTimers()
+    const flush = () => vi.advanceTimersByTimeAsync(0)
+    let openGate = () => {}
+    const gate = new Promise<void>((r) => {
+      openGate = r
+    })
+    const schema = makeSchema<P>((v) => ({ value: v as P }), { async: () => gate })
+    let resolveFetch: (r: unknown) => void = () => {}
+    const fetcher = () =>
+      new Promise<never>((r) => {
+        resolveFetch = r as (r: unknown) => void
+      })
+    const t = createTable({
+      schema,
+      fetcher,
+      columns: [{ key: 'id', search: 1 }],
+      // Server steps come first (DK_MODE_ORDER): server filters, client search on the fetched rows.
+      features: [
+        columnFilters({ mode: 'server' }),
+        search({ typing: { strategy: 'debounce', wait: 100 } }),
+      ],
+    })
+    const seen: [string, boolean][] = []
+    t.subscribe(() => {
+      const m = t.getRowModel()
+      seen.push([m.status, m.isInitialLoad])
+    })
+    expect(t.getRowModel().status).toBe('fetching')
+
+    // pending (typing) under fetching: the state change notifies, the status stays 'fetching'.
+    void api(t).setSearch?.('p1')
+    expect(t.getState().search).toMatchObject({ status: 'pending' })
+    expect(seen).toEqual([['fetching', true]])
+
+    // searching under fetching: masked, so no notification.
+    let resolveSearch: (v: unknown) => void = () => {}
+    void getTableInternals(t).request(
+      'searchFn',
+      () =>
+        new Promise((r) => {
+          resolveSearch = r
+        }),
+    )
+    expect(seen).toHaveLength(1)
+    expect(t.getRowModel().status).toBe('fetching')
+
+    // fetch ends while searchFn runs and the fetched rows validate: 'searching'.
+    resolveFetch({ rows: people(3), rowCount: 3 })
+    await flush()
+    expect(seen.slice(1)).toEqual([['searching', true]])
+
+    // searchFn ends: async validation still runs, search still pending: 'validating'.
+    resolveSearch(undefined)
+    await flush()
+    expect(seen.slice(2)).toEqual([['validating', true]])
+
+    // validation ends: rows applied, debounce still waiting: 'pending'.
+    openGate()
+    await flush()
+    expect(seen.slice(3)).toEqual([['pending', false]])
+
+    // the debounce commits the query: 'idle'.
+    await vi.advanceTimersByTimeAsync(100)
+    expect(seen.slice(4)).toEqual([['idle', false]])
+    expect(t.getRowModel().rows.map((r) => (r.original as P).id)).toEqual(['p1'])
+  })
+
+  it("'error' beats everything in flight", async () => {
+    vi.useFakeTimers()
+    let rejectFetch: (e: unknown) => void = () => {}
+    const fetcher = () =>
+      new Promise<never>((_r, rej) => {
+        rejectFetch = rej
+      })
+    const t = createTable({
+      fetcher,
+      onDiagnostic: () => {},
+      columns: [{ key: 'id', search: 1 }],
+      // Server steps come first (DK_MODE_ORDER): server filters, client search on the fetched rows.
+      features: [
+        columnFilters({ mode: 'server' }),
+        search({ typing: { strategy: 'debounce', wait: 100 } }),
+      ],
+    })
+    void api(t).setSearch?.('p1')
+    void getTableInternals(t).request('searchFn', () => new Promise(() => {}))
+    const seen: string[] = []
+    t.subscribe(() => seen.push(t.getRowModel().status))
+    rejectFetch(new Error('down'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(seen).toEqual(['error'])
   })
 })

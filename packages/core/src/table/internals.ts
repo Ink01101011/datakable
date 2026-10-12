@@ -12,17 +12,17 @@ export interface TableInternals {
    */
   readonly features: readonly AnyFeature[]
   /**
-   * Runs one `async:request` through the table's interceptor chain (errorBoundary → asyncControl
-   * → …), with `previous` as FALLBACK. Resolves with the outcome; apply `value` only when
-   * `status === 'applied'`. Never rejects, except under `strict` (a `DatakableError`).
-   */
-  /**
    * The server row count (§6.5, §7.1): the last applied fetcher result's `rowCount` with a fetcher
    * (`undefined` until one applied), else `options.rowCount`.
    */
   rowCount(): number | undefined
   /** `options.fetcher` is set. */
   hasFetcher(): boolean
+  /**
+   * Runs one `async:request` through the table's interceptor chain (errorBoundary → asyncControl
+   * → …), with `previous` as FALLBACK. Resolves with the outcome; apply `value` only when
+   * `status === 'applied'`. Never rejects, except under `strict` (a `DatakableError`).
+   */
   request(
     source: 'fetcher' | 'searchFn',
     core: (signal: AbortSignal) => Promise<unknown>,

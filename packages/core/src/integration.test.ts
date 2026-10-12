@@ -4,13 +4,15 @@ import { columnFilters } from './features/column-filters'
 import { pagination } from './features/pagination'
 import { search } from './features/search'
 import { sorting } from './features/sorting'
+import { validity } from './features/validity'
 import { makeSchema } from './ingest/test-schemas'
 import { defineInterceptor } from './intercept/define'
 import { Row } from './pipeline/row'
 import { createTable } from './table/create-table'
 
 /**
- * Cross-unit integration (R6): rowKey (T11) + ingest checks (T12) + columnFilters (T13) +
+ * Cross-unit integration (R6, extended R7 with T15 sort strategies, T17 search typing, T21 server
+ * mode and T23 validity): rowKey (T11) + ingest checks (T12) + columnFilters (T13) +
  * sorting (T14) + search (T16) + pagination (T20) + schema flag mode (T22) + dev checks (T27) on
  * one ~1k-row table. Row keys and cell values carry a sentinel that must never reach a `ctx.where`
  * or a diagnostic (outside `context.cause`).
@@ -208,4 +210,204 @@ describe('integration: filter + search + sort + paginate + schema (flag) + rowKe
       }
     },
   )
+})
+
+describe('integration (R7): validity in flag mode with the other client steps', () => {
+  it('filters valid / invalid rows and composes with column filters, search and paging', async () => {
+    const t = createTable({
+      schema,
+      invalidRows: 'flag',
+      data: rows(1000),
+      rowKey: 'id',
+      columns: [{ key: 'id' }, { key: 'name', search: 1 }, { key: 'city' }, { key: 'age' }],
+      features: [pagination({ pageSize: 5 }), validity(), search(), columnFilters()],
+      onDiagnostic: (d) => {
+        seen.push(d)
+      },
+    })
+    await settle()
+    // i % 97 === 0 for i < 1000: 0, 97, …, 970.
+    const invalid = 11
+    t.setValidity('invalid')
+    expect(t.getRowModel().filteredCount).toBe(invalid)
+    for (const r of t.getRowModel().rows) {
+      expect(r.valid).toBe(false)
+      expect(r.getCellIssues('age')).toHaveLength(1)
+      expect(r.getCellIssues('name')).toHaveLength(0)
+    }
+    t.setValidity('valid')
+    expect(t.getRowModel().filteredCount).toBe(1000 - invalid)
+    // + a column filter (same stage, ANDed): city index i % 5 === 2 (Phuket).
+    t.setColumnFilter('city', { type: 'equals', value: 'Phuket' })
+    const phuketInvalid = Array.from({ length: 1000 }, (_, i) => i).filter(
+      (i) => i % 97 === 0 && i % 5 === 2,
+    ).length
+    expect(t.getRowModel().filteredCount).toBe(200 - phuketInvalid)
+    t.setValidity('invalid')
+    expect(t.getRowModel().filteredCount).toBe(phuketInvalid)
+    t.setValidity('all')
+    expect(t.getRowModel().filteredCount).toBe(200)
+    expect(seen.map((d) => d.code)).not.toContain('DK_OPTION_NO_EFFECT')
+  })
+
+  it('outside flag mode the step passes rows through and reports DK_OPTION_NO_EFFECT', () => {
+    const t = createTable({
+      data: rows(20),
+      features: [validity()],
+      onDiagnostic: (d) => {
+        seen.push(d)
+      },
+    })
+    t.setValidity('invalid')
+    expect(t.getRowModel().filteredCount).toBe(20)
+    expect(seen.map((d) => d.code)).toContain('DK_OPTION_NO_EFFECT')
+  })
+})
+
+describe('integration (R7): client search typing (fake timers)', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('debounced typing: pending, no matching or page reset per keystroke; one commit', async () => {
+    vi.useFakeTimers()
+    const stages: string[] = []
+    const t = createTable({
+      schema,
+      invalidRows: 'flag',
+      data: rows(1000),
+      rowKey: 'id',
+      columns: [{ key: 'id' }, { key: 'name', search: 1 }, { key: 'city' }, { key: 'age' }],
+      features: [
+        pagination({ pageSize: 10 }),
+        sorting(),
+        search({ typing: { strategy: 'debounce', wait: 200 } }),
+      ],
+      interceptors: [
+        defineInterceptor({
+          name: 'steps',
+          on: ['pipeline:step'],
+          intercept(ctx, next) {
+            stages.push((ctx.input as { stage: string }).stage)
+            return next()
+          },
+        }),
+      ],
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    const statuses: string[] = []
+    t.subscribe(() => statuses.push(t.getRowModel().status))
+    t.setPageIndex(4)
+    const before = t.getRowModel().rows.map((r) => r.key)
+    stages.length = 0
+    for (const ch of ['p', 'pe', 'per', 'person 99']) {
+      void t.setSearch(`${VALUE} ${ch}`)
+      await vi.advanceTimersByTimeAsync(50)
+    }
+    // Typing only: the page stays, rows are not re-matched, the status is 'pending'.
+    expect(t.getState().pagination.pageIndex).toBe(4)
+    expect(t.getRowModel().rows.map((r) => r.key)).toEqual(before)
+    // The search step is dispatched (its slice changed) but returns its input (query unchanged),
+    // so the later steps hit their memo.
+    expect(stages.filter((st) => st !== 'search')).toEqual([])
+    expect(t.getRowModel().status).toBe('pending')
+    await vi.advanceTimersByTimeAsync(200)
+    expect(t.getState().search).toMatchObject({ query: `${VALUE} person 99`, status: 'idle' })
+    expect(t.getState().pagination.pageIndex).toBe(0)
+    expect(t.getRowModel().status).toBe('idle')
+    expect(t.getRowModel().rows.map((r) => r.getValue('name'))).toContain(`${VALUE} person 99`)
+    // idle → pending once, pending → idle once (other notifications are state changes).
+    const transitions = statuses.filter((s, i) => i === 0 || s !== statuses[i - 1])
+    expect(transitions).toEqual(['idle', 'pending', 'idle'])
+  })
+})
+
+describe('integration (R7): server sorting + pagination with a fetcher', () => {
+  type Call = { params: Record<string, unknown>; resolve: (r: unknown) => void }
+
+  function serverTable() {
+    const calls: Call[] = []
+    const t = createTable({
+      fetcher: (params) =>
+        new Promise<{ rows: U[]; rowCount: number }>((resolve) => {
+          const { signal: _signal, ...rest } = params
+          calls.push({ params: rest, resolve: resolve as (r: unknown) => void })
+        }),
+      rowKey: 'id',
+      columns: [{ key: 'id' }, { key: 'name' }, { key: 'city' }, { key: 'age', sortable: true }],
+      // Listed out of stage order; a client filter would precede them (DK_MODE_ORDER).
+      features: [pagination({ pageSize: 10, mode: 'server' }), sorting({ mode: 'server' })],
+      onDiagnostic: (d) => {
+        seen.push(d)
+      },
+    })
+    return { t, calls }
+  }
+
+  /** A server page: deliberately not in client sort order (core must not re-sort it). */
+  const page = (pageIndex: number) =>
+    rows(10).map((r, i) => ({ ...(r as U), id: `p${pageIndex}-${i}`, age: (i * 7) % 10 }))
+
+  it('sends sort and page state to the fetcher and shows its rows as given', async () => {
+    const { t, calls } = serverTable()
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.params).toEqual({ sort: [], pageIndex: 0, pageSize: 10 })
+    expect(t.getRowModel().status).toBe('fetching')
+    calls[0]?.resolve({ rows: page(0), rowCount: 95 })
+    await settle()
+
+    const m = t.getRowModel()
+    expect(m.status).toBe('idle')
+    expect(m.isInitialLoad).toBe(false)
+    expect(t.getPageCount()).toBe(10)
+    expect(m.rows.map((r) => r.key)).toEqual(page(0).map((r) => r.id))
+
+    t.setPageIndex(3)
+    expect(calls.at(-1)?.params).toEqual({ sort: [], pageIndex: 3, pageSize: 10 })
+    calls.at(-1)?.resolve({ rows: page(3), rowCount: 95 })
+    await settle()
+    expect(t.getRowModel().rows[0]?.key).toBe('p3-0')
+
+    // A sort change goes to the server and resets the page (one request with both).
+    t.toggleSort('age')
+    expect(t.getState().pagination.pageIndex).toBe(0)
+    expect(calls.at(-1)?.params).toEqual({
+      sort: [{ id: 'age', desc: false }],
+      pageIndex: 0,
+      pageSize: 10,
+    })
+    const sortedOnServer = page(0)
+    calls.at(-1)?.resolve({ rows: sortedOnServer, rowCount: 95 })
+    await settle()
+    // Server order kept: core skipped its sort and page steps.
+    expect(t.getRowModel().rows.map((r) => r.getValue('age'))).toEqual(
+      sortedOnServer.map((r) => r.age),
+    )
+    expect(t.getRowModel().rows).toHaveLength(10)
+    // The same params do not refetch.
+    const n = calls.length
+    t.setPageIndex(0)
+    expect(calls).toHaveLength(n)
+  })
+
+  it('a client step before a server step is a config error (DK_MODE_ORDER)', () => {
+    expect(() =>
+      createTable({
+        fetcher: () => ({ rows: [] }),
+        features: [columnFilters(), sorting({ mode: 'server' })],
+      }),
+    ).toThrow(/DK_MODE_ORDER/)
+  })
+
+  it('a bad response is reported and keeps the previous rows with error status', async () => {
+    const { t, calls } = serverTable()
+    calls[0]?.resolve({ rows: page(0), rowCount: 95 })
+    await settle()
+    t.setPageIndex(1)
+    calls.at(-1)?.resolve({ rows: 'nope' })
+    await settle()
+    expect(seen.map((d) => d.code)).toContain('DK_FETCH_BAD_RESPONSE')
+    expect(t.getRowModel().status).toBe('error')
+    expect(t.getRowModel().rows[0]?.key).toBe('p0-0')
+  })
 })
