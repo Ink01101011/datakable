@@ -17,6 +17,7 @@ import { type ResolvedColumn, type ResolvedColumns, resolveColumns } from './col
 import { checkStep, indexPrint, stepDiagnostics } from './dev-checks'
 import { allRows } from './indices'
 import { Row, type RowIssue, type RowSource } from './row'
+import { createSlicer } from './slice'
 import { inStepDiagnosticSetsError } from './status-rule'
 import type { RowModel, RowModelStatus } from './types'
 
@@ -51,6 +52,11 @@ export interface PipelineHost {
   issues(index: number): readonly RowIssue[] | undefined
   /** `schema` + `invalidRows: 'flag'` (read once): steps get `RowModelContext.flagged`. */
   readonly flagMode?: boolean
+  /**
+   * Time-sliced work (§9.1, `RowModelContext.slice`) ended: recompute the row model and notify,
+   * under the trigger of the run that started it. Without it nothing is sliced.
+   */
+  refresh?(trigger: Trigger): void
 }
 
 export interface Pipeline<T> {
@@ -66,6 +72,8 @@ export interface Pipeline<T> {
    * interceptors), so a replay reports nothing and changes nothing.
    */
   replayContext(name: string): RowModelContext
+  /** Cancels time-sliced work in progress (`destroy()`). */
+  dispose(): void
 }
 
 /**
@@ -145,6 +153,16 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
   let model: RowModel<T> | undefined
   /** The last run (replaced per run; a few references per step). */
   let lastRun: RunRecord | undefined
+  /** Steps of the current run waiting on time-sliced work (§9.1): the row model is 'pending'. */
+  let waiting = 0
+  const refresh = host.refresh
+  const slicer = createSlicer({
+    emit: stepEmit,
+    // Not during SSR, and not for the first row model (the hydrated client matches the server).
+    enabled: () => refresh !== undefined && last !== undefined && host.base().phase === 'client',
+    trigger: () => host.base().trigger,
+    done: (trigger) => refresh?.(trigger),
+  })
 
   /** `Row.getValue` failures: one emit per failing cell, built only when a cell fails. */
   function reportCell(col: ResolvedColumn, index: number, e: unknown, field: string) {
@@ -298,6 +316,11 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
         if (col) cache.batch(col, slot, slot, rows, body)
         return col !== undefined
       },
+      slice: (key, job) => {
+        const r = slicer.run(key, job, name)
+        if (r === undefined) waiting++
+        return r
+      },
     })
 
     function step(f: AnyFeature, input: Uint32Array): Uint32Array {
@@ -309,6 +332,7 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
       }
       let ok = false
       const flagged = flags.count
+      const waited = waiting
       const ctx = createContext(
         'pipeline:step',
         { stage: f.stage, feature: f.name, indices: input },
@@ -345,8 +369,11 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
         return out instanceof Uint32Array ? out : input
       })
       // A counted in-step diagnostic (status rule): 'error' with the step's output, re-run next time.
-      if (ok && flags.count === flagged) memo.set(f, { input, state: slice, columns, output })
-      else {
+      // A step waiting on sliced work returned a stand-in: re-run next time too.
+      if (ok && flags.count === flagged) {
+        if (waiting === waited) memo.set(f, { input, state: slice, columns, output })
+        else memo.delete(f)
+      } else {
         failed = true
         memo.delete(f)
       }
@@ -357,17 +384,27 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
     const ctx = createContext('pipeline:run', { rowCount: data.length }, 'features', host.base())
     // The last good row model (§3.4): its indices; the runner keeps the matching rows below.
     if (last) ctx.meta.set(FALLBACK, last.indices)
-    void host.runtime.run('pipeline:run', ctx, () => {
-      let indices = allRows(data)
-      let filteredCount = -1
-      for (const f of steps) {
-        if (f.stage === 'paginate' && filteredCount < 0) filteredCount = indices.length
-        indices = step(f, indices)
-      }
-      if (filteredCount < 0) filteredCount = indices.length
-      result = build(data, indices, columns, filteredCount, failed ? 'error' : host.status())
-      return indices
-    })
+    waiting = 0
+    slicer.begin()
+    try {
+      void host.runtime.run('pipeline:run', ctx, () => {
+        let indices = allRows(data)
+        let filteredCount = -1
+        for (const f of steps) {
+          if (f.stage === 'paginate' && filteredCount < 0) filteredCount = indices.length
+          indices = step(f, indices)
+        }
+        if (filteredCount < 0) filteredCount = indices.length
+        // Sliced work in progress is 'pending', below every other status (§6.6 precedence).
+        const outside = host.status()
+        const status = failed ? 'error' : waiting > 0 && outside === 'idle' ? 'pending' : outside
+        result = build(data, indices, columns, filteredCount, status)
+        return indices
+      })
+    } finally {
+      // Sliced work no step asked for in this run is stale: cancelled.
+      slicer.end()
+    }
     if (result) model = result
     else {
       // pipeline:run failed: the boundary reported it; keep the last good rows.
@@ -406,5 +443,11 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
     }
   }
 
-  return { run, current: () => model, lastRun: () => lastRun, replayContext }
+  return {
+    run,
+    current: () => model,
+    lastRun: () => lastRun,
+    replayContext,
+    dispose: () => slicer.cancel(),
+  }
 }

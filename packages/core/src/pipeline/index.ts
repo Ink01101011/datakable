@@ -1,5 +1,7 @@
 export { pipelineDiagnostics } from './codes'
 export { stepDiagnostics } from './dev-checks'
+export { envDiagnostics } from './env-codes'
+export { perfDiagnostics } from './perf-codes'
 export {
   type FlaggedInvalidRow,
   type FlaggedRow,

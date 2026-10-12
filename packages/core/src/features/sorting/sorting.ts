@@ -6,13 +6,16 @@ import { compilePath, getValue } from '../../column/get-value'
 import type { Path } from '../../column/path'
 import { useDiagnostics } from '../../diagnostics/catalog'
 import { DEV } from '../../diagnostics/env'
+import type { Emit } from '../../diagnostics/types'
 import { defineFeature } from '../../feature/define'
 import type { FeatureTypes, RowModelContext } from '../../feature/types'
 import { CellFailures } from '../../intercept/cell-batch'
 import { errorName } from '../../intercept/classify'
 import { boundaryDiagnostics } from '../../intercept/codes'
 import { type ResolvedColumn, resolveColumns } from '../../pipeline/columns'
+import { envDiagnostics } from '../../pipeline/env-codes'
 import { allRows } from '../../pipeline/indices'
+import { sliced } from '../../pipeline/slice'
 import type { ColumnValues } from '../../pipeline/types'
 import { type DataMode, modeOption } from '../../source/mode'
 import { detectCapability } from '../../versioning/capability'
@@ -24,6 +27,7 @@ import {
   sortFnIndexComparator,
   typeRank,
 } from './compare'
+import { collationRanks } from './ranks'
 import {
   chooseAuto,
   hasExsorted,
@@ -33,7 +37,13 @@ import {
   sortWithComparator,
 } from './strategy'
 
-useDiagnostics(sortingDiagnostics, comparatorDiagnostics, boundaryDiagnostics, optionDiagnostics)
+useDiagnostics(
+  sortingDiagnostics,
+  comparatorDiagnostics,
+  boundaryDiagnostics,
+  optionDiagnostics,
+  envDiagnostics,
+)
 
 /** One sort key: a column id (a path of the row type) and its direction. */
 export type SortEntry<T> = { id: Path<T>; desc: boolean }
@@ -114,6 +124,13 @@ type CustomAlgorithm = Extract<SortAlgorithm, (...args: never[]) => unknown>
 
 const now = () => (typeof performance === 'undefined' ? Date.now() : performance.now())
 
+/**
+ * From this many rows, `auto` sorts a string column by precomputed collation ranks (§9.1): one
+ * time-sliced job per column values, then integer-key sorts (a few ms at 100k rows) instead of a
+ * collator call per comparison (~100–200 ms at 100k, one long task).
+ */
+const RANKS_MIN = 10_000
+
 const missing = (v: unknown) => typeRank(v) === RANK.missing
 
 /**
@@ -180,15 +197,42 @@ class SortFnFailed {
  */
 export const sorting = (opts: SortingOptions = {}) => {
   let collator: Intl.Collator | undefined
-  const getCollator = () => {
+  /** The collator; `DK_ENV_FALLBACK` when the runtime supports none of the requested locales. */
+  const getCollator = (emit: Emit) => {
     if (collator) return collator
+    const locale = opts.locale as string | string[] | undefined
+    let supported = true
     try {
-      collator = new Intl.Collator(opts.locale as string | string[] | undefined, { numeric: true })
+      collator = new Intl.Collator(locale, { numeric: true })
+      supported = locale === undefined || Intl.Collator.supportedLocalesOf(locale).length > 0
     } catch {
       collator = new Intl.Collator(undefined, { numeric: true })
+      supported = false
+    }
+    if (!supported) {
+      emit('DK_ENV_FALLBACK', {
+        api: 'Intl.Collator',
+        feature: 'sorting',
+        requested: ([] as string[]).concat(locale ?? []).join(', '),
+        fallback: `the runtime's collation for "${collator.resolvedOptions().locale}"`,
+      })
     }
     return collator
   }
+
+  /** Values array → the key of its collation-ranks job (`ctx.slice`); released with the values. */
+  const rankKeys = new WeakMap<object, object>()
+  function ranksFor(ctx: RowModelContext, values: readonly unknown[]) {
+    let key = rankKeys.get(values)
+    if (!key) {
+      key = {}
+      rankKeys.set(values, key)
+    }
+    const c = getCollator(ctx.emit)
+    return sliced(ctx, key, () => collationRanks(values, c))
+  }
+  /** The last sorted output and its input: the stand-in while ranks are computed (§9.1). */
+  let shown: { input: Uint32Array; output: Uint32Array } | undefined
 
   // Values that the column cache does not hold, per data reference (released with it).
   const sortByCache = new WeakMap<readonly unknown[], WeakMap<object, unknown[]>>()
@@ -280,7 +324,10 @@ export const sorting = (opts: SortingOptions = {}) => {
     }),
     rowModel: (indices, state, ctx) => {
       const by = state?.by
-      if (!by || by.length === 0 || indices.length < 2) return indices
+      if (!by || by.length === 0 || indices.length < 2) {
+        shown = undefined
+        return indices
+      }
       const t0 = opts.debug ? now() : 0
       const cols = resolveColumns(ctx.columns)
       const entries = by.map((e) => {
@@ -292,7 +339,7 @@ export const sorting = (opts: SortingOptions = {}) => {
           : (ctx.getColumnValues(id) ?? pathValues(ctx, id))
         const sortFn =
           col && !sortBy ? (fnField(col.def, 'sortFn') as SortFn | undefined) : undefined
-        return { col, desc: e.desc === true, values, sortFn }
+        return { col, desc: e.desc === true, values, sortFn, ranked: false }
       })
 
       // Dev (§8.3): a sampled sortFn check; an invalid one falls back to the default comparator.
@@ -344,10 +391,27 @@ export const sorting = (opts: SortingOptions = {}) => {
         )
       }
 
+      // auto at large n (§9.1): string columns sort by collation ranks, computed by a sliced job.
+      if (requested === 'auto' && indices.length >= RANKS_MIN) {
+        let computing = false
+        for (const e of entries) {
+          if (e.sortFn || e.values instanceof Float64Array) continue
+          const ranks = ranksFor(ctx, e.values)
+          if (ranks === undefined) computing = true
+          else if (ranks) {
+            e.values = ranks
+            e.ranked = true
+          }
+        }
+        // Meanwhile: the previous order of these rows (or the input order); 'pending'.
+        if (computing) return shown && shown.input === indices ? shown.output : indices
+      }
+      const ranked = entries.some((e) => e.ranked)
+
       const build = (): IndexComparator => {
         const cmps = entries.map((e, k) => {
           const fn = e.sortFn
-          if (!fn) return defaultIndexComparator(e.values, e.desc, getCollator())
+          if (!fn) return defaultIndexComparator(e.values, e.desc, getCollator(ctx.emit))
           const guarded: SortFn = (a, b) => {
             try {
               return fn(a, b)
@@ -432,12 +496,12 @@ export const sorting = (opts: SortingOptions = {}) => {
         }
         const choice = chooseAuto(keys)
         algorithm = choice.algorithm
-        reason = `auto: ${choice.reason}`
+        reason = `auto: ${ranked ? 'collation ranks of a string column, ' : ''}${choice.reason}`
         return sortIntKeys(keys, choice.algorithm)
       }
       const native = (why: string) => {
         algorithm = 'native'
-        reason = why
+        reason = ranked ? `${why}, strings as collation ranks` : why
         return sortWithComparator(indices, build(), 'native')
       }
       /** A custom algorithm threw (`threw`, `value` = the error) or returned a bad `value`. */
@@ -486,6 +550,7 @@ export const sorting = (opts: SortingOptions = {}) => {
               ...(primary.col ? { column: { index: primary.col.index, id: primary.col.id } } : {}),
             })
           }
+          shown = { input: indices, output: out }
           return out
         } catch (e) {
           if (!(e instanceof SortFnFailed)) throw e

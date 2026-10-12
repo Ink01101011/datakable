@@ -50,12 +50,6 @@ function issueLink(d: { op: string; slot?: string; errorName?: string }): string
   return `${ISSUES}?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`
 }
 
-// Measured by intercept/chain.bench.ts (Apple M4 Pro, Node 25.2.1): one pass-through interceptor
-// adds ~10 ns per call; spec §9.2 measured +15% when the same wrapping is done per cell.
-export const HOT_COST =
-  '~10 ns per call per interceptor (+15% on a per-cell format call, spec §9.2) on top of ' +
-  'the interceptor body, which runs columns × pipeline runs times'
-
 /** Message text (§8.2): development builds, or production via `@datakable/core/messages`. */
 export const coreMessages: DiagnosticMessages<
   'DK_INTERCEPTOR_FAILED' | 'DK_HOT_INTERCEPTOR' | 'DK_OPERATION_CONFLICT' | 'DK_INTERNAL'
@@ -71,9 +65,13 @@ export const coreMessages: DiagnosticMessages<
   DK_HOT_INTERCEPTOR: {
     problem: (d) =>
       `interceptor "${d.interceptor}" is attached to hot op "${d.op}" without hot: true`,
+    // Measured by intercept/chain.bench.ts (Apple M4 Pro, Node 25.2.1): one pass-through
+    // interceptor adds ~10 ns per call; spec §9.2 measured +15% when wrapping per cell. Kept inside
+    // the builder (no module constant), so production bundles carry none of it.
     impact: () =>
-      `it runs once per column per pipeline run; measured cost: ${HOT_COST}. ` +
-      'It still runs (dev-only warning).',
+      'it runs once per column per pipeline run; measured cost: ~10 ns per call per ' +
+      'interceptor (+15% on a per-cell format call, spec §9.2) on top of the interceptor body, ' +
+      'which runs columns × pipeline runs times. It still runs (dev-only warning).',
     fix: (d) => [
       `set hot: true on "${d.interceptor}" to accept the cost, and never loop per cell inside it`,
       `attach "${d.interceptor}" to cold ops only (list them in \`on\` instead of '*' / '${d.op}')`,

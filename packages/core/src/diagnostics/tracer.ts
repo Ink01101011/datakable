@@ -1,5 +1,13 @@
 import type { Interceptor } from '../intercept/define'
+import { perfDiagnostics } from '../pipeline/perf-codes'
+import { useDiagnostics } from './catalog'
 import { readTrace, type Trace, writeTrace } from './trace-store'
+
+/**
+ * The longest a single step may take (ms): §9.3's longest-task budget. A traced step over it
+ * reports `DK_PERF_HINT` (§8.3) with its numbers.
+ */
+export const STEP_BUDGET_MS = 50
 
 type Traced = 'pipeline:run' | 'pipeline:step' | 'state:dispatch'
 
@@ -18,6 +26,8 @@ const SEEN = 'tracer'
  * rows.
  */
 export function tracer(): Interceptor<Traced> {
+  // Inside the factory: a bundle that never creates a tracer drops the definition (§9.1).
+  useDiagnostics(perfDiagnostics)
   return {
     name: 'tracer',
     on: ['pipeline:run', 'pipeline:step', 'state:dispatch'],
@@ -43,12 +53,22 @@ export function tracer(): Interceptor<Traced> {
       }
       if (ctx.op === 'pipeline:step') {
         const out = next() as Uint32Array
+        const ms = now() - start
         const trace = readTrace(table)
         if (trace?.run === ctx.run) {
           trace.steps.set(ctx.input.feature, {
             input: ctx.input.indices.length,
             output: out.length,
-            ms: now() - start,
+            ms,
+          })
+        }
+        if (ms > STEP_BUDGET_MS) {
+          ctx.emit('DK_PERF_HINT', {
+            feature: ctx.input.feature,
+            stage: ctx.input.stage,
+            ms,
+            rows: ctx.input.indices.length,
+            budget: STEP_BUDGET_MS,
           })
         }
         return out

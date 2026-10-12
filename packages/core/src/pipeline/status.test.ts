@@ -402,3 +402,69 @@ describe('overlapping sources compose: error > fetching > searching > validating
     expect(seen).toEqual(['error'])
   })
 })
+
+describe("'pending' while time-sliced work runs (§6.6, §9.1; USER DECISION)", () => {
+  /** A filter whose result comes from a sliced job (every yield ends a slice: fast clock). */
+  const sliced = () => {
+    const key = {}
+    return defineFeature({
+      name: 'sliced',
+      stage: 'filter',
+      initialState: () => ({ on: false }),
+      createApi: (ctx) => ({ turnOn: () => ctx.setState({ on: true }) }),
+      rowModel: (indices, state, ctx) => {
+        if (!state.on) return indices
+        const out = ctx.slice?.(key, function* () {
+          yield
+          yield
+          return indices.subarray(0, 1)
+        })
+        return out ?? indices
+      },
+    }) as AnyFeature
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal('document', {})
+    let clock = 0
+    vi.spyOn(performance, 'now').mockImplementation(() => (clock += 100))
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  it("start and end each notify with a new row model: 'pending' → 'idle'", async () => {
+    const t = createTable({ data: people(3), features: [sliced()], onDiagnostic: () => {} })
+    const idle = t.getRowModel()
+    const seen: [string, number][] = []
+    t.subscribe(() => {
+      const m = t.getRowModel()
+      seen.push([m.status, m.rows.length])
+    })
+    api(t).turnOn?.()
+    const pending = t.getRowModel()
+    expect(pending).not.toBe(idle)
+    expect(seen).toEqual([['pending', 3]])
+    for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 0))
+    expect(seen).toEqual([
+      ['pending', 3],
+      ['idle', 1],
+    ])
+    expect(t.getRowModel()).not.toBe(pending)
+    expect(t.getRowModel().isInitialLoad).toBe(false)
+  })
+
+  it("an in-flight searchFn ranks above 'pending' (precedence)", async () => {
+    const t = createTable({
+      data: people(3),
+      onDiagnostic: () => {},
+      features: [sliced(), search({ searchFn: () => new Promise<P[]>(() => {}) })],
+    })
+    t.getRowModel()
+    api(t).turnOn?.()
+    expect(t.getRowModel().status).toBe('pending')
+    void api(t).setSearch?.('p')
+    expect(t.getRowModel().status).toBe('searching')
+  })
+})
