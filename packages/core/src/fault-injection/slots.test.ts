@@ -716,3 +716,62 @@ describe("a failure that sets 'error' is never silent (§6.6)", () => {
     expect(statuses).toEqual(['error'])
   })
 })
+
+describe('an interceptor that fails after calling next()', () => {
+  it('sync: reported once and the op is not run twice', () => {
+    const { seen, onDiagnostic } = sink()
+    const t = loose(
+      createTable({
+        data: people(),
+        columns: [{ key: 'n' }],
+        features: [sorting()],
+        interceptors: [
+          defineInterceptor({
+            name: 'late',
+            on: ['state:dispatch'],
+            intercept: (_ctx, next) => {
+              next()
+              return fail()
+            },
+          }),
+        ],
+        onDiagnostic,
+      }),
+    )
+    t.toggleSort('n')
+    // One toggle (asc), not two (desc).
+    expect(t.getSortDirection('n')).toBe('asc')
+    expectDiagnostic(seen, 'DK_INTERCEPTOR_FAILED', 'interceptor "late" on state:dispatch')
+    expectNoRowData(seen)
+  })
+
+  it('async: its rejection after next() keeps the result; the fetcher ran once', async () => {
+    const { seen, onDiagnostic } = sink()
+    let calls = 0
+    const t = loose(
+      createTable({
+        features: [sorting({ mode: 'server' })],
+        fetcher: () => {
+          calls++
+          return { rows: people() }
+        },
+        interceptors: [
+          defineInterceptor({
+            name: 'late',
+            on: ['async:request'],
+            intercept: async (_ctx, next) => {
+              await next()
+              return reject()
+            },
+          }),
+        ],
+        onDiagnostic,
+      }),
+    )
+    await settle()
+    expect(calls).toBe(1)
+    expect(t.getRowModel().rows).toHaveLength(3)
+    expect(t.getRowModel().status).toBe('idle')
+    expectDiagnostic(seen, 'DK_INTERCEPTOR_FAILED', 'interceptor "late" on async:request')
+  })
+})
