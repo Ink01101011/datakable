@@ -1,4 +1,5 @@
 import { throwConfigError } from '../diagnostics/build'
+import { DEV } from '../diagnostics/env'
 import type { Emit } from '../diagnostics/types'
 import { errorName } from '../intercept/classify'
 import type { Table, TableState } from '../table/types'
@@ -69,6 +70,8 @@ export function installApis(features: readonly AnyFeature[], host: FeatureHost):
   const target = host.table as unknown as Record<string, unknown>
   const owners = new Map<string, string | null>()
   for (const k of Object.keys(target)) owners.set(k, null)
+  /** Features whose `createApi()` threw: their methods are missing from the table. */
+  const failed: string[] = []
 
   for (const f of features) {
     const name = f.name
@@ -84,6 +87,7 @@ export function installApis(features: readonly AnyFeature[], host: FeatureHost):
       api = f.createApi(ctx)
     } catch (e) {
       reportFailure(host.emit, name, 'createApi', 'its API was not installed', e)
+      failed.push(name)
       continue
     }
     if (api === null || typeof api !== 'object') continue
@@ -108,4 +112,56 @@ export function installApis(features: readonly AnyFeature[], host: FeatureHost):
           : member
     }
   }
+  if (DEV && failed.length > 0) Object.setPrototypeOf(target, missingApi(failed, host))
+}
+
+/**
+ * Names generic code probes on any object (await, JSON, React, test runners, inspectors): never a
+ * feature method, so never stubbed.
+ */
+const PROBES = new Set([
+  'then',
+  'catch',
+  'finally',
+  'toJSON',
+  'asymmetricMatch',
+  'nodeType',
+  'tagName',
+])
+const isProbe = (k: string) => PROBES.has(k) || /^[_$@]/.test(k)
+
+/**
+ * Dev (R4): the prototype of a table where a feature's `createApi()` threw. The types still promise
+ * that feature's methods, so a call to a name the table does not have is a no-op that reports
+ * `DK_FEATURE_FAILED` (with the method) instead of a raw TypeError at the caller. Only reads of
+ * missing names reach it: the table keeps its identity and own members, `in` / `hasOwn` stay
+ * false, and `Object.prototype` members, symbols and generic probes (`then`, `toJSON`, …) resolve
+ * as usual.
+ */
+function missingApi(failed: readonly string[], host: FeatureHost): object {
+  const feature = failed.join(', ')
+  const stubs = new Map<string, () => undefined>()
+  return new Proxy(Object.prototype, {
+    get(proto, key, receiver) {
+      if (typeof key !== 'string' || key in proto || isProbe(key)) {
+        return Reflect.get(proto, key, receiver)
+      }
+      let stub = stubs.get(key)
+      if (!stub) {
+        stub = () => {
+          host.call(key, () =>
+            host.emit('DK_FEATURE_FAILED', {
+              feature,
+              hook: 'createApi',
+              method: key,
+              fallback: `table.${key}() did nothing (the API of ${failed.length === 1 ? 'that feature' : 'those features'} was not installed)`,
+            }),
+          )
+          return undefined
+        }
+        stubs.set(key, stub)
+      }
+      return stub
+    },
+  })
 }
