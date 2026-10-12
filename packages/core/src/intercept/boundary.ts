@@ -4,7 +4,7 @@ import { type CallbackError, classifyError, errorName } from './classify'
 import { boundaryDiagnostics } from './codes'
 import type { InterceptorContext } from './context'
 import type { Interceptor } from './define'
-import { getFallback } from './fallbacks'
+import { FAILED, getFallback } from './fallbacks'
 import type { OpName } from './operations'
 
 // Referencing the definitions keeps them in the bundle (`sideEffects: false`).
@@ -20,6 +20,7 @@ const isThenable = (v: unknown): v is PromiseLike<unknown> =>
 function recover(ctx: InterceptorContext, error: unknown): unknown {
   // Config errors, `strict: true` rethrows and core invariants are meant to reach the caller.
   if (error instanceof DatakableError) throw error
+  ctx.meta.set(FAILED, error)
   const fallback = getFallback(ctx.op)
   if (fallback.silent) {
     if (!silenced.has(ctx.emit)) {

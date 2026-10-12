@@ -10,6 +10,10 @@ export interface RowIssue {
 /** What a {@link Row} reads its cells through (internal; one per `columns` reference). */
 export interface RowSource {
   value(index: number, original: unknown, id: string): unknown
+  /** Schema issues of a flagged row (`invalidRows: 'flag'`); `undefined` for a valid row. */
+  issues(index: number): readonly RowIssue[] | undefined
+  /** The issues of a flagged row whose path points into column `id` (a key column). */
+  cellIssues(issues: readonly RowIssue[], id: string): readonly RowIssue[]
 }
 
 const NO_ISSUES: readonly RowIssue[] = Object.freeze([])
@@ -37,12 +41,12 @@ export class Row<T = unknown> {
 
   /** `false` for a row flagged by schema validation (`invalidRows: 'flag'`). */
   get valid(): boolean {
-    return true
+    return this.#source.issues(this.index) === undefined
   }
 
   /** The row's schema issues (empty for a valid row). */
   get issues(): readonly RowIssue[] {
-    return NO_ISSUES
+    return this.#source.issues(this.index) ?? NO_ISSUES
   }
 
   /**
@@ -53,8 +57,22 @@ export class Row<T = unknown> {
     return this.#source.value(this.index, this.original, id)
   }
 
-  /** The schema issues whose path points into column `id`. */
-  getCellIssues(_id: string): readonly RowIssue[] {
-    return NO_ISSUES
+  /**
+   * The schema issues whose path points into column `id`: the issue path equals the column key, or
+   * one contains the other (`address` ↔ `address.city`); row-level issues (no path) count for every
+   * cell. Accessor columns have no path, so no cell issues.
+   */
+  getCellIssues(id: string): readonly RowIssue[] {
+    const issues = this.#source.issues(this.index)
+    return issues === undefined ? NO_ISSUES : this.#source.cellIssues(issues, id)
   }
 }
+
+/** A valid row under `invalidRows: 'flag'`: `original` is the schema output. */
+export type ValidRow<T> = Row<T> & { readonly valid: true }
+
+/** A flagged row (`invalidRows: 'flag'`): `original` is the raw, unvalidated value. */
+export type FlaggedInvalidRow = Row<unknown> & { readonly valid: false }
+
+/** `getRowModel().rows` under `invalidRows: 'flag'` (§5.1): narrow on `row.valid`. */
+export type FlaggedRow<T> = ValidRow<T> | FlaggedInvalidRow

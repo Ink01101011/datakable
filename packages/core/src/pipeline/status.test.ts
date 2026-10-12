@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineFeature } from '../feature/define'
 import type { AnyFeature } from '../feature/types'
+import { makeSchema } from '../ingest/test-schemas'
 import { defineInterceptor } from '../intercept/define'
 import { createTable } from '../table/create-table'
 
@@ -128,5 +129,84 @@ describe('status is never silent (§6.6)', () => {
     expect(recovered.status).toBe('idle')
     expect(recovered).not.toBe(error)
     expect(seen).toEqual(['error', 'idle'])
+  })
+})
+
+describe("a failed data:ingest sets 'error' and never counts as loaded (§6.6, §8.6)", () => {
+  // Interceptor failures are skipped (§3.4), so a failing ingest is a failing core: here the
+  // schema step reading a data Proxy that throws (fault injection).
+  type V = { id: string; n: number }
+  const schema = makeSchema<V>((v) =>
+    typeof (v as V).n === 'number'
+      ? { value: v as V }
+      : { issues: [{ message: 'n', path: ['n'] }] },
+  )
+  const asyncSchema = makeSchema<V>((v) => schema['~standard'].validate(v) as never, {
+    async: true,
+  })
+  /** `rows`, but throws once more than `reads` element reads were made (or on `length`). */
+  const unreadable = (rows: unknown[], reads = -1) => {
+    let n = 0
+    return new Proxy(rows, {
+      get(target, p, r) {
+        if (reads < 0 && p === 'length') throw new Error('unreadable data')
+        if (typeof p === 'string' && /^\d+$/.test(p) && reads >= 0 && ++n > reads) {
+          throw new Error('unreadable row')
+        }
+        return Reflect.get(target, p, r)
+      },
+    })
+  }
+
+  it("sync failure at creation: 'error', isInitialLoad stays true; a good ingest recovers", () => {
+    const t = createTable({ schema, data: unreadable(people(2)), onDiagnostic: () => {} })
+    const m = t.getRowModel()
+    expect(m.status).toBe('error')
+    expect(m.isInitialLoad).toBe(true)
+    expect(m.rows).toHaveLength(0)
+    const seen: [string, boolean][] = []
+    t.subscribe(() => {
+      const r = t.getRowModel()
+      seen.push([r.status, r.isInitialLoad])
+    })
+    t.setOptions({ data: people(3) })
+    expect(seen).toEqual([['idle', false]])
+    expect(t.getRowModel().totalCount).toBe(3)
+  })
+
+  it("failure on setOptions: previous rows kept with 'error', notified", () => {
+    const t = createTable({ schema, data: people(2), onDiagnostic: () => {} })
+    const good = t.getRowModel()
+    const seen: string[] = []
+    t.subscribe(() => {
+      seen.push(t.getRowModel().status)
+    })
+    t.setOptions({ data: unreadable(people(5)) })
+    const error = t.getRowModel()
+    expect(error.status).toBe('error')
+    expect(error).not.toBe(good)
+    expect(error.totalCount).toBe(2)
+    expect(error.isInitialLoad).toBe(false)
+    expect(seen).toEqual(['error'])
+  })
+
+  it("an async ingest that fails: 'error' when it settles, not loaded", async () => {
+    // Row 1 is invalid: settling it reads the row again, past the allowed reads.
+    const rows = [{ id: 'a', n: 1 }, { id: 'b' }]
+    const t = createTable({
+      schema: asyncSchema,
+      data: unreadable(rows, rows.length),
+      onDiagnostic: () => {},
+    })
+    expect(t.getRowModel().status).toBe('validating')
+    const statuses: string[] = []
+    t.subscribe(() => {
+      statuses.push(t.getRowModel().status)
+    })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(statuses).toEqual(['error'])
+    const m = t.getRowModel()
+    expect(m.isInitialLoad).toBe(true)
+    expect(m.rows).toHaveLength(0)
   })
 })

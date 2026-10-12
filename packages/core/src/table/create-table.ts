@@ -9,15 +9,18 @@ import { orderFeatures } from '../feature/order'
 import type { AnyFeature, ApiOf, SliceUpdater, TableStateFor } from '../feature/types'
 import { createDataChecks } from '../ingest/data-checks'
 import { createDerivedColumns } from '../ingest/derive-columns'
+import { createSchemaIngest, type SchemaOutcome } from '../ingest/schema'
+import type { InvalidRowsMode } from '../ingest/schema-codes'
+import type { StandardSchemaV1 } from '../ingest/standard-schema'
 import { errorBoundary } from '../intercept/boundary'
 import { callUser, errorName } from '../intercept/classify'
 import { type ContextBase, createContext } from '../intercept/context'
 import type { Interceptor } from '../intercept/define'
-import { FALLBACK } from '../intercept/fallbacks'
+import { FAILED, FALLBACK } from '../intercept/fallbacks'
 import type { OpInput, OpName, OpResult } from '../intercept/operations'
 import { type Core, createInterceptorRuntime } from '../intercept/runtime'
 import { createPipeline } from '../pipeline/runner'
-import type { RowModel } from '../pipeline/types'
+import type { RowModel, RowModelStatus } from '../pipeline/types'
 import { ASYNC_STATUS, type AsyncStatus, asyncControl } from '../source/async-control'
 import { checkVersions } from '../versioning/registry'
 import { tableDiagnostics } from './codes'
@@ -42,6 +45,26 @@ const isThenable = (v: unknown): v is PromiseLike<unknown> =>
 
 const freeze = <S extends object>(s: S): S => (DEV ? Object.freeze(s) : s)
 
+/** The row type: the schema output with a `schema` (§5.1), else `T`. */
+export type SchemaRow<T, Sch> = [Sch] extends [StandardSchemaV1]
+  ? StandardSchemaV1.InferOutput<Sch>
+  : T
+
+/**
+ * `createTable` options: with a `schema`, the row type is its output and `data` is the raw input
+ * (`unknown[]`, e.g. parsed JSON), validated per row.
+ */
+export type CreateTableOptions<T, S extends TableState, Sch, M extends InvalidRowsMode> = Omit<
+  TableOptions<SchemaRow<T, Sch>, S>,
+  'data' | 'schema' | 'invalidRows'
+> & {
+  data?: readonly ([Sch] extends [StandardSchemaV1] ? unknown : T)[]
+  // Without an inferred schema (explicit type arguments, a `TableOptions<T>` object) these keep
+  // their `TableOptions` types.
+  schema?: [Sch] extends [StandardSchemaV1] ? Sch : StandardSchemaV1<unknown, T>
+  invalidRows?: [Sch] extends [StandardSchemaV1] ? M : InvalidRowsMode
+}
+
 /** Column id: `key` for key columns, `id` for accessor columns. */
 const columnId = (c: { key?: unknown; id?: unknown }): unknown => c.key ?? c.id
 
@@ -58,9 +81,19 @@ export function createTable<
   T,
   S extends TableState = never,
   const Fs extends readonly AnyFeature[] = [],
+  const Sch extends StandardSchemaV1 | undefined = undefined,
+  const M extends InvalidRowsMode = 'drop',
 >(
-  options: TableOptions<T, TableStateFor<S, Fs, T>> & { features?: Fs },
-): Table<T, TableStateFor<S, Fs, T>> & ApiOf<Fs, T>
+  options: CreateTableOptions<T, TableStateFor<S, Fs, SchemaRow<T, Sch>>, Sch, M> & {
+    features?: Fs
+  },
+): Table<
+  SchemaRow<T, Sch>,
+  TableStateFor<S, Fs, SchemaRow<T, Sch>>,
+  M,
+  [Sch] extends [StandardSchemaV1] ? unknown : T
+> &
+  ApiOf<Fs, SchemaRow<T, Sch>>
 export function createTable<T, S extends TableState>(
   initialOptions: TableOptions<T, S>,
 ): Table<T, S> {
@@ -73,6 +106,12 @@ export function createTable<T, S extends TableState>(
   let ingestSeq = 0
   /** Data given by the user has been applied once (`RowModel.isInitialLoad`, §6.6). */
   let loaded = false
+  /** The last `data:ingest` failed (op fallback): `status: 'error'` until one succeeds (§6.6). */
+  let ingestFailed = false
+  /** The ingest whose async schema validation is in flight (`status: 'validating'`); 0: none. */
+  let validatingSeq = 0
+  /** Rows of the current data that failed the schema (`getInvalidRows`, §5.1). */
+  let schemaOutcome: SchemaOutcome | undefined
 
   let controlled = new Set<string>()
   let snapshot: S
@@ -100,6 +139,7 @@ export function createTable<T, S extends TableState>(
     getData: () => data,
     // Core method: on the literal before installApis, so no feature can take the name.
     getRowModel,
+    getInvalidRows: () => schemaOutcome?.invalid ?? EMPTY,
     getDiagnostics: () => hub.getDiagnostics(),
     destroy,
   }
@@ -152,6 +192,10 @@ export function createTable<T, S extends TableState>(
   // Ingest data checks (§5.3) and zero-config columns (§4.1): both read only the first rows.
   const dataChecks = createDataChecks(hub.emit)
   const derivedColumns = createDerivedColumns()
+  // Schema ingest (§5.1): `schema` and `invalidRows` are read once (validated above).
+  const schemaIngest = options.schema
+    ? createSchemaIngest(options.schema, options.invalidRows ?? 'drop', () => options.columns)
+    : undefined
 
   function sensitiveColumns(): string[] {
     const out: string[] = []
@@ -365,7 +409,21 @@ export function createTable<T, S extends TableState>(
     getColumns: () => options.columns ?? derivedColumns(data),
     getRowKey: () => options.rowKey,
     isInitialLoad: () => !loaded,
+    status,
+    issues: (index) => schemaOutcome?.flagged?.get(index),
   })
+
+  /** Status from outside the pipeline (§6.6): a failed ingest, then a running async schema. */
+  function status(): RowModelStatus {
+    if (ingestFailed) return 'error'
+    return validatingSeq === 0 ? 'idle' : 'validating'
+  }
+
+  /** A row model change not caused by state: recompute and notify on the next flush. */
+  function touch() {
+    pending = true
+    rowModelDirty = true
+  }
 
   /** Recomputes the row model if data, state or columns changed (never after destroy). */
   function ensureRowModel() {
@@ -382,39 +440,86 @@ export function createTable<T, S extends TableState>(
         rows: EMPTY,
         filteredCount: 0,
         totalCount: 0,
-        status: 'idle',
+        status: status(),
         isInitialLoad: !loaded,
       }
     )
   }
 
-  /** `data:ingest` with the previous data as fallback; an async result is applied if still latest. */
+  /**
+   * Applies the result of the latest `data:ingest`. A fallback (the boundary set `FAILED`) keeps
+   * the previous data, sets `status: 'error'` and never marks the table loaded (§6.6, §8.6).
+   */
+  function applyIngest(out: readonly unknown[], failed: boolean, given: boolean) {
+    if (validatingSeq !== 0) {
+      validatingSeq = 0
+      touch()
+    }
+    if (failed) {
+      ingestFailed = true
+      touch()
+      return
+    }
+    if (ingestFailed) {
+      ingestFailed = false
+      touch()
+    }
+    schemaOutcome = schemaIngest?.outcome(out)
+    setData(out as readonly T[], given)
+  }
+
+  /**
+   * `data:ingest` with the previous data as fallback: the schema step (§5.1) runs in its core. An
+   * async result is applied if still latest.
+   */
   function ingest() {
     const seq = ++ingestSeq
     const given = options.data !== undefined
+    // A validation still in flight is superseded (its result is discarded): not 'validating' now,
+    // unless this ingest's own schema step goes async.
+    if (validatingSeq !== 0) {
+      validatingSeq = 0
+      touch()
+    }
     withTrigger('data-change', () => {
-      const out = op(
+      const ctx = createContext(
         'data:ingest',
         { data: options.data ?? EMPTY },
         'options.data',
-        (ctx) => ctx.input.data as readonly unknown[],
-        data,
+        base(),
       )
+      ctx.meta.set(FALLBACK, data)
+      let sync = true
+      const out = runtime.run('data:ingest', ctx, (c) => {
+        const input = c.input.data as readonly unknown[]
+        if (!schemaIngest) return input
+        const r = schemaIngest.validate(input, c.emit)
+        if (isThenable(r) && seq === ingestSeq && !destroyed) {
+          // 'validating' is never silent: a new row model and a notification now (§6.6).
+          validatingSeq = seq
+          touch()
+          if (!sync) flush()
+        }
+        return r
+      })
+      sync = false
       if (!isThenable(out)) {
-        setData(out as readonly T[], given)
+        applyIngest(out, ctx.meta.has(FAILED), given)
         return
       }
+      const settle = (d: readonly unknown[], failed: boolean) => {
+        if (seq !== ingestSeq || destroyed) return
+        withTrigger('data-change', () => {
+          applyIngest(d, failed, given)
+          flush()
+        })
+      }
       Promise.resolve(out).then(
-        (d) => {
-          if (seq !== ingestSeq || destroyed) return
-          withTrigger('data-change', () => {
-            setData(d as readonly T[], given)
-            flush()
-          })
-        },
-        // The boundary already reported it; only a strict DatakableError gets here. No unhandled
+        (d) => settle(d, ctx.meta.has(FAILED)),
+        // A DatakableError the boundary rethrew (strict, or `invalidRows: 'throw'` with an async
+        // schema, already reported): the previous data is kept with 'error'. No unhandled
         // rejection either way (§8.6).
-        () => {},
+        () => settle(data, true),
       )
     })
   }

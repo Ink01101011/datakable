@@ -21,6 +21,13 @@ export interface Fallback<O extends OpName = OpName> {
  */
 export const FALLBACK = 'datakable:fallback'
 
+/**
+ * `ctx.meta` key the errorBoundary sets (to the error) when it replaced the op's result with the
+ * fallback, so the caller can tell a fallback from a real result (e.g. a failed `data:ingest` sets
+ * `status: 'error'`, §6.6).
+ */
+export const FAILED = 'datakable:failed'
+
 function allRows(n: number): Uint32Array {
   const out = new Uint32Array(n)
   for (let i = 0; i < n; i++) out[i] = i

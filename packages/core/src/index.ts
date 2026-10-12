@@ -23,6 +23,18 @@ export * from './features/search'
 export * from './features/sorting'
 export { type DerivedColumn, deriveColumns, INGEST_SAMPLE } from './ingest/derive-columns'
 export { rowKeyDiagnostics } from './ingest/row-key-codes'
+export {
+  DatakableSchemaError,
+  type InvalidRow,
+  isStandardSchema,
+  type SchemaOutcome,
+} from './ingest/schema'
+export {
+  type InvalidRowsMode,
+  type SchemaIssueColumn,
+  schemaDiagnostics,
+} from './ingest/schema-codes'
+export type { StandardSchemaV1 } from './ingest/standard-schema'
 export * from './intercept'
 export * from './pipeline'
 export * from './source'
