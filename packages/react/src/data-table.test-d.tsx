@@ -1,4 +1,5 @@
 import { pagination, search, sorting } from '@datakable/core'
+import { withSchema } from '@datakable/core/schema'
 import { describe, expectTypeOf, it } from 'vitest'
 import { makeSchema, userCheck } from '../../core/src/ingest/test-schemas'
 import { DataTable, type DataTableProps } from './data-table'
@@ -20,7 +21,11 @@ describe('<DataTable /> props (§10)', () => {
     ;<DataTable data={users} columns={[{ key: 'name', cell: ({ value }) => <b>{value}</b> }]} />
     // @ts-expect-error: not a key of User
     ;<DataTable data={users} columns={[{ key: 'nope' }]} />
-    ;<DataTable data={[] as unknown[]} schema={makeSchema(userCheck)} invalidRows="flag" />
+    ;<DataTable
+      data={[] as unknown[]}
+      schema={withSchema(makeSchema(userCheck))}
+      invalidRows="flag"
+    />
   })
 
   it('table and data are exclusive', () => {

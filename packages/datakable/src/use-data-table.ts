@@ -5,7 +5,7 @@ import {
   type DefaultFeatures,
   type InvalidRowsMode,
   type SchemaRow,
-  type StandardSchemaV1,
+  type TableSchema,
   type TableState,
   type TableStateFor,
 } from '@datakable/core'
@@ -26,7 +26,7 @@ export function useDataTable<
   T,
   S extends TableState = never,
   const Fs extends readonly AnyFeature[] = DefaultFeatures,
-  const Sch extends StandardSchemaV1 | undefined = undefined,
+  const Sch extends TableSchema | undefined = undefined,
   const M extends InvalidRowsMode = 'drop',
 >(
   options: UseDataTableOptions<T, TableStateFor<S, Fs, SchemaRow<T, Sch>>, Sch, M> & {
@@ -36,7 +36,7 @@ export function useDataTable<
   SchemaRow<T, Sch>,
   TableStateFor<S, Fs, SchemaRow<T, Sch>>,
   M,
-  [Sch] extends [StandardSchemaV1] ? unknown : T,
+  [Sch] extends [TableSchema] ? unknown : T,
   ApiOf<Fs, SchemaRow<T, Sch>>
 >
 export function useDataTable(options: { features?: readonly AnyFeature[] | undefined }): unknown {

@@ -1,6 +1,8 @@
 {
   "compilerOptions": {
     "target": "ES2022",
+    // Class fields as constructor assignments: no duplicate field declarations in the bundle (§9.3).
+    "useDefineForClassFields": false,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "Bundler",

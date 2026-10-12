@@ -1,3 +1,4 @@
+import { DEV } from './env'
 import type { RedactField } from './redact'
 import type { DiagnosticLevel, Location } from './types'
 
@@ -78,7 +79,8 @@ export function defineDiagnostic<const C extends DiagnosticCode>(
 ): DiagnosticDefinition<C> {
   const definition = (text ? { ...meta, ...text } : meta) as DiagnosticDefinition<C>
   const prev = registry.get(definition.code)
-  if (prev && prev.level !== definition.level) {
+  // Development check: codes are fixed at build time, a production bundle skips it.
+  if (DEV && prev && prev.level !== definition.level) {
     throw new Error(
       `[DataKable] diagnostic code ${definition.code} is already defined as level ` +
         `"${prev.level}"; codes are never redefined — pick a new code`,

@@ -4,7 +4,9 @@ import { pagination } from '../features/pagination'
 import { search } from '../features/search'
 import { sorting } from '../features/sorting'
 import { makeSchema } from '../ingest/test-schemas'
+import { withSchema } from '../ingest/with-schema'
 import type { FetchParams, FetchResult } from '../source/fetcher'
+import { withFetcher } from '../source/with-fetcher'
 import { createTable } from './create-table'
 import { createDeferred, startTable } from './ssr'
 
@@ -49,10 +51,12 @@ describe('initialData (§7.2)', () => {
     expect(t.getRowModel().isInitialLoad).toBe(false)
     expect(t.getRowModel().status).toBe('idle')
 
-    const schema = makeSchema<P>((v) =>
-      typeof (v as P).n === 'number'
-        ? { value: v as P }
-        : { issues: [{ message: 'n', path: ['n'] }] },
+    const schema = withSchema(
+      makeSchema<P>((v) =>
+        typeof (v as P).n === 'number'
+          ? { value: v as P }
+          : { issues: [{ message: 'n', path: ['n'] }] },
+      ),
     )
     const s = createTable({ initialData: [{ id: 'a', n: 1 }, { id: 'b' }], schema })
     expect(s.getRowModel().rows).toHaveLength(1)
@@ -64,7 +68,7 @@ describe('initialData (§7.2)', () => {
     const t = createTable({
       initialData: people(10),
       rowCount: 95,
-      fetcher: m.fetcher,
+      fetcher: withFetcher(m.fetcher),
       features: [sorting({ mode: 'server' }), pagination({ mode: 'server' })],
       initialState: { pagination: { pageIndex: 2, pageSize: 10 } },
     })
@@ -86,7 +90,7 @@ describe('initialData (§7.2)', () => {
     const fetcher = vi.fn(() => ({ rows: people(2), rowCount: 2 }))
     const t = createTable({
       initialData: people(1),
-      fetcher,
+      fetcher: withFetcher(fetcher),
       features: [sorting({ mode: 'server' })],
     })
     expect(fetcher).not.toHaveBeenCalled()
@@ -132,7 +136,7 @@ describe('createDeferred / startTable (§7.2)', () => {
     const diags: Diagnostic[] = []
     const t = createDeferred(() =>
       createTable({
-        fetcher: m.fetcher,
+        fetcher: withFetcher(m.fetcher),
         features: [sorting({ mode: 'server' })],
         onDiagnostic: (d) => diags.push(d),
       }),
@@ -172,7 +176,7 @@ describe('createDeferred / startTable (§7.2)', () => {
     const t = createDeferred(() =>
       createTable({
         initialData: people(2),
-        fetcher: m.fetcher,
+        fetcher: withFetcher(m.fetcher),
         features: [sorting({ mode: 'server' })],
         onDiagnostic: (d) => diags.push(d.code),
       }),
@@ -231,10 +235,10 @@ describe('createDeferred / startTable (§7.2)', () => {
 
   it('a table created outside createDeferred is not deferred; destroy before start is safe', () => {
     const m = manual()
-    createTable({ fetcher: m.fetcher, features: [sorting({ mode: 'server' })] })
+    createTable({ fetcher: withFetcher(m.fetcher), features: [sorting({ mode: 'server' })] })
     expect(m.fetcher).toHaveBeenCalledTimes(1)
     const t = createDeferred(() =>
-      createTable({ fetcher: m.fetcher, features: [sorting({ mode: 'server' })] }),
+      createTable({ fetcher: withFetcher(m.fetcher), features: [sorting({ mode: 'server' })] }),
     )
     t.destroy()
     startTable(t)

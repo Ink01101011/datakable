@@ -1,4 +1,5 @@
 import { createTable, type StandardSchemaV1 } from '@datakable/core'
+import { withSchema } from '@datakable/core/schema'
 import { validity } from '@datakable/core/validity'
 
 type User = { id: number; name: string }
@@ -8,7 +9,7 @@ declare const json: unknown[] // e.g. await res.json()
 
 const table = createTable({
   data: json, // raw input: every row is validated
-  schema: UserSchema, // the row type is the schema's output
+  schema: withSchema(UserSchema), // opt-in validation; the row type is the schema's output
   invalidRows: 'flag', // 'drop' (default) | 'flag' | 'throw'
   rowKey: 'id',
   features: [validity()], // filters 'all' | 'valid' | 'invalid'

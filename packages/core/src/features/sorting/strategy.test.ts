@@ -67,7 +67,7 @@ const sorted = (
   return t.getRowModel().rows.map((r) => r.index)
 }
 
-const ALGORITHMS = ['auto', 'tim', 'radix', 'counting', 'merge', 'native'] as const
+const ALGORITHMS = ['auto', 'tim', 'radix', 'counting', 'native'] as const
 
 const missing = fc.constantFrom(null, undefined, Number.NaN)
 const intValue = fc.oneof({ weight: 6, arbitrary: fc.integer({ min: -50, max: 50 }) }, missing)
@@ -241,8 +241,19 @@ describe('sort strategy — overrides', () => {
         { algorithm: 'radix' },
       ).algorithm,
     ).toBe('radix')
-    expect(chosen(['b', 'a'], false, { algorithm: 'merge' }).algorithm).toBe('merge')
+    expect(chosen(['b', 'a'], false, { algorithm: 'native' }).algorithm).toBe('native')
     expect(chosen(['b', 'a'], false, { algorithm: 'tim' }).algorithm).toBe('tim')
+  })
+
+  // Changed 2026-10-13 for §9.3: the `merge` algorithm was dropped (tim / radix / counting / native).
+  it("'merge' is no longer an algorithm: DK_INVALID_OPTION names the accepted ones", () => {
+    expect(() =>
+      createTable({
+        data: [{ a: 1 }],
+        // @ts-expect-error 'merge' is not a SortAlgorithm any more
+        features: [sorting({ algorithm: 'merge' })],
+      }),
+    ).toThrow(/DK_INVALID_OPTION[\s\S]*'tim', 'radix', 'counting', 'native'/)
   })
 
   it('column-level sortAlgorithm wins over the table-level one', () => {
@@ -355,8 +366,8 @@ describe('sort strategy — overrides', () => {
     expect(d.details.slot).toBe('columns[0].sortAlgorithm')
   })
 
-  it('a throwing sortFn under tim / merge still falls back to the default comparator', () => {
-    for (const algorithm of ['tim', 'merge'] as const) {
+  it('a throwing sortFn under tim / native still falls back to the default comparator', () => {
+    for (const algorithm of ['tim', 'native'] as const) {
       seen = []
       const t = createTable({
         data: [{ a: 3 }, { a: 1 }, { a: 2 }],

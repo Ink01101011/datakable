@@ -28,14 +28,17 @@ export default [
     pkg: 'core',
     import: ['createTable'],
     ...CORE,
-    limit: 23 * KB,
+    // F3: 23 → 14.5 KB (14,553 B): schema / fetcher opt-in, dev-only option validation, version
+    // and data checks, the feature runtime brought by defineFeature (§9.3, 2026-10-13).
+    limit: 14.5 * KB,
   },
   {
     name: '@datakable/core: createTable + columnFilters + sorting + pagination',
     pkg: 'core',
     import: ['createTable', 'columnFilters', 'sorting', 'pagination'],
     ...CORE,
-    limit: 30 * KB,
+    // F3: 30 → 22 KB (22,198 B).
+    limit: 22 * KB,
   },
   {
     name: '@datakable/core: createTable + columnFilters + sorting + pagination + search',
@@ -43,21 +46,24 @@ export default [
     import: ['createTable', 'columnFilters', 'sorting', 'pagination', 'search'],
     // §9.3 budgets core *without* search only: recorded and ratcheted, no spec budget.
     spec: 'none (§9.3 budgets core without search)',
-    limit: 34.5 * KB,
+    // F3: 34.5 → 27 KB (27,205 B).
+    limit: 27 * KB,
   },
   {
     name: 'datakable: createTable (default preset)',
     pkg: 'datakable',
     import: ['createTable'],
     ...PRESET,
-    limit: 34.5 * KB,
+    // F3: 34.5 → 27.5 KB (27,697 B).
+    limit: 27.5 * KB,
   },
   {
     name: 'datakable: useDataTable (default preset + react hook)',
     pkg: 'datakable',
     import: ['useDataTable'],
     ...PRESET,
-    limit: 36.5 * KB,
+    // F3: 36.5 → 29 KB (29,436 B).
+    limit: 29 * KB,
   },
   {
     name: 'datakable: DataTable (default preset + <DataTable />)',
@@ -65,6 +71,7 @@ export default [
     import: ['DataTable'],
     ...PRESET,
     // R11: 39 → 39.5 KB for T34's per-cell error boundaries + the hook's inline-data loop fix.
-    limit: 39.5 * KB,
+    // F3: 39.5 → 32 KB (32,675 B).
+    limit: 32 * KB,
   },
 ]

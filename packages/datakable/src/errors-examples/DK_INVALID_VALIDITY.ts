@@ -1,4 +1,5 @@
 import { createTable, type StandardSchemaV1, type ValidityState, validity } from '@datakable/core'
+import { withSchema } from '@datakable/core/schema'
 
 type User = { id: number; email: string }
 // Any Standard Schema v1 (zod, valibot, arktype, …); a hand-written one here.
@@ -15,7 +16,7 @@ const UserSchema: StandardSchemaV1<unknown, User> = {
 
 const table = createTable({
   data: [{ id: 1, email: 'ada@example.com' }, { id: 2 }],
-  schema: UserSchema,
+  schema: withSchema(UserSchema),
   invalidRows: 'flag',
   features: [validity()],
 })

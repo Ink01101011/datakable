@@ -12,6 +12,8 @@ import {
   sorting,
 } from '../index'
 import { makeSchema } from '../ingest/test-schemas'
+import { withSchema } from '../ingest/with-schema'
+import { withFetcher } from '../source/with-fetcher'
 import {
   type AnyTable,
   expectDiagnostic,
@@ -329,7 +331,9 @@ const cases: SlotCase[] = [
     where: 'options.schema',
     status: 'idle',
     run: (onDiagnostic) =>
-      loose(createTable({ data: people(), schema: makeSchema<Person>(fail), onDiagnostic })),
+      loose(
+        createTable({ data: people(), schema: withSchema(makeSchema<Person>(fail)), onDiagnostic }),
+      ),
     // Each row gets a synthetic issue and is handled per invalidRows ('drop').
     fallback: (t) => {
       expect(t.getRowModel().rows).toHaveLength(0)
@@ -346,7 +350,7 @@ const cases: SlotCase[] = [
       const t = loose(
         createTable({
           data: people(),
-          schema: makeSchema<Person>(fail, { async: true }),
+          schema: withSchema(makeSchema<Person>(fail, { async: true })),
           onDiagnostic,
         }),
       )
@@ -367,7 +371,7 @@ const cases: SlotCase[] = [
         const t = loose(
           createTable({
             features: [sorting({ mode: 'server' })],
-            fetcher: inject === 'throw' ? fail : reject,
+            fetcher: withFetcher(inject === 'throw' ? fail : reject),
             onDiagnostic,
           }),
         )
@@ -391,7 +395,7 @@ const cases: SlotCase[] = [
       const t = loose(
         createTable({
           features: [sorting({ mode: 'server' })],
-          fetcher: (() => ({ items: [] })) as never,
+          fetcher: withFetcher((() => ({ items: [] })) as never),
           onDiagnostic,
         }),
       )
@@ -554,7 +558,7 @@ const cases: SlotCase[] = [
       const t = loose(
         createTable({
           features: [sorting({ mode: 'server' })],
-          fetcher: () => ({ rows: people() }),
+          fetcher: withFetcher(() => ({ rows: people() })),
           interceptors: [
             defineInterceptor({ name: 'boom', on: ['async:request'], intercept: reject }),
           ],
@@ -680,7 +684,9 @@ describe("a failure that sets 'error' is never silent (§6.6)", () => {
     const t = loose(
       createTable({
         features: [sorting({ mode: 'server' })],
-        fetcher: inject === 'throw' ? fail : inject === 'reject' ? reject : ((() => 1) as never),
+        fetcher: withFetcher(
+          inject === 'throw' ? fail : inject === 'reject' ? reject : ((() => 1) as never),
+        ),
       }),
     )
     const statuses = watch(t)
@@ -751,10 +757,10 @@ describe('an interceptor that fails after calling next()', () => {
     const t = loose(
       createTable({
         features: [sorting({ mode: 'server' })],
-        fetcher: () => {
+        fetcher: withFetcher(() => {
           calls++
           return { rows: people() }
-        },
+        }),
         interceptors: [
           defineInterceptor({
             name: 'late',

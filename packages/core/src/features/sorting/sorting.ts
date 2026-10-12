@@ -103,7 +103,7 @@ const validLocale = (v: unknown) => {
   }
 }
 
-const ALGORITHMS = ['auto', 'tim', 'radix', 'counting', 'merge', 'native'] as const
+const ALGORITHMS = ['auto', 'tim', 'radix', 'counting', 'native'] as const
 
 const sortingOptions = {
   locale: {
@@ -383,7 +383,7 @@ export const sorting = (opts: SortingOptions = {}) => {
           {
             feature: 'sorting',
             dependency: 'exsorted',
-            capability: 'timSort / mergeSort / radixSort / countingSort',
+            capability: 'timSort / radixSort / countingSort',
             supported: '^1.2.3',
             fallback: 'Array.prototype.sort (native, stable)',
           },
@@ -482,7 +482,7 @@ export const sorting = (opts: SortingOptions = {}) => {
           } else {
             algorithm = want
             reason = by
-            return sortWithComparator(indices, build(), want as 'tim' | 'merge')
+            return sortWithComparator(indices, build(), want as 'tim')
           }
         } else if (want === 'native') return native(by)
         if (!keys) {

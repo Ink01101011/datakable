@@ -1,4 +1,11 @@
-import { createDeferred, createTable, type FetchResult, sorting, startTable } from 'datakable'
+import {
+  createDeferred,
+  createTable,
+  type FetchResult,
+  sorting,
+  startTable,
+  withFetcher,
+} from 'datakable'
 
 type User = { id: number; name: string }
 
@@ -8,8 +15,10 @@ const table = createDeferred(() =>
   createTable({
     rowKey: 'id',
     features: [sorting({ mode: 'server' })],
-    fetcher: async ({ signal }) =>
-      (await (await fetch('/api/users', { signal })).json()) as FetchResult<User>,
+    fetcher: withFetcher(
+      async ({ signal }) =>
+        (await (await fetch('/api/users', { signal })).json()) as FetchResult<User>,
+    ),
   }),
 )
 

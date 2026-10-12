@@ -31,12 +31,14 @@ export {
   isStandardSchema,
   type SchemaOutcome,
 } from './ingest/schema'
+export { SCHEMA_INGEST, type TableSchema } from './ingest/schema-brand'
 export {
   type InvalidRowsMode,
   type SchemaIssueColumn,
   schemaDiagnostics,
 } from './ingest/schema-codes'
 export type { StandardSchemaV1 } from './ingest/standard-schema'
+export { withSchema } from './ingest/with-schema'
 export * from './intercept'
 export * from './pipeline'
 export * from './preset'

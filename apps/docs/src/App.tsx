@@ -8,6 +8,8 @@ import {
   useDataTable,
   type ValidityState,
   VERSION,
+  withFetcher,
+  withSchema,
 } from 'datakable'
 import { type ReactNode, useCallback, useId, useRef, useState } from 'react'
 import { AccountSchema, createFakeServer, rawAccounts, rows } from './data'
@@ -159,7 +161,7 @@ function ServerMode({ onDiagnostic }: { onDiagnostic: OnDiagnostic }) {
   failRef.current = fail
   // One fake server per instance; it reads the toggle at request time.
   const [fetcher] = useState(() =>
-    createFakeServer({ latency: 600, shouldFail: () => failRef.current }),
+    withFetcher(createFakeServer({ latency: 600, shouldFail: () => failRef.current })),
   )
   const table = useDataTable({ rowKey: 'id', features: serverFeatures, fetcher, onDiagnostic })
   const { status, isInitialLoad } = table.rowModel
@@ -192,7 +194,7 @@ function ServerMode({ onDiagnostic }: { onDiagnostic: OnDiagnostic }) {
 function SchemaFlag({ onDiagnostic }: { onDiagnostic: OnDiagnostic }) {
   const table = useDataTable({
     data: rawAccounts,
-    schema: AccountSchema,
+    schema: withSchema(AccountSchema),
     invalidRows: 'flag',
     rowKey: 'id',
     onDiagnostic,

@@ -4,13 +4,14 @@ import type { RedactFn, RedactLevel } from '../diagnostics/redact'
 import type { Diagnostic } from '../diagnostics/types'
 import type { AnyFeature } from '../feature/types'
 import type { InvalidRow } from '../ingest/schema'
+import type { TableSchema } from '../ingest/schema-brand'
 import type { InvalidRowsMode } from '../ingest/schema-codes'
-import type { StandardSchemaV1 } from '../ingest/standard-schema'
 import type { Interceptor } from '../intercept/define'
 import type { OpName } from '../intercept/operations'
 import type { RowKey } from '../pipeline/row'
 import type { RowModel } from '../pipeline/types'
-import type { Fetcher, FetchOutcome } from '../source/fetcher'
+import type { FetchOutcome } from '../source/fetcher'
+import type { ServerFetcher } from '../source/server-brand'
 
 /** Table state: one entry per slice (feature state is typed by `StateOf`, T08). */
 export type TableState = Record<string, unknown>
@@ -45,11 +46,11 @@ export interface TableOptions<T, S extends TableState = TableState> {
   data?: readonly T[]
   columns?: readonly ColumnDef<T>[]
   /**
-   * A Standard Schema v1 (zod, valibot, arktype, …) every row is validated with (§5.1); the row
-   * type is its output. An async schema sets `status: 'validating'` while it runs. Read once, at
-   * creation.
+   * A Standard Schema v1 (zod, valibot, arktype, …) every row is validated with (§5.1), opted in
+   * with `withSchema(UserSchema)` from `@datakable/core/schema`; the row type is its output. An
+   * async schema sets `status: 'validating'` while it runs. Read once, at creation.
    */
-  schema?: StandardSchemaV1<unknown, T>
+  schema?: TableSchema<unknown, T>
   /**
    * What happens to rows that fail `schema` (§5.1): `'drop'` (default) removes them, `'flag'` keeps
    * them with `row.valid === false`, `'throw'` throws `DatakableSchemaError`. All three list them in
@@ -90,8 +91,10 @@ export interface TableOptions<T, S extends TableState = TableState> {
    * creation and whenever that state changes (`status: 'fetching'`), through `async:request`
    * (latest wins, abort, `timeout`). Needs at least one feature with `mode: 'server'`
    * (`DK_FETCHER_WITHOUT_SERVER_MODE`). The returned rows go through `schema` and the data checks.
+   * Opt in with `withFetcher(fetchUsers)` from `@datakable/core/server`: a table without a fetcher
+   * does not bundle the server source (changed 2026-10-13 for §9.3).
    */
-  fetcher?: Fetcher<T>
+  fetcher?: ServerFetcher<T>
   /**
    * Server mode without a fetcher (§7.1): the total number of rows on the server, while `data` is
    * only the current page. Server-mode pagination counts pages from it (`DK_ROW_COUNT_MISSING`

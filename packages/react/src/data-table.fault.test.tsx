@@ -5,6 +5,7 @@ import {
   getOperation,
   sorting,
 } from '@datakable/core'
+import { withSchema } from '@datakable/core/schema'
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -117,10 +118,12 @@ describe('React render slots × injection (§11)', () => {
 
   it('columns[i].invalidCell (throw): ⚠ in the broken cell, DK_CALLBACK_FAILED', async () => {
     const { seen, onDiagnostic } = sink()
-    const schema = makeSchema((v) =>
-      (v as Person).id === 'p1'
-        ? { issues: [{ message: `bad ${SECRET}`, path: ['n'] }] }
-        : { value: v },
+    const schema = withSchema(
+      makeSchema((v) =>
+        (v as Person).id === 'p1'
+          ? { issues: [{ message: `bad ${SECRET}`, path: ['n'] }] }
+          : { value: v },
+      ),
     )
     render(
       <DataTable
@@ -187,10 +190,12 @@ describe('React render slots × injection (§11)', () => {
     function Boom(): ReactNode {
       throw new InjectedError()
     }
-    const schema = makeSchema((v) =>
-      (v as Person).id === 'p1'
-        ? { issues: [{ message: `bad ${SECRET}`, path: ['n'] }] }
-        : { value: v },
+    const schema = withSchema(
+      makeSchema((v) =>
+        (v as Person).id === 'p1'
+          ? { issues: [{ message: `bad ${SECRET}`, path: ['n'] }] }
+          : { value: v },
+      ),
     )
     render(
       <DataTable

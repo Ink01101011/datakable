@@ -1,4 +1,5 @@
 import { type FetchParams, type FetchResult, pagination } from '@datakable/core'
+import { withFetcher } from '@datakable/core/server'
 import { DataTable } from '@datakable/react'
 import { renderToString } from 'react-dom/server'
 
@@ -12,7 +13,7 @@ const features = [pagination({ mode: 'server' })]
 
 function Users() {
   // No initialData: the server has no rows to render.
-  return <DataTable rowKey="id" features={features} fetcher={fetchUsers} />
+  return <DataTable rowKey="id" features={features} fetcher={withFetcher(fetchUsers)} />
 }
 
 // In the server render (Next.js, Remix, a Node server, …).

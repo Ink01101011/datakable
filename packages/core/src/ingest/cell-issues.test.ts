@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Diagnostic } from '../diagnostics/types'
 import type { RowIssue } from '../pipeline/row'
 import { createTable } from '../table/create-table'
-import { issuePathTouches } from './schema'
+import { issuePathTouches } from './cell-issues'
 import { makeSchema } from './test-schemas'
+import { withSchema } from './with-schema'
 
 let seen: Diagnostic[]
 const onDiagnostic = (d: Diagnostic) => {
@@ -73,10 +74,12 @@ type Issue = { message: string; path?: RowIssue['path'] }
 /** A flag-mode table whose row i fails with `issues[i]` (no issues → valid). */
 function table(issues: readonly (readonly Issue[])[], columns: readonly unknown[]) {
   let i = 0
-  const schema = makeSchema((v) => {
-    const own = issues[i++] ?? []
-    return own.length === 0 ? { value: v } : { issues: own }
-  })
+  const schema = withSchema(
+    makeSchema((v) => {
+      const own = issues[i++] ?? []
+      return own.length === 0 ? { value: v } : { issues: own }
+    }),
+  )
   return createTable({
     schema,
     data: issues.map((_, n) => ({ n })),
@@ -124,9 +127,11 @@ describe('row.getCellIssues: issue → column mapping', () => {
   })
 
   it('a crashed row (synthetic issue, no path) is broken in every cell', () => {
-    const schema = makeSchema<{ n: number }>(() => {
-      throw new Error('boom')
-    })
+    const schema = withSchema(
+      makeSchema<{ n: number }>(() => {
+        throw new Error('boom')
+      }),
+    )
     const t = createTable({
       schema,
       data: [{ n: 1 }],

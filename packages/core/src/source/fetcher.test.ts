@@ -7,9 +7,12 @@ import { pagination } from '../features/pagination'
 import { search } from '../features/search'
 import { sorting } from '../features/sorting'
 import { makeSchema } from '../ingest/test-schemas'
+import { withSchema } from '../ingest/with-schema'
 import { createTable } from '../table/create-table'
 import { getTableInternals } from '../table/internals'
 import type { FetchParams, FetchResult } from './fetcher'
+import { asyncRequests, requestsOf } from './requests'
+import { withFetcher } from './with-fetcher'
 
 /** Server search that commits on every keystroke (overrides the §6.3 server typing defaults). */
 const serverNow = { mode: 'server', typing: { strategy: 'immediate', minLength: 0 } } as const
@@ -144,7 +147,7 @@ describe('mode per feature (§7.1)', () => {
 describe('DK_FETCHER_WITHOUT_SERVER_MODE (§7.1)', () => {
   it('throws at creation, naming the fix', () => {
     const e = configError(() =>
-      createTable({ features: [sorting(), pagination()], fetcher: manual().fetcher }),
+      createTable({ features: [sorting(), pagination()], fetcher: withFetcher(manual().fetcher) }),
     )
     expect(e.diagnostic.code).toBe('DK_FETCHER_WITHOUT_SERVER_MODE')
     expect(e.diagnostic.where).toEqual({ kind: 'option', path: 'fetcher' })
@@ -155,7 +158,7 @@ describe('DK_FETCHER_WITHOUT_SERVER_MODE (§7.1)', () => {
 
   it('throws on setOptions({ fetcher }) and keeps the previous options', () => {
     const t = createTable({ data: people(2), features: [sorting()] })
-    const e = configError(() => t.setOptions({ fetcher: manual().fetcher }))
+    const e = configError(() => t.setOptions({ fetcher: withFetcher(manual().fetcher) }))
     expect(e.diagnostic.code).toBe('DK_FETCHER_WITHOUT_SERVER_MODE')
     expect(t.getOptions().fetcher).toBeUndefined()
   })
@@ -164,7 +167,10 @@ describe('DK_FETCHER_WITHOUT_SERVER_MODE (§7.1)', () => {
 describe('fetcher (§7.1)', () => {
   it('runs at creation: fetching + isInitialLoad, then rows, idle, loaded (one notification)', async () => {
     const m = manual()
-    const t = createTable({ fetcher: m.fetcher, features: [pagination({ mode: 'server' })] })
+    const t = createTable({
+      fetcher: withFetcher(m.fetcher),
+      features: [pagination({ mode: 'server' })],
+    })
     expect(m.fetcher).toHaveBeenCalledTimes(1)
     expect(m.last().params).toEqual({ pageIndex: 0, pageSize: 10, signal: expect.any(AbortSignal) })
     const loading = t.getRowModel()
@@ -185,7 +191,10 @@ describe('fetcher (§7.1)', () => {
 
   it('an empty result counts as loaded', async () => {
     const m = manual()
-    const t = createTable({ fetcher: m.fetcher, features: [pagination({ mode: 'server' })] })
+    const t = createTable({
+      fetcher: withFetcher(m.fetcher),
+      features: [pagination({ mode: 'server' })],
+    })
     m.last().resolve({ rows: [], rowCount: 0 })
     await tick()
     const r = t.getRowModel()
@@ -195,7 +204,10 @@ describe('fetcher (§7.1)', () => {
 
   it('a page change refetches: notified at start (stale rows shown) and at end', async () => {
     const m = manual()
-    const t = createTable({ fetcher: m.fetcher, features: [pagination({ mode: 'server' })] })
+    const t = createTable({
+      fetcher: withFetcher(m.fetcher),
+      features: [pagination({ mode: 'server' })],
+    })
     m.last().resolve({ rows: people(10), rowCount: 95 })
     await tick()
     const seen = watch(t)
@@ -216,7 +228,7 @@ describe('fetcher (§7.1)', () => {
   it('the pageIndex from initialState is kept while the first request is in flight', async () => {
     const m = manual()
     const t = createTable({
-      fetcher: m.fetcher,
+      fetcher: withFetcher(m.fetcher),
       features: [pagination({ mode: 'server' })],
       initialState: { pagination: { pageIndex: 3, pageSize: 10 } },
     })
@@ -230,7 +242,7 @@ describe('fetcher (§7.1)', () => {
   it('a sort change plus the page auto-reset is one request', async () => {
     const m = manual()
     const t = createTable({
-      fetcher: m.fetcher,
+      fetcher: withFetcher(m.fetcher),
       columns: [{ key: 'n' }],
       features: [sorting({ mode: 'server' }), pagination({ mode: 'server' })],
       initialState: { pagination: { pageIndex: 2, pageSize: 10 } },
@@ -245,7 +257,7 @@ describe('fetcher (§7.1)', () => {
   it('params carry only server-mode state; client steps run on the fetched rows', async () => {
     const m = manual()
     const t = createTable({
-      fetcher: m.fetcher,
+      fetcher: withFetcher(m.fetcher),
       columns: [{ key: 'n' }, { key: 'id' }],
       // Immediate typing (the server default debounces, §6.3): each setSearch commits at once.
       features: [columnFilters({ mode: 'server' }), search(serverNow), sorting()],
@@ -267,7 +279,10 @@ describe('fetcher (§7.1)', () => {
 
   it('latest wins: a superseded result is ignored (DK_FETCH_ABORTED, signal aborted)', async () => {
     const m = manual()
-    const t = createTable({ fetcher: m.fetcher, features: [pagination({ mode: 'server' })] })
+    const t = createTable({
+      fetcher: withFetcher(m.fetcher),
+      features: [pagination({ mode: 'server' })],
+    })
     m.last().resolve({ rows: people(10), rowCount: 95 })
     await tick()
     api(t).setPageIndex?.(1)
@@ -288,7 +303,7 @@ describe('fetcher (§7.1)', () => {
     const m = manual()
     const onDiagnostic = vi.fn()
     const t = createTable({
-      fetcher: m.fetcher,
+      fetcher: withFetcher(m.fetcher),
       features: [pagination({ mode: 'server' })],
       onDiagnostic,
     })
@@ -322,7 +337,7 @@ describe('fetcher (§7.1)', () => {
   it("a failed first request: 'error' with isInitialLoad true", async () => {
     const m = manual()
     const t = createTable({
-      fetcher: m.fetcher,
+      fetcher: withFetcher(m.fetcher),
       features: [pagination({ mode: 'server' })],
       onDiagnostic: () => {},
     })
@@ -339,9 +354,9 @@ describe('fetcher (§7.1)', () => {
 
   it('a fetcher that throws synchronously is DK_FETCH_FAILED', () => {
     const t = createTable({
-      fetcher: () => {
+      fetcher: withFetcher(() => {
         throw new RangeError('bad')
-      },
+      }),
       features: [pagination({ mode: 'server' })],
       onDiagnostic: () => {},
     })
@@ -362,7 +377,7 @@ describe('fetcher (§7.1)', () => {
   ])('bad response (%s): DK_FETCH_BAD_RESPONSE, previous rows kept', async (problem, value) => {
     const m = manual()
     const t = createTable({
-      fetcher: m.fetcher,
+      fetcher: withFetcher(m.fetcher),
       features: [pagination({ mode: 'server' })],
       onDiagnostic: () => {},
     })
@@ -380,7 +395,10 @@ describe('fetcher (§7.1)', () => {
 
   it('rowCount may be left out without server pagination (rows.length)', async () => {
     const m = manual()
-    const t = createTable({ fetcher: m.fetcher, features: [sorting({ mode: 'server' })] })
+    const t = createTable({
+      fetcher: withFetcher(m.fetcher),
+      features: [sorting({ mode: 'server' })],
+    })
     m.last().resolve({ rows: people(4) })
     await tick()
     expect(t.getRowModel().status).toBe('idle')
@@ -388,15 +406,17 @@ describe('fetcher (§7.1)', () => {
   })
 
   it('schema validation and data checks apply to the fetched rows', async () => {
-    const schema = makeSchema<P>((v) =>
-      typeof (v as P).n === 'number'
-        ? { value: v as P }
-        : { issues: [{ message: 'n', path: ['n'] }] },
+    const schema = withSchema(
+      makeSchema<P>((v) =>
+        typeof (v as P).n === 'number'
+          ? { value: v as P }
+          : { issues: [{ message: 'n', path: ['n'] }] },
+      ),
     )
     const m = manual<unknown>()
     const t = createTable({
       schema,
-      fetcher: m.fetcher,
+      fetcher: withFetcher(m.fetcher),
       features: [sorting({ mode: 'server' })],
       onDiagnostic: () => {},
     })
@@ -411,7 +431,7 @@ describe('fetcher (§7.1)', () => {
     vi.useFakeTimers()
     const m = manual()
     const t = createTable({
-      fetcher: m.fetcher,
+      fetcher: withFetcher(m.fetcher),
       timeout: 50,
       features: [pagination({ mode: 'server' })],
       onDiagnostic: () => {},
@@ -424,7 +444,10 @@ describe('fetcher (§7.1)', () => {
 
   it('destroy aborts the request: no notification, no diagnostic', async () => {
     const m = manual()
-    const t = createTable({ fetcher: m.fetcher, features: [pagination({ mode: 'server' })] })
+    const t = createTable({
+      fetcher: withFetcher(m.fetcher),
+      features: [pagination({ mode: 'server' })],
+    })
     const seen = watch(t)
     t.destroy()
     expect(m.last().params.signal.aborted).toBe(true)
@@ -437,7 +460,7 @@ describe('fetcher (§7.1)', () => {
   it('strict: a failed fetch rethrows nowhere unhandled and still ends in error', async () => {
     const m = manual()
     const t = createTable({
-      fetcher: m.fetcher,
+      fetcher: withFetcher(m.fetcher),
       strict: true,
       features: [pagination({ mode: 'server' })],
       onDiagnostic: () => {},
@@ -451,12 +474,12 @@ describe('fetcher (§7.1)', () => {
 describe("status 'searching' (async searchFn seam, §6.6)", () => {
   it("a searchFn request is 'searching'; a fetcher overlapping it wins ('fetching')", async () => {
     const m = manual()
-    const t = createTable({ fetcher: m.fetcher, features: [search(serverNow)] })
+    const t = createTable({ fetcher: withFetcher(m.fetcher), features: [search(serverNow)] })
     m.last().resolve({ rows: people(2) })
     await tick()
     const seen = watch(t)
     let done: (v: unknown) => void = () => {}
-    const p = getTableInternals(t).request(
+    const p = requestsOf(t).request(
       'searchFn',
       () =>
         new Promise((r) => {
@@ -505,7 +528,7 @@ describe('property: 4 steps × 2 modes (§7.1)', () => {
             createTable({
               columns: [{ key: 'n' }],
               features: make(modes),
-              ...(anyServer ? { fetcher: m.fetcher } : { data: people(5) }),
+              ...(anyServer ? { fetcher: withFetcher(m.fetcher) } : { data: people(5) }),
             })
           if (!prefix) {
             expect(configError(create).diagnostic.code).toBe('DK_MODE_ORDER')
@@ -537,5 +560,38 @@ describe('property: 4 steps × 2 modes (§7.1)', () => {
       ),
       { numRuns: 32 },
     )
+  })
+})
+
+describe('withFetcher: the server source is an opt-in import (changed 2026-10-13 for §9.3)', () => {
+  it('a fetcher not opted in with withFetcher() is DK_INVALID_OPTION naming the fix', () => {
+    const e = configError(() =>
+      createTable({
+        features: [pagination({ mode: 'server' })],
+        fetcher: manual().fetcher as never,
+      }),
+    )
+    expect(e.diagnostic.code).toBe('DK_INVALID_OPTION')
+    expect(e.message).toMatch(/withFetcher\(fetchUsers\)/)
+  })
+
+  it('keeps one identity per function and calls it', async () => {
+    const m = manual()
+    expect(withFetcher(m.fetcher)).toBe(withFetcher(m.fetcher))
+    expect(withFetcher(manual().fetcher)).not.toBe(withFetcher(m.fetcher))
+    const p = withFetcher(m.fetcher)({ signal: new AbortController().signal, pageIndex: 0 })
+    expect(m.calls).toHaveLength(1)
+    m.last().resolve({ rows: [], rowCount: 0 })
+    await expect(p).resolves.toEqual({ rows: [], rowCount: 0 })
+  })
+
+  it('a table without a fetcher or searchFn creates no request machinery', () => {
+    const t = createTable({ data: people(3), features: [pagination(), sorting()] })
+    expect(getTableInternals(t).peek(asyncRequests)).toBeUndefined()
+    const s = createTable({
+      fetcher: withFetcher(manual().fetcher),
+      features: [pagination({ mode: 'server' })],
+    })
+    expect(getTableInternals(s).peek(asyncRequests)).toBeDefined()
   })
 })

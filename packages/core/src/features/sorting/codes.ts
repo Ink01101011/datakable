@@ -4,7 +4,7 @@ import { DEV } from '../../diagnostics/env'
 declare module '../../diagnostics/catalog' {
   interface DiagnosticCatalog {
     DK_SORT_STRATEGY: {
-      /** The algorithm that sorted: `tim`, `radix`, `counting`, `merge`, `native` or `custom`. */
+      /** The algorithm that sorted: `tim`, `radix`, `counting`, `native` or `custom`. */
       algorithm: string
       /** Why it was chosen (auto rule, override, or fallback). */
       reason: string
@@ -44,7 +44,7 @@ export const sortingMessages: DiagnosticMessages<'DK_SORT_STRATEGY'> = {
       `(${d.reason})`,
     impact: () => 'none; reported because sorting({ debug: true }) is set',
     fix: () => [
-      "to force an algorithm: sorting({ algorithm: 'tim' | 'radix' | 'counting' | 'merge' | " +
+      "to force an algorithm: sorting({ algorithm: 'tim' | 'radix' | 'counting' | " +
         "'native' }) or a column's sortAlgorithm",
       'remove debug: true from sorting() to stop these reports',
     ],

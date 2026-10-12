@@ -8,6 +8,7 @@ import {
   sorting,
   validity,
 } from '@datakable/core'
+import { withFetcher } from '@datakable/core/server'
 import { describe, expect, it, vi } from 'vitest'
 import { createTable, defaultFeatures } from './index'
 
@@ -144,7 +145,7 @@ describe('zero-config createTable: async paths (T19 searchFn / refetch through t
       rows.filter((u) => u.city === query),
     )
     const t = createTable({
-      fetcher,
+      fetcher: withFetcher(fetcher),
       onDiagnostic: () => {},
       // the preset, with a server column filter first (§7.1) and a custom search
       features: [

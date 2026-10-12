@@ -235,7 +235,14 @@ import, DataKable adds no CSS at all.
 ## SSR
 
 ```tsx
-import { DataTable, type FetchParams, type FetchResult, pagination, sorting } from 'datakable'
+import {
+  DataTable,
+  type FetchParams,
+  type FetchResult,
+  pagination,
+  sorting,
+  withFetcher,
+} from 'datakable'
 
 type User = { id: number; name: string }
 
@@ -256,7 +263,7 @@ export function Users({ firstPage, rowCount }: { firstPage: User[]; rowCount: nu
     <DataTable
       rowKey="id"
       features={features}
-      fetcher={fetchUsers}
+      fetcher={withFetcher(fetchUsers)}
       // The server HTML shows these rows and hydration does not fetch them again. Without
       // initialData nothing is fetched on the server: the HTML shows Loading (status 'pending',
       // DK_SSR_ASYNC_DEFERRED) and the browser fetches right after hydrating.
@@ -278,7 +285,14 @@ export function Users({ firstPage, rowCount }: { firstPage: User[]; rowCount: nu
 Without React, `createDeferred` / `startTable` give your own bindings the same behaviour:
 
 ```ts
-import { createDeferred, createTable, type FetchResult, sorting, startTable } from 'datakable'
+import {
+  createDeferred,
+  createTable,
+  type FetchResult,
+  sorting,
+  startTable,
+  withFetcher,
+} from 'datakable'
 
 type User = { id: number; name: string }
 
@@ -288,8 +302,10 @@ const table = createDeferred(() =>
   createTable({
     rowKey: 'id',
     features: [sorting({ mode: 'server' })],
-    fetcher: async ({ signal }) =>
-      (await (await fetch('/api/users', { signal })).json()) as FetchResult<User>,
+    fetcher: withFetcher(
+      async ({ signal }) =>
+        (await (await fetch('/api/users', { signal })).json()) as FetchResult<User>,
+    ),
   }),
 )
 

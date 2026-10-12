@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { pagination } from '../features/pagination'
 import { createTable } from '../table/create-table'
 import type { FetchParams, FetchResult } from './fetcher'
+import { withFetcher } from './with-fetcher'
 
 const unhandled: unknown[] = []
 type Proc = {
@@ -52,7 +53,7 @@ function manual() {
 
 const make = (fetcher: (p: FetchParams) => Promise<FetchResult<P>>, strict = false) =>
   createTable<P, never, [ReturnType<typeof pagination>]>({
-    fetcher,
+    fetcher: withFetcher(fetcher),
     strict,
     onDiagnostic: () => {},
     features: [pagination({ mode: 'server' })],
@@ -132,10 +133,10 @@ describe('setOptions({ fetcher }) with a new reference refetches', () => {
     const t = make(m.fetcher)
     m.last().resolve({ rows: rows(1), rowCount: 1 })
     await tick()
-    t.setOptions({ fetcher: m.fetcher })
+    t.setOptions({ fetcher: withFetcher(m.fetcher) })
     expect(m.calls).toHaveLength(1)
     const n = manual()
-    t.setOptions({ fetcher: n.fetcher })
+    t.setOptions({ fetcher: withFetcher(n.fetcher) })
     expect(n.calls).toHaveLength(1)
     expect(key(n.last().params)).toEqual(key(m.calls[0]?.params))
     expect(t.getRowModel().status).toBe('fetching')

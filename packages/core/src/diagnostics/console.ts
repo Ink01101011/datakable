@@ -1,4 +1,5 @@
 import { formatWhere } from './build'
+import { DEV } from './env'
 import type { Diagnostic } from './types'
 
 const ICON = { error: '✖', warn: '⚠', info: 'ℹ' } as const
@@ -33,8 +34,10 @@ export function createConsoleSink(o: ConsoleSinkOptions): (d: Diagnostic) => voi
   let windowStart = Number.NEGATIVE_INFINITY
   let printed = 0
   let suppressed = 0
+  // The grouped format is development-only: a production build prints one line (§8.2). `DEV` is
+  // read inline so the bundler drops the grouped branch.
   return (d) => {
-    if (!o.dev && d.level !== 'error') return
+    if ((!DEV || !o.dev) && d.level !== 'error') return
     const t = o.now()
     if (t - windowStart >= o.rateLimit.windowMs) {
       if (suppressed > 0) {
@@ -52,7 +55,7 @@ export function createConsoleSink(o: ConsoleSinkOptions): (d: Diagnostic) => voi
       return
     }
     printed++
-    if (!o.dev) {
+    if (!DEV || !o.dev) {
       console.error(`[DataKable ${o.table}] ${d.code} at ${formatWhere(d.where)} — ${d.docs}`)
       return
     }

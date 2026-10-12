@@ -186,11 +186,13 @@ explains the compile errors these rules produce.
 
 ## Schema validation
 
-Pass any [Standard Schema](https://standardschema.dev) (zod, valibot, arktype, …) and the row type
-is its output:
+Pass any [Standard Schema](https://standardschema.dev) (zod, valibot, arktype, …) wrapped with
+`withSchema()` from `@datakable/core/schema`, and the row type is its output. Validation is an
+opt-in import, so a table without a schema does not bundle it:
 
 ```ts
 import { createTable, type StandardSchemaV1 } from '@datakable/core'
+import { withSchema } from '@datakable/core/schema'
 import { validity } from '@datakable/core/validity'
 
 type User = { id: number; name: string }
@@ -200,7 +202,7 @@ declare const json: unknown[] // e.g. await res.json()
 
 const table = createTable({
   data: json, // raw input: every row is validated
-  schema: UserSchema, // the row type is the schema's output
+  schema: withSchema(UserSchema), // opt-in validation; the row type is the schema's output
   invalidRows: 'flag', // 'drop' (default) | 'flag' | 'throw'
   rowKey: 'id',
   features: [validity()], // filters 'all' | 'valid' | 'invalid'
@@ -226,14 +228,18 @@ console.log(table.getInvalidRows()) // [{ index, raw, issues }] in every mode
 
 Every pipeline feature takes `mode: 'client' | 'server'`. Server steps must form a prefix of the
 pipeline (server filter + search, then client sort + paginate is fine; server paginate before
-client search is not) — a violation throws `DatakableConfigError` (`DK_MODE_ORDER`) at creation.
+client search is not) — a violation throws `DatakableConfigError` (`DK_MODE_ORDER`) at creation
+(a development check).
 
-With a `fetcher`, the table loads its own data:
+With a `fetcher`, the table loads its own data. The server source is an opt-in import: wrap the
+fetcher with `withFetcher()` from `@datakable/core/server`, so a table without one does not bundle
+it:
 
 ```ts
 import { createTable, type FetchResult } from '@datakable/core'
 import { pagination } from '@datakable/core/pagination'
 import { search } from '@datakable/core/search'
+import { withFetcher } from '@datakable/core/server'
 import { sorting } from '@datakable/core/sorting'
 
 type User = { id: number; name: string }
@@ -248,7 +254,7 @@ const table = createTable({
     pagination({ mode: 'server', pageSize: 20 }),
   ],
   // Receives only the server-mode state. Latest request wins; superseded ones are aborted.
-  fetcher: async ({ query, sort, pageIndex, pageSize, signal }) => {
+  fetcher: withFetcher(async ({ query, sort, pageIndex, pageSize, signal }) => {
     const params = new URLSearchParams({
       q: query ?? '',
       sort: (sort ?? []).map((s) => `${s.desc ? '-' : ''}${s.id}`).join(','),
@@ -258,7 +264,7 @@ const table = createTable({
     const res = await fetch(`/api/users?${params}`, { signal })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     return (await res.json()) as FetchResult<User> // { rows, rowCount }
-  },
+  }),
   timeout: 10_000, // default 30 s → DK_ASYNC_TIMEOUT
 })
 
@@ -449,10 +455,12 @@ names the step that removed it. Both are plain objects; `String(…)` gives the 
 | `destroy()` | release listeners; later calls are no-ops (`DK_TABLE_DESTROYED`) |
 
 Options: `data`, `columns`, `rowKey` (a path or `(row) => string | number`; duplicates and missing
-keys are reported and get fallback keys), `features`, `schema`, `invalidRows`, `initialState`,
-controlled `state` + `onStateChange`, `interceptors`, `fetcher`, `rowCount`, `timeout`, `name`,
-`onDiagnostic`, `strict`, `diagnostics`. Unknown options are reported with a
-did-you-mean; invalid values throw `DatakableConfigError` naming the accepted values.
+keys are reported and get fallback keys), `features`, `schema` (`withSchema`, from
+`@datakable/core/schema`), `invalidRows`, `initialState`, controlled `state` + `onStateChange`,
+`interceptors`, `fetcher` (`withFetcher`, from `@datakable/core/server`), `rowCount`, `timeout`,
+`name`, `onDiagnostic`, `strict`, `diagnostics`. In development, unknown options are reported with a
+did-you-mean and invalid values throw `DatakableConfigError` naming the accepted values; production
+builds skip these checks (like the data checks and version checks) to stay small.
 
 ## License
 

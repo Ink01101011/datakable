@@ -6,6 +6,7 @@ import {
   search,
   sorting,
 } from '@datakable/core'
+import { withFetcher } from '@datakable/core/server'
 import { StrictMode } from 'react'
 import { renderToString } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -48,7 +49,7 @@ describe('SSR: renderToString (§7.2)', () => {
     const html = renderToString(
       <Names
         features={[sorting({ mode: 'server' })]}
-        fetcher={fetcher}
+        fetcher={withFetcher(fetcher)}
         onDiagnostic={(d: Diagnostic) => diags.push(d)}
       />,
     )
@@ -69,7 +70,7 @@ describe('SSR: renderToString (§7.2)', () => {
     const html = renderToString(
       <Names
         features={[sorting({ mode: 'server' })]}
-        fetcher={fetcher}
+        fetcher={withFetcher(fetcher)}
         initialData={users}
         onDiagnostic={(d: Diagnostic) => diags.push(d.code)}
       />,
@@ -114,7 +115,7 @@ describe('SSR: renderToString (§7.2)', () => {
     const fetcher = vi.fn(() => ({ rows: users }))
     renderToString(
       <StrictMode>
-        <Names features={[sorting({ mode: 'server' })]} fetcher={fetcher} />
+        <Names features={[sorting({ mode: 'server' })]} fetcher={withFetcher(fetcher)} />
       </StrictMode>,
     )
     expect(fetcher).not.toHaveBeenCalled()

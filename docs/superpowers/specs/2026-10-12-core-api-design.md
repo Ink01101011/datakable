@@ -96,6 +96,8 @@ Constraint: state and API shapes must be hoisted generic types. Using `this` ins
 
 **Default preset:** `defaultFeatures = [columnFilters(), validity(), search(), sorting(), pagination()]`. Passing `features` replaces the preset entirely.
 
+**Feature runtime** *(changed 2026-10-13 for §9.3)*: the machinery only features need — stage ordering and API install, the column cache and time-slicing behind `RowModelContext`, and `explainRow`'s per-step details — is the *feature runtime*. `defineFeature` (which every built-in feature uses) loads it, so a table without features does not bundle it. A feature object built without `defineFeature` works as before once any feature module is loaded; when none is, `createTable` throws naming `defineFeature()`.
+
 ### 3.4 Interceptor architecture
 
 Every unit of work is an **operation** with a declared contract and fallback. Cross-cutting behaviour is implemented as interceptors over operations, never inline at call sites.
@@ -142,9 +144,9 @@ defineInterceptor({
 |---|---|---|
 | `errorBoundary` | `*` | catch → classify → emit → registry fallback |
 | `slotContract` | `column:batch` | checks callback return values against `defineSlot` (`DK_CALLBACK_BAD_RETURN`) |
-| `asyncControl` | `async:request` | AbortController per request, latest-wins, timeout, superseded handling |
+| `asyncControl` | `async:request` | AbortController per request, latest-wins, timeout, superseded handling. *(Changed 2026-10-13 for §9.3: installed with the table's first async source — `searchFn` or a `withFetcher` fetcher — still first inside the boundary.)* |
 | `tracer` | `pipeline:*`, `state:dispatch` | timings and per-step counts for `explain()`; installed in development, off in prod unless opted in with `interceptors: [tracer()]` (there is no `trace` option, T25) |
-| `optionValidator` | `table:init`, `table:setOptions` (called directly, before the chain runs) | reads `defineOptions`: unknown / invalid / no-effect options, mode ordering, version and feature compatibility. Not installed as a chain interceptor: it must run before the runtime is built from unchecked options, and a config error must throw to the caller instead of being caught by `errorBoundary` (decided at R5, 2026-10-12) |
+| `optionValidator` | `table:init`, `table:setOptions` (called directly, before the chain runs) | reads `defineOptions`: unknown / invalid / no-effect options, mode ordering, version and feature compatibility. Not installed as a chain interceptor: it must run before the runtime is built from unchecked options, and a config error must throw to the caller instead of being caught by `errorBoundary` (decided at R5, 2026-10-12). *(Changed 2026-10-13 for §9.3: development only — the catalog validator, table-options schema and did-you-mean are stripped from production builds, where `setOptions` still keeps read-once options.)* |
 | `deprecation` | `table:*`, `state:dispatch` (called directly via `warnDeprecated`) | reads `defineDeprecation`; same reasoning as `optionValidator` |
 | `devChecks` (dev only) | `data:ingest`, `pipeline:step` | data mutation, comparator sanity, feature output and mutation checks |
 | `enrich → redact → dedupe/rateLimit → sinks` | `diagnostic:emit` | the log pipeline |
@@ -229,6 +231,7 @@ Measured problem this fixes: with plain `any[]`, `Path<any>` resolves to `string
 ### 5.1 Schema (Standard Schema v1)
 
 - `schema` accepts any Standard Schema implementation (zod, valibot, arktype). The interface is copied into core, so there is no runtime dependency.
+- *(Changed 2026-10-13 for §9.3.)* Validation is an **opt-in import**: `schema: withSchema(UserSchema)` with `withSchema` from `@datakable/core/schema` (also re-exported by `@datakable/core` and `datakable`). The wrapper is the same Standard Schema plus the validation step, memoised per schema (an inline call in a render keeps one identity). A raw schema is a compile error, and `DK_INVALID_OPTION` in development naming the wrapper. Typing is unchanged: `T` from the output, `Row<T>` flag-mode union.
 - `T` is inferred from `InferOutput<schema>`.
 - Validation runs per data reference (memoised). An async schema sets `status: 'validating'`.
 - **`invalidRows`**
@@ -256,6 +259,8 @@ Measured problem this fixes: with plain `any[]`, `Path<any>` resolves to `string
 - **Missing or `null` keys** emit `DK_MISSING_ROW_KEY` and get the fallback `#index`.
 
 ### 5.3 Data checks (on `data:ingest`)
+
+*(Changed 2026-10-13 for §9.3: the data checks are developer hints and run in development builds only, like `DK_DATA_MUTATED` already did; `DK_PERF_HINT` comes from the tracer, also development.)*
 
 | Check | Code |
 |---|---|
@@ -356,7 +361,7 @@ search({
 | strings, floats, multi-column, custom `sortFn` | native `Array.prototype.sort` (stable since ES2019) |
 
 - Sorting operates on index arrays through a key selector over the column cache. exsorted's in-place algorithms get a copy (timSort mutates its input — verified).
-- **Overrides:** table-level `sorting({ algorithm: 'tim' | 'radix' | 'counting' | 'merge' | 'native' | (indices, cmp) => indices })`, or column-level `sortAlgorithm`.
+- **Overrides:** table-level `sorting({ algorithm: 'tim' | 'radix' | 'counting' | 'native' | (indices, cmp) => indices })`, or column-level `sortAlgorithm`. *(Changed 2026-10-13 for §9.3: the `merge` algorithm was dropped; `tim` covers the stable comparator case.)*
 - `DK_SORT_STRATEGY` (info, debug only) reports the algorithm chosen, the reason, n and the time taken.
 - **Benchmark evidence** (Node 25.2.1, median ms; every algorithm passed the stability and correctness check):
 
@@ -411,8 +416,9 @@ search({
 
 Every pipeline feature takes `mode: 'client' | 'server'`.
 
-- **Ordering rule:** server steps must form a **prefix** of the pipeline, with client steps after them. For example, server filter + search followed by client sort + paginate is allowed. Server paginate followed by client search is not, because the client would only see one page. A violation throws `DatakableConfigError` (`DK_MODE_ORDER`) at creation, naming both features and offering the two valid fixes.
+- **Ordering rule:** server steps must form a **prefix** of the pipeline, with client steps after them. For example, server filter + search followed by client sort + paginate is allowed. Server paginate followed by client search is not, because the client would only see one page. A violation throws `DatakableConfigError` (`DK_MODE_ORDER`) at creation, naming both features and offering the two valid fixes. *(Changed 2026-10-13 for §9.3: checked in development builds, like the option validator; the configuration is static, so a production build skips it.)*
 - **Server source:**
+  - *(Changed 2026-10-13 for §9.3.)* The server source is an **opt-in import**: `fetcher: withFetcher(fetchUsers)` with `withFetcher` from `@datakable/core/server` (also re-exported by `@datakable/core` and `datakable`). `fetcher` stays a table option (`setOptions({ fetcher })`, the React sync and `DK_UNSTABLE_OPTION` are unchanged); the wrapper calls the function and carries the server source — the fetcher's requests, `status: 'fetching'`, `refetch()`, the fetched `rowCount` — plus the async request machinery it shares with `searchFn` (`asyncControl`, in-flight status, SSR deferral). Both are table extensions created on first use, so a table without an async source bundles neither. The wrapper is memoised per function (its identity follows the fetcher's). A raw function is a compile error, and `DK_INVALID_OPTION` in development naming the wrapper.
   - `fetcher({ query, filters, sort, pageIndex, pageSize, signal })` → `{ rows, rowCount }`. It receives only the state of the server-mode steps.
   - Response shape is validated (`DK_FETCH_BAD_RESPONSE`, e.g. a missing `rows`, or `rowCount < rows.length`).
   - The fetcher runs through `async:request`: latest-wins, AbortController, a `timeout` (default 30 s → `DK_ASYNC_TIMEOUT`), and failures emit `DK_FETCH_FAILED` while keeping the previous rows.
@@ -603,7 +609,7 @@ table.explainRow(42)
   - `defineDeprecation` catalog → `DK_DEPRECATED` once per API per session, carrying `since`, `removeIn`, the replacement and an optional codemod;
   - deprecated for ≥ 1 minor before removal in the next major; the changeset must name the replacement.
 - **Error codes are public API:** never reused or redefined. Retired codes stay documented, marked with their removal version.
-- **Conflicts:**
+- **Conflicts** *(changed 2026-10-13 for §9.3: these are development checks, stripped from production builds)*:
   - the global registry detects duplicate cores (`DK_DUPLICATE_CORE`);
   - version comparison across the fixed group (`DK_VERSION_MISMATCH`);
   - feature-detection of `exsorted` / `ex-search` / `kk-debounce` capabilities (`DK_DEP_INCOMPATIBLE`);
@@ -671,6 +677,8 @@ table.explainRow(42)
 
 The bundle budgets are estimates from measured dependency sizes plus an assumed DataKable code size. The first implementation measures a baseline. If it exceeds a budget, the budget is **discussed with the user** — it is never raised silently.
 
+*Measured 2026-10-13 after the approved §9.3 changes (opt-in `withSchema` / `withFetcher`, development-only option validation, version and data checks, no `merge` sort, the feature runtime brought by `defineFeature`), with the committed method (`pnpm size`): core `createTable` 23,535 → 14,553 B gzip; with filters + sorting + pagination 30,703 → 22,198 B; the `datakable` preset 35,318 → 27,697 B. The 8 KB core budget is still unmet: the remaining bare table is the store, the index pipeline and `Row`s, row keys, the diagnostics pipeline (build, redaction, safe JSON, hub, console sink), the interceptor runtime with the error boundary, and `explain` — all production behaviour this spec requires. The budgets are unchanged and the gap is raised with the user.*
+
 ---
 
 ## 10. React binding (`@datakable/react`)
@@ -721,7 +729,7 @@ The bundle budgets are estimates from measured dependency sizes plus an assumed 
   - `ex-search` has no per-function subpaths: its exports are only `.`, `./types` and `./react`. Core imports its root, never `./react`.
 - **Standard Schema:** the interface is vendored; no dependency.
 - **Type leak guard:** DataKable's `.d.ts` files must not re-export `ex-search` types, because those reference `ex-flow`. CI compiles a tiny consumer project with `skipLibCheck: false`.
-- **Per-feature entries** (`@datakable/core/search`, …) keep the build tree-shakeable. `datakable` exposes the default preset. `datakable/messages` is the opt-in for full prod messages.
+- **Per-feature entries** (`@datakable/core/search`, …) keep the build tree-shakeable. *(Changed 2026-10-13 for §9.3: `@datakable/core/schema` is the opt-in entry for Standard Schema validation, §5.1.)* `datakable` exposes the default preset. `datakable/messages` is the opt-in for full prod messages.
 - **Existing conventions are kept:** tsup dual ESM/CJS, `exports` with per-condition types, `sideEffects: false` (with an explicit exception for `messages` / `styles.css`), the Changesets fixed group, publint + attw.
 
 ---

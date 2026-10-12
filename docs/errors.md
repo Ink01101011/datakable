@@ -89,6 +89,15 @@ In development, the console prints one collapsed group per diagnostic:
   [`DK_SORT_COMPARATOR_INVALID`](#dk_sort_comparator_invalid),
   [`DK_HOT_INTERCEPTOR`](#dk_hot_interceptor), and React's
   [`DK_UNSTABLE_COLUMNS`](#dk_unstable_columns) / [`DK_UNSTABLE_OPTION`](#dk_unstable_option).
+  Also (since 2026-10-13, to keep the production bundle small, §9.3) the option validator —
+  [`DK_UNKNOWN_OPTION`](#dk_unknown_option), [`DK_INVALID_OPTION`](#dk_invalid_option) and its
+  [`DK_OPTION_NO_EFFECT`](#dk_option_no_effect) reports —, [`DK_MODE_ORDER`](#dk_mode_order), the
+  version checks [`DK_FEATURE_INCOMPATIBLE`](#dk_feature_incompatible),
+  [`DK_DUPLICATE_CORE`](#dk_duplicate_core) and [`DK_VERSION_MISMATCH`](#dk_version_mismatch),
+  and the data checks [`DK_COLUMN_PATH_NOT_FOUND`](#dk_column_path_not_found),
+  [`DK_COLUMN_PATH_PARTIAL`](#dk_column_path_partial) and
+  [`DK_INCONSISTENT_ROW_SHAPE`](#dk_inconsistent_row_shape). A production `setOptions` still keeps
+  the read-once options.
   The tracer, which reports [`DK_PERF_HINT`](#dk_perf_hint), runs in development; in production
   only with `interceptors: [tracer()]`.
 - **Production only:** [`DK_UNSAFE_REDACTION`](#dk_unsafe_redaction).
@@ -318,7 +327,7 @@ prints (development console):
 
 ### DK_COLUMN_PATH_NOT_FOUND
 
-`warn` · fault test: [data-checks.test.ts](../packages/core/src/ingest/data-checks.test.ts)
+`warn` · development only · fault test: [data-checks.test.ts](../packages/core/src/ingest/data-checks.test.ts)
 
 **Problem.** A column's `key` path exists in none of the first 50 rows (`INGEST_SAMPLE`). The column reads `undefined` in every row and renders `''`. The fix suggests the closest existing paths (did-you-mean).
 
@@ -363,7 +372,7 @@ prints (development console):
 
 ### DK_COLUMN_PATH_PARTIAL
 
-`info` · fault test: [data-checks.test.ts](../packages/core/src/ingest/data-checks.test.ts)
+`info` · development only · fault test: [data-checks.test.ts](../packages/core/src/ingest/data-checks.test.ts)
 
 **Problem.** A column's `key` path is missing in some of the first 50 rows (`INGEST_SAMPLE`). Those cells read `undefined` and the default formatter renders `''`. Reported with the count and the first row indices.
 
@@ -407,7 +416,7 @@ prints (development console):
 
 ### DK_INCONSISTENT_ROW_SHAPE
 
-`info` · fault test: [data-checks.test.ts](../packages/core/src/ingest/data-checks.test.ts)
+`info` · development only · fault test: [data-checks.test.ts](../packages/core/src/ingest/data-checks.test.ts)
 
 **Problem.** Zero-config columns (no `columns` option) are derived from the rows' keys, and the first 50 rows (`INGEST_SAMPLE`) do not all have the same keys. The columns are the union of the keys; missing cells render `''`.
 
@@ -564,6 +573,7 @@ prints (development console):
 
 ```ts
 import { createTable, type StandardSchemaV1 } from '@datakable/core'
+import { withSchema } from '@datakable/core/schema'
 
 type User = { id: number; name: string; age: number }
 // Any Standard Schema v1 (zod, valibot, arktype, …); a hand-written one here.
@@ -586,7 +596,7 @@ const json: unknown[] = [
 
 const table = createTable({
   data: json,
-  schema: UserSchema,
+  schema: withSchema(UserSchema),
   columns: [{ key: 'name' }, { key: 'age' }],
 })
 table.getRowModel() // 2 rows: row #1 was dropped (invalidRows: 'drop', the default)
@@ -625,6 +635,7 @@ prints (development console):
 
 ```ts
 import { createTable, type StandardSchemaV1 } from '@datakable/core'
+import { withSchema } from '@datakable/core/schema'
 
 type User = { id: number; email: string }
 // A custom check that throws instead of returning an issue.
@@ -642,7 +653,7 @@ const UserSchema: StandardSchemaV1<unknown, User> = {
 
 const table = createTable({
   data: [{ id: 1, email: 'ada@example.com' }, { id: 2 }],
-  schema: UserSchema,
+  schema: withSchema(UserSchema),
 })
 table.getRowModel()
 ```
@@ -767,7 +778,7 @@ prints (development console):
 
 `info` · fault test: [strategy.test.ts](../packages/core/src/features/sorting/strategy.test.ts)
 
-**Problem.** Information, reported only with `sorting({ debug: true })`: which algorithm sorted the rows (`tim`, `radix`, `counting`, `merge`, `native` or `custom`), why it was chosen, and how long it took.
+**Problem.** Information, reported only with `sorting({ debug: true })`: which algorithm sorted the rows (`tim`, `radix`, `counting`, `native` or `custom`), why it was chosen, and how long it took.
 
 **Common causes.**
 
@@ -796,7 +807,7 @@ prints (development console):
 ℹ [DataKable table#1] DK_SORT_STRATEGY: sorted 1000 rows by age:asc with counting in 0.55 ms (auto: safe integers, key range 90 ≤ 4n)
   where   columns[1] (id "age")
   impact  none; reported because sorting({ debug: true }) is set
-  fix     1. to force an algorithm: sorting({ algorithm: 'tim' | 'radix' | 'counting' | 'merge' | 'native' }) or a column's sortAlgorithm
+  fix     1. to force an algorithm: sorting({ algorithm: 'tim' | 'radix' | 'counting' | 'native' }) or a column's sortAlgorithm
           2. remove debug: true from sorting() to stop these reports
   docs    https://github.com/Ink01101011/datakable/blob/main/docs/errors.md#dk_sort_strategy
   context trigger=api:toggleSort run=1 phase=client
@@ -915,6 +926,7 @@ prints (development console):
 
 ```ts
 import { createTable, type StandardSchemaV1, type ValidityState, validity } from '@datakable/core'
+import { withSchema } from '@datakable/core/schema'
 
 type User = { id: number; email: string }
 // Any Standard Schema v1 (zod, valibot, arktype, …); a hand-written one here.
@@ -931,7 +943,7 @@ const UserSchema: StandardSchemaV1<unknown, User> = {
 
 const table = createTable({
   data: [{ id: 1, email: 'ada@example.com' }, { id: 2 }],
-  schema: UserSchema,
+  schema: withSchema(UserSchema),
   invalidRows: 'flag',
   features: [validity()],
 })
@@ -973,15 +985,16 @@ prints (development console):
 
 ```ts
 import { createTable, type FetchResult, pagination } from '@datakable/core'
+import { withFetcher } from '@datakable/core/server'
 
 type User = { id: number; name: string }
 
 createTable({
   rowKey: 'id',
   features: [pagination({ mode: 'server' })],
-  fetcher: async (): Promise<FetchResult<User>> => {
+  fetcher: withFetcher(async (): Promise<FetchResult<User>> => {
     throw new TypeError('Failed to fetch') // e.g. the API is unreachable
-  },
+  }),
 })
 ```
 
@@ -1015,17 +1028,20 @@ prints (development console):
 
 ```ts
 import { createTable, type FetchResult, sorting } from '@datakable/core'
+import { withFetcher } from '@datakable/core/server'
 
 type User = { id: number; name: string }
 
 const table = createTable({
   rowKey: 'id',
   features: [sorting({ mode: 'server' })],
-  fetcher: ({ signal }) =>
-    new Promise<FetchResult<User>>((resolve) => {
-      const timer = setTimeout(() => resolve({ rows: [], rowCount: 0 }), 50)
-      signal.addEventListener('abort', () => clearTimeout(timer))
-    }),
+  fetcher: withFetcher(
+    ({ signal }) =>
+      new Promise<FetchResult<User>>((resolve) => {
+        const timer = setTimeout(() => resolve({ rows: [], rowCount: 0 }), 50)
+        signal.addEventListener('abort', () => clearTimeout(timer))
+      }),
+  ),
 })
 table.toggleSort('name') // a new request supersedes the first one
 ```
@@ -1061,6 +1077,7 @@ prints (development console):
 
 ```ts
 import { createTable, type FetchResult, pagination } from '@datakable/core'
+import { withFetcher } from '@datakable/core/server'
 
 type User = { id: number; name: string }
 
@@ -1068,8 +1085,9 @@ createTable({
   rowKey: 'id',
   features: [pagination({ mode: 'server' })],
   // The API answers { items, total }; the fetcher returns it as is.
-  fetcher: async () =>
-    ({ items: [{ id: 1, name: 'Ada' }], total: 1 }) as unknown as FetchResult<User>,
+  fetcher: withFetcher(
+    async () => ({ items: [{ id: 1, name: 'Ada' }], total: 1 }) as unknown as FetchResult<User>,
+  ),
 })
 ```
 
@@ -1105,11 +1123,12 @@ prints (development console):
 
 ```ts
 import { createTable, pagination } from '@datakable/core'
+import { withFetcher } from '@datakable/core/server'
 
 createTable({
   features: [pagination({ mode: 'server' })],
   // An API that never answers.
-  fetcher: () => new Promise(() => {}),
+  fetcher: withFetcher(() => new Promise(() => {})),
   timeout: 50, // ms; the default is 30 s
 })
 ```
@@ -1599,7 +1618,7 @@ prints (development console):
 
 ### DK_UNKNOWN_OPTION
 
-`warn` · fault test: [options.test.ts](../packages/core/src/catalog/options.test.ts)
+`warn` · development only · fault test: [options.test.ts](../packages/core/src/catalog/options.test.ts)
 
 **Problem.** An option key is not an option of the table (or of the feature it was passed to). It is ignored. The fix suggests the closest name, and names the feature that owns the option when it was passed to the table instead.
 
@@ -1638,7 +1657,7 @@ prints (development console):
 
 ### DK_INVALID_OPTION
 
-`error` · config: thrown at creation · fault test: [options.test.ts](../packages/core/src/catalog/options.test.ts)
+`error` · development only · config: thrown at creation · fault test: [options.test.ts](../packages/core/src/catalog/options.test.ts)
 
 **Problem.** An option has the wrong runtime type or is out of range. At creation the table is not created (`DatakableConfigError`); in `setOptions()` the call is rejected and the previous options are kept. The fix names the accepted values (and the closest one, for enums).
 
@@ -1675,7 +1694,7 @@ DatakableConfigError: DK_INVALID_OPTION: options.timeout must be a number of mil
 
 `warn` · fault test: [options.test.ts](../packages/core/src/catalog/options.test.ts)
 
-**Problem.** An option is valid but ignored in this configuration (`invalidRows` without `schema`, `rowCount` with a `fetcher` or without server pagination, `initialData` with `data`, …). Also reported when `setOptions()` changes a read-once option: `name`, `schema`, `invalidRows`, `features`, `initialState`, `timeout`, `initialData`, `strict` and `diagnostics` keep the value the table was created with.
+**Problem.** An option is valid but ignored in this configuration (`invalidRows` without `schema`, `rowCount` with a `fetcher` or without server pagination, `initialData` with `data`, …). Also reported when `setOptions()` changes a read-once option: `name`, `schema`, `invalidRows`, `features`, `initialState`, `timeout`, `initialData`, `strict` and `diagnostics` keep the value the table was created with. The option validator's reports are development only; a feature's own (a `search` with no searchable column, `validity` outside flag mode) are reported in every build, and a production `setOptions` still keeps the read-once values.
 
 **Common causes.**
 
@@ -1711,7 +1730,7 @@ prints (development console):
 
 ### DK_MODE_ORDER
 
-`error` · config: thrown at creation · fault test: [fetcher.test.ts](../packages/core/src/source/fetcher.test.ts)
+`error` · development only · config: thrown at creation · fault test: [fetcher.test.ts](../packages/core/src/source/fetcher.test.ts)
 
 **Problem.** A client-mode feature runs before a server-mode one in the pipeline (filter → search → sort → paginate). The client step would only see the rows the server returned, so the table is not created.
 
@@ -1728,11 +1747,12 @@ prints (development console):
 
 ```ts
 import { createTable, pagination, sorting } from '@datakable/core'
+import { withFetcher } from '@datakable/core/server'
 
 createTable({
   // Sorting in the browser, but paging on the server: the client sort would see one page only.
   features: [sorting(), pagination({ mode: 'server' })],
-  fetcher: async () => ({ rows: [], rowCount: 0 }),
+  fetcher: withFetcher(async () => ({ rows: [], rowCount: 0 })),
 })
 ```
 
@@ -1766,10 +1786,11 @@ DatakableConfigError: DK_MODE_ORDER: feature "pagination" (paginate) is in serve
 
 ```ts
 import { createTable, pagination } from '@datakable/core'
+import { withFetcher } from '@datakable/core/server'
 
 createTable({
   features: [pagination()], // client mode (the default)
-  fetcher: async () => ({ rows: [], rowCount: 0 }),
+  fetcher: withFetcher(async () => ({ rows: [], rowCount: 0 })),
 })
 ```
 
@@ -1865,7 +1886,7 @@ DatakableConfigError: DK_FEATURE_API_CONFLICT: feature "quickSort" exposes "togg
 
 ### DK_FEATURE_INCOMPATIBLE
 
-`error` · config: thrown at creation · fault test: [versioning.test.ts](../packages/core/src/versioning/versioning.test.ts)
+`error` · development only · config: thrown at creation · fault test: [versioning.test.ts](../packages/core/src/versioning/versioning.test.ts)
 
 **Problem.** A feature declares `requires: { core: '<range>' }` and the installed core does not satisfy it (or the range is not valid semver). The table is not created.
 
@@ -2221,6 +2242,7 @@ Needs a server render, then a hydration that differs from it; the injecting test
 
 ```tsx
 import { type FetchParams, type FetchResult, pagination } from '@datakable/core'
+import { withFetcher } from '@datakable/core/server'
 import { DataTable } from '@datakable/react'
 import { renderToString } from 'react-dom/server'
 
@@ -2234,7 +2256,7 @@ const features = [pagination({ mode: 'server' })]
 
 function Users() {
   // No initialData: the server has no rows to render.
-  return <DataTable rowKey="id" features={features} fetcher={fetchUsers} />
+  return <DataTable rowKey="id" features={features} fetcher={withFetcher(fetchUsers)} />
 }
 
 // In the server render (Next.js, Remix, a Node server, …).
@@ -2356,7 +2378,7 @@ prints (development console):
 
 ### DK_DUPLICATE_CORE
 
-`error` · fault test: [versioning.test.ts](../packages/core/src/versioning/versioning.test.ts)
+`error` · development only · fault test: [versioning.test.ts](../packages/core/src/versioning/versioning.test.ts)
 
 **Problem.** Two copies of `@datakable/core` are loaded in one page (detected through a global registry). Each table works with its own copy, but plugins built against the other copy may be ignored or fail registry checks, and the bundle ships core twice. One known false positive: a dev server's hot module reload that re-runs core reports it once.
 
@@ -2387,7 +2409,7 @@ Needs two copies of core in one bundle (the test loads core twice). Built from i
 
 ### DK_VERSION_MISMATCH
 
-`warn` · fault test: [versioning.test.ts](../packages/core/src/versioning/versioning.test.ts)
+`warn` · development only · fault test: [versioning.test.ts](../packages/core/src/versioning/versioning.test.ts)
 
 **Problem.** `@datakable/core`, `@datakable/react` and `datakable` are released together with one version, and the installed ones differ. It may work, but APIs and types between them can disagree.
 
@@ -2432,7 +2454,7 @@ Needs two installed versions of the release group. Built from its details:
 Needs the dependency overridden at install time. Built from its details:
 
 ```text
-⚠ [DataKable table#1] DK_DEP_INCOMPATIBLE: exsorted has no usable timSort / mergeSort / radixSort / countingSort; it was probably overridden to a version outside ^1.2.3
+⚠ [DataKable table#1] DK_DEP_INCOMPATIBLE: exsorted has no usable timSort / radixSort / countingSort; it was probably overridden to a version outside ^1.2.3
   where   feature "sorting"
   impact  feature "sorting" uses Array.prototype.sort (native, stable) instead; results stay correct
   fix     1. install a supported version: pnpm add exsorted@"^1.2.3" (check pnpm why exsorted)

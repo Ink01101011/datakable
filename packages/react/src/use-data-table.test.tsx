@@ -10,6 +10,7 @@ import {
   sorting,
   type VersionRegistry,
 } from '@datakable/core'
+import { withFetcher } from '@datakable/core/server'
 import { act, render, renderHook } from '@testing-library/react'
 import { Activity, type ReactNode, StrictMode, useState } from 'react'
 import { renderToString } from 'react-dom/server'
@@ -172,10 +173,10 @@ describe('useDataTable (§10)', () => {
       ({ tag }: { tag: string }) =>
         useDataTable({
           features: [sorting({ mode: 'server' })],
-          fetcher: (p: FetchParams): FetchResult<User> => {
+          fetcher: withFetcher((p: FetchParams): FetchResult<User> => {
             calls.push(`${tag}:${p.sort?.length ?? 0}`)
             return { rows: users, rowCount: users.length }
-          },
+          }),
           onDiagnostic: () => {},
         }),
       { initialProps: { tag: 'a' } },
@@ -202,7 +203,7 @@ describe('useDataTable (§10)', () => {
         resolve = r
       })
     const { result } = renderHook(() =>
-      useDataTable({ features: [sorting({ mode: 'server' })], fetcher }),
+      useDataTable({ features: [sorting({ mode: 'server' })], fetcher: withFetcher(fetcher) }),
     )
     expect(result.current.rowModel.status).toBe('fetching')
     expect(result.current.rowModel.isInitialLoad).toBe(true)
@@ -221,7 +222,7 @@ describe('useDataTable (§10)', () => {
           data: [] as User[],
           rowCount: 0,
           features: [sorting({ mode: 'server' })],
-          ...(on ? { fetcher } : {}),
+          ...(on ? { fetcher: withFetcher(fetcher) } : {}),
         }),
       { initialProps: { on: false } },
     )
@@ -387,7 +388,7 @@ describe('useDataTable (§10)', () => {
       () =>
         useDataTable({
           features: [sorting({ mode: 'server' })],
-          fetcher,
+          fetcher: withFetcher(fetcher),
           onDiagnostic: (d) => diags.push(d.code),
         }),
       { wrapper: StrictMode },

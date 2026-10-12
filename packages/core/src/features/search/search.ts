@@ -13,6 +13,7 @@ import type { RowKey } from '../../pipeline/row'
 import { runJob, sliced } from '../../pipeline/slice'
 import type { AsyncStatus } from '../../source/async-control'
 import { type DataMode, modeOption } from '../../source/mode'
+import { requestsOf } from '../../source/requests'
 import { getTableInternals } from '../../table/internals'
 import { searchDiagnostics } from './codes'
 import {
@@ -553,7 +554,7 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
       if (searchFn && applied().trim() !== '') {
         const opts = ctx.table.getOptions()
         if (opts.initialData !== undefined && opts.data === undefined) seeded = applied()
-        else getTableInternals(table).defer('searchFn')
+        else requestsOf(table).defer('searchFn')
       }
 
       /** Ends the in-flight search without its result (its waiters: `'superseded'`). */
@@ -589,7 +590,7 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
           rows: data,
           columns: ctx.table.getOptions().columns ?? EMPTY,
         }
-        getTableInternals(table)
+        requestsOf(table)
           .request('searchFn', (signal) => callSearch(fn, { ...c, signal }), {
             signal: a.ctl.signal,
             onSettle: (value, status) => settle(a, value, status),
@@ -684,7 +685,7 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
             return
           }
         }
-        if (internals.defer('searchFn')) return
+        if (requestsOf(table).defer('searchFn')) return
         scheduled = true
         queueMicrotask(() => {
           scheduled = false

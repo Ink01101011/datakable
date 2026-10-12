@@ -3,21 +3,22 @@ import { keepDiagnostics } from '../diagnostics/catalog'
 import { DEV } from '../diagnostics/env'
 import type { Emit, Trigger } from '../diagnostics/types'
 import { featureDiagnostics } from '../feature/codes'
+import type { FeatureRuntime } from '../feature/runtime'
 import type { AnyFeature, RowModelContext } from '../feature/types'
+import { matchCellIssues } from '../ingest/cell-issues'
 import { type KeyOf, resolveRowKeys } from '../ingest/row-key'
-import { matchCellIssues } from '../ingest/schema'
 import { CellFailures } from '../intercept/cell-batch'
 import { errorName } from '../intercept/classify'
 import { type ContextBase, createContext } from '../intercept/context'
 import { FALLBACK } from '../intercept/fallbacks'
 import type { InterceptorRuntime } from '../intercept/runtime'
 import type { TableState } from '../table/types'
-import { createColumnCache } from './column-cache'
+import type { ColumnCache } from './column-cache'
 import { type ResolvedColumn, type ResolvedColumns, resolveColumns } from './columns'
 import { checkStep, indexPrint, stepDiagnostics } from './dev-checks'
 import { allRows } from './indices'
 import { Row, type RowIssue, type RowSource } from './row'
-import { createSlicer } from './slice'
+import type { Slicer } from './slice'
 import { inStepDiagnosticSetsError } from './status-rule'
 import type { RowModel, RowModelStatus } from './types'
 
@@ -29,6 +30,11 @@ const NO_EMIT = (() => undefined) as Emit
 /** What `createTable` gives the runner. */
 export interface PipelineHost {
   readonly runtime: InterceptorRuntime
+  /**
+   * What the features brought (`runtimeFor`): the column cache and time-slicing of their steps.
+   * Always set when a feature has a `rowModel`; a table without features runs no step.
+   */
+  readonly featureRuntime?: FeatureRuntime | undefined
   readonly emit: Emit
   /** Installed features in pipeline (stage) order. */
   readonly features: readonly AnyFeature[]
@@ -127,12 +133,14 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
     if (inStepDiagnosticSetsError(code)) flags.count++
     host.emit(code, details, options)
   }) as Emit
-  const cache = createColumnCache({
+  const rt = host.featureRuntime
+  // Only steps (and explainRow's replay of them) read the cache: they exist only with a runtime.
+  const cache = rt?.createColumnCache({
     runtime: host.runtime,
     emit: stepEmit,
     base: () => host.base(),
     flags,
-  })
+  }) as ColumnCache
   // A server-mode feature (§7.1) only holds state: the server ran its step.
   const steps = host.features.filter(
     (f) => f.stage !== 'none' && f.mode !== 'server' && typeof f.rowModel === 'function',
@@ -156,7 +164,7 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
   /** Steps of the current run waiting on time-sliced work (§9.1): the row model is 'pending'. */
   let waiting = 0
   const refresh = host.refresh
-  const slicer = createSlicer({
+  const slicer: Slicer | undefined = rt?.createSlicer({
     emit: stepEmit,
     // Not during SSR, and not for the first row model (the hydrated client matches the server).
     enabled: () => refresh !== undefined && last !== undefined && host.base().phase === 'client',
@@ -317,7 +325,7 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
         return col !== undefined
       },
       slice: (key, job) => {
-        const r = slicer.run(key, job, name)
+        const r = (slicer as Slicer).run(key, job, name)
         if (r === undefined) waiting++
         return r
       },
@@ -385,7 +393,7 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
     // The last good row model (§3.4): its indices; the runner keeps the matching rows below.
     if (last) ctx.meta.set(FALLBACK, last.indices)
     waiting = 0
-    slicer.begin()
+    slicer?.begin()
     try {
       void host.runtime.run('pipeline:run', ctx, () => {
         let indices = allRows(data)
@@ -403,7 +411,7 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
       })
     } finally {
       // Sliced work no step asked for in this run is stale: cancelled.
-      slicer.end()
+      slicer?.end()
     }
     if (result) model = result
     else {
@@ -448,6 +456,6 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
     current: () => model,
     lastRun: () => lastRun,
     replayContext,
-    dispose: () => slicer.cancel(),
+    dispose: () => slicer?.cancel(),
   }
 }
