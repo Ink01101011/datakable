@@ -1,5 +1,14 @@
-import { createTable as createCoreTable, type Diagnostic, sorting } from '@datakable/core'
-import { describe, expect, it } from 'vitest'
+import {
+  columnFilters,
+  createTable as createCoreTable,
+  type Diagnostic,
+  type FetchResult,
+  pagination,
+  search,
+  sorting,
+  validity,
+} from '@datakable/core'
+import { describe, expect, it, vi } from 'vitest'
 import { createTable, defaultFeatures } from './index'
 
 type User = { id: number; name: string; age: number; city: string }
@@ -111,5 +120,56 @@ describe('zero-config createTable({ data }) (§3.3)', () => {
     expect(
       Object.keys(createCoreTable({ data: users, features: defaultFeatures }).getState()),
     ).toHaveLength(5)
+  })
+})
+
+describe('zero-config createTable: async paths (T19 searchFn / refetch through the preset)', () => {
+  const tick = () => new Promise((r) => setTimeout(r, 0))
+
+  it('zero-config: refetch() without a fetcher resolves; after destroy() setSearch still resolves', async () => {
+    const t = createTable({ data: users, onDiagnostic: () => {} })
+    await expect(t.refetch()).resolves.toEqual({ status: 'applied' })
+    await expect(t.setSearch('Mali')).resolves.toEqual({ status: 'applied' })
+    t.destroy()
+    await expect(t.setSearch('Anan')).resolves.toEqual({ status: 'superseded' })
+    await expect(t.flushSearch()).resolves.toEqual({ status: 'superseded' })
+    await expect(t.refetch()).resolves.toEqual({ status: 'superseded' })
+  })
+
+  it('preset with search({ searchFn }) over fetched rows: search applies, refetch() recovers', async () => {
+    const pending: { resolve: (r: FetchResult<User>) => void; reject: (e: unknown) => void }[] = []
+    const fetcher = () =>
+      new Promise<FetchResult<User>>((resolve, reject) => pending.push({ resolve, reject }))
+    const searchFn = vi.fn(async ({ query, rows }: { query: string; rows: readonly User[] }) =>
+      rows.filter((u) => u.city === query),
+    )
+    const t = createTable({
+      fetcher,
+      onDiagnostic: () => {},
+      // the preset, with a server column filter first (§7.1) and a custom search
+      features: [
+        columnFilters({ mode: 'server' }),
+        validity(),
+        search<User>({ searchFn }),
+        sorting(),
+        pagination(),
+      ],
+    })
+    pending[0]?.reject(new Error('down'))
+    await tick()
+    expect(t.getRowModel().status).toBe('error')
+
+    const retry = t.refetch()
+    expect(pending).toHaveLength(2)
+    pending[1]?.resolve({ rows: users, rowCount: users.length })
+    await expect(retry).resolves.toEqual({ status: 'applied' })
+    expect(t.getRowModel().status).toBe('idle')
+    expect(t.getRowModel().totalCount).toBe(40)
+
+    const p = t.setSearch('Khon Kaen')
+    await expect(p).resolves.toEqual({ status: 'applied' })
+    expect(searchFn).toHaveBeenCalledTimes(1)
+    expect(t.getRowModel().filteredCount).toBe(users.filter((u) => u.city === 'Khon Kaen').length)
+    expect(t.getRowModel().rows.every((r) => r.original.city === 'Khon Kaen')).toBe(true)
   })
 })
