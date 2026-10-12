@@ -10,7 +10,6 @@ import type { explainDetail } from './explain-detail'
 import { formatRowExplanation, formatTableExplanation } from './explain-text'
 import {
   type RedactionOptions,
-  type Redactor,
   redactDetails,
   resolveRedaction,
   scrubSchemaIssue,
