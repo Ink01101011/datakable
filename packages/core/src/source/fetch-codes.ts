@@ -101,7 +101,8 @@ export const fetchDiagnostics = [
     fix: () => [
       'check the request the fetcher sends (the original error is context.cause, passed to ' +
         'onDiagnostic)',
-      'the next state change (page, sort, filter, query) runs the fetcher again',
+      'retry from the UI with table.refetch(); the next state change (page, sort, filter, ' +
+        'query) or a new fetcher also runs it again',
     ],
   }),
   defineDiagnostic({

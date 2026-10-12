@@ -29,6 +29,7 @@ import {
   type Fetcher,
   FetchFailure,
   type FetchKey,
+  type FetchOutcome,
   fetchParams,
   isServer,
   sameParams,
@@ -166,6 +167,7 @@ export function createTable<T, S extends TableState>(
     getRowModel,
     getInvalidRows: () => schemaOutcome?.invalid ?? EMPTY,
     getDiagnostics: () => hub.getDiagnostics(),
+    refetch,
     destroy,
   }
 
@@ -343,14 +345,14 @@ export function createTable<T, S extends TableState>(
    */
   function flush() {
     if (notifying) return
-    syncFetch()
+    void syncFetch()
     if (!pending) return
     notifying = true
     let rethrow: unknown
     try {
       while (pending && !destroyed) {
         // Server state changed (this round's state): the fetch starts in the same notification.
-        syncFetch()
+        void syncFetch()
         pending = false
         rounds++
         const prev = notified
@@ -667,6 +669,8 @@ export function createTable<T, S extends TableState>(
         }
         // The page count changed (§6.5): listeners re-read it (and pagination clamps).
         if (next.rowCount !== previous.rowCount) pending = true
+        // A new fetcher reference runs at once, even with the same params (flush → syncFetch).
+        if (next.fetcher !== previous.fetcher) fetchedParams = undefined
         // New data is checked when applied (setData); same data with new columns is checked here.
         if (next.data !== previous.data) ingest()
         else {
@@ -757,19 +761,36 @@ export function createTable<T, S extends TableState>(
 
   // --- server source (§7.1) ----------------------------------------------------------------------
 
-  /** Starts a fetcher request when the server-mode state differs from the last request's. */
-  function syncFetch() {
+  /**
+   * Starts a fetcher request when the server-mode state differs from the last request's (or
+   * `force`: `refetch()`). Resolves with the outcome; never rejects.
+   */
+  function syncFetch(force = false): Promise<FetchOutcome> | undefined {
     const fetcher = options.fetcher
     if (typeof fetcher !== 'function' || destroyed) return
     const params = fetchParams(serverFeatures, snapshot)
-    if (fetchedParams && sameParams(fetchedParams, params)) return
+    if (!force && fetchedParams && sameParams(fetchedParams, params)) return
     fetchedParams = params
-    request('fetcher', (signal) => callFetcher(fetcher, params, signal), {
+    let result: FetchOutcome['status'] | undefined
+    const done = (): FetchOutcome => ({ status: result ?? (destroyed ? 'superseded' : 'error') })
+    return request('fetcher', (signal) => callFetcher(fetcher, params, signal), {
       params,
-      onSettle: applyFetch,
-    }).catch(() => {
+      onSettle: (value, outcome) => {
+        result = outcome === 'superseded' || outcome === 'aborted' ? 'superseded' : 'error'
+        if (applyFetch(value, outcome)) result = 'applied'
+      },
       // strict: the DatakableError was reported by the hub; the status is 'error' (applyFetch).
-    })
+    }).then(done, done)
+  }
+
+  function refetch(): Promise<FetchOutcome> {
+    if (destroyed) {
+      destroyedCall('refetch')
+      return Promise.resolve({ status: 'superseded' })
+    }
+    return (
+      withTrigger('api:refetch', () => syncFetch(true)) ?? Promise.resolve({ status: 'applied' })
+    )
   }
 
   function failFetch() {
@@ -778,12 +799,21 @@ export function createTable<T, S extends TableState>(
     touch()
   }
 
-  /** Applies a fetcher outcome; only the latest request reaches `'applied'` (asyncControl). */
-  function applyFetch(value: unknown, outcome: AsyncStatus) {
-    if (outcome === 'superseded') return void hub.emit('DK_FETCH_ABORTED', {})
-    if (outcome === 'aborted') return
+  /**
+   * Applies a fetcher outcome; only the latest request reaches `'applied'` (asyncControl). `true`
+   * when its rows were applied.
+   */
+  function applyFetch(value: unknown, outcome: AsyncStatus): boolean {
+    if (outcome === 'superseded') {
+      hub.emit('DK_FETCH_ABORTED', {})
+      return false
+    }
+    if (outcome === 'aborted') return false
     // 'error' / 'timeout': already reported by the errorBoundary / asyncControl.
-    if (outcome !== 'applied') return failFetch()
+    if (outcome !== 'applied') {
+      failFetch()
+      return false
+    }
     if (value instanceof FetchFailure) {
       failFetch()
       const name = errorName(value.error)
@@ -792,7 +822,7 @@ export function createTable<T, S extends TableState>(
         { ...(name === undefined ? {} : { errorName: name }), hadRows: loaded },
         { cause: value.error },
       )
-      return
+      return false
     }
     const bad = checkResponse(
       value,
@@ -801,7 +831,7 @@ export function createTable<T, S extends TableState>(
     if (bad) {
       failFetch()
       hub.emit('DK_FETCH_BAD_RESPONSE', bad)
-      return
+      return false
     }
     if (fetchFailed) {
       fetchFailed = false
@@ -810,6 +840,7 @@ export function createTable<T, S extends TableState>(
     const result = value as { rows: readonly unknown[]; rowCount?: number }
     fetchedRowCount = result.rowCount ?? result.rows.length
     ingest(result.rows)
+    return true
   }
 
   setTableInternals(table, {
@@ -842,7 +873,7 @@ export function createTable<T, S extends TableState>(
       warnControlled(undefined)
     })
     // Server source (§7.1): the first request starts now ('fetching', isInitialLoad: true).
-    syncFetch()
+    void syncFetch()
   })
   pending = false
   return table
