@@ -85,8 +85,8 @@ importers:
         specifier: 1.2.3
         version: 1.2.3
       kk-debounce:
-        specifier: 1.0.7
-        version: 1.0.7(react@19.3.0)
+        specifier: 1.1.0
+        version: 1.1.0(react@19.3.0)
 
   packages/datakable:
     dependencies:
@@ -1038,8 +1038,8 @@ packages:
   jsonc-parser@3.3.1:
     resolution: {integrity: sha512-HUgH65KyejrUFPvHFPbqOY0rsFip3Bo5wb4ngvdi1EpCYWUQDC5V+Y7mZws+DLkr4M//zQJoanu1SP+87Dv1oQ==}
 
-  kk-debounce@1.0.7:
-    resolution: {integrity: sha512-FFLM2xZvlRVN6XrC4OobCI7fydhXYC0TTIVuwQXWiVk0l7Xe16SjFY//kQ7+9IUckDIiDsbwm1/NmavuEATTdQ==}
+  kk-debounce@1.1.0:
+    resolution: {integrity: sha512-G/HuMZRm5OxcQVL+t2HdpbMKx0Ch7frwj1ICUfimu0E+w/iCg5nP7VklODQZwPPDV6Ad8VUB4/gOc26vCjUcvQ==}
     engines: {node: '>=18.18.0'}
     peerDependencies:
       react: ^18.0.0 || ^19.0.0
@@ -2279,7 +2279,7 @@ snapshots:
 
   jsonc-parser@3.3.1: {}
 
-  kk-debounce@1.0.7(react@19.3.0):
+  kk-debounce@1.1.0(react@19.3.0):
     optionalDependencies:
       react: 19.3.0
 
