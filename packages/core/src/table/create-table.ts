@@ -6,10 +6,13 @@ import type { Trigger } from '../diagnostics/types'
 import { errorBoundary } from '../intercept/boundary'
 import { callUser, errorName } from '../intercept/classify'
 import { type ContextBase, createContext } from '../intercept/context'
+import type { Interceptor } from '../intercept/define'
 import { FALLBACK } from '../intercept/fallbacks'
 import type { OpInput, OpName, OpResult } from '../intercept/operations'
 import { type Core, createInterceptorRuntime } from '../intercept/runtime'
+import { ASYNC_STATUS, type AsyncStatus, asyncControl } from '../source/async-control'
 import { tableDiagnostics } from './codes'
+import { setTableInternals } from './internals'
 import {
   type ControlledState,
   type Listener,
@@ -97,8 +100,16 @@ export function createTable<T, S extends TableState = TableState>(
     getDataRef: () => data,
     redaction,
   })
+  // One asyncControl per table (it holds this table's in-flight requests), first in the list so
+  // user / feature interceptors and the core see its signal; the boundary stays outermost.
+  // `timeout` is read once, at creation.
+  const control = asyncControl(options.timeout === undefined ? {} : { timeout: options.timeout })
+  const withControl = (list: readonly Interceptor<OpName>[] | undefined) => [
+    control as Interceptor<OpName>,
+    ...(list ?? EMPTY),
+  ]
   const runtime = createInterceptorRuntime({
-    interceptors: options.interceptors ?? [],
+    interceptors: withControl(options.interceptors),
     emit: hub.emit,
   })
   runtime.installBoundary(errorBoundary)
@@ -221,13 +232,15 @@ export function createTable<T, S extends TableState = TableState>(
     notifying = true
     let rethrow: unknown
     try {
-      while (pending) {
+      while (pending && !destroyed) {
         pending = false
         rounds++
         const prev = notified
         const state = snapshot
         notified = state
         for (const [id, listener] of [...listeners]) {
+          // A listener may destroy the table: the rest of the round is not notified.
+          if (destroyed) break
           current = id
           try {
             listener(state, prev)
@@ -350,7 +363,7 @@ export function createTable<T, S extends TableState = TableState>(
       void op('table:setOptions', { options: next, previous }, 'options', (): undefined => {
         options = next
         if (next.interceptors !== previous.interceptors) {
-          runtime.setInterceptors(next.interceptors ?? [])
+          runtime.setInterceptors(withControl(next.interceptors))
         }
         if ('state' in partial || 'onStateChange' in partial) syncControlled()
         if (next.data !== previous.data) ingest()
@@ -374,6 +387,25 @@ export function createTable<T, S extends TableState = TableState>(
       }
     })
   }
+
+  async function request(
+    source: 'fetcher' | 'searchFn',
+    core: (signal: AbortSignal) => Promise<unknown>,
+    opts: { previous?: unknown; params?: unknown; signal?: AbortSignal } = {},
+  ): Promise<{ value: unknown; status: AsyncStatus }> {
+    if (destroyed) return { value: opts.previous, status: 'aborted' }
+    const ctx = createContext(
+      'async:request',
+      opts.params === undefined ? { source } : { source, params: opts.params },
+      source,
+      { ...base(), trigger: 'fetch' },
+      opts.signal,
+    )
+    ctx.meta.set(FALLBACK, opts.previous)
+    const value = await runtime.run('async:request', ctx, (c) => core(c.signal as AbortSignal))
+    return { value, status: (ctx.meta.get(ASYNC_STATUS) as AsyncStatus | undefined) ?? 'error' }
+  }
+  setTableInternals(table, { request })
 
   // --- init --------------------------------------------------------------------------------------
 

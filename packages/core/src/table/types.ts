@@ -54,6 +54,11 @@ export interface TableOptions<T, S extends TableState = TableState> {
   interceptors?: readonly Interceptor<OpName>[]
   /** User sink for every diagnostic (e.g. Sentry). */
   onDiagnostic?: (d: Diagnostic) => void
+  /**
+   * ms before an async request (`fetcher`, `searchFn`) is aborted with `DK_ASYNC_TIMEOUT`.
+   * Default 30 000; `Infinity` disables it. Read once, at creation.
+   */
+  timeout?: number
   /** Rethrow error-level diagnostics as `DatakableError`. */
   strict?: boolean
   diagnostics?: TableDiagnosticsOptions

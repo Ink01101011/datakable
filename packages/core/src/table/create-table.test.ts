@@ -304,6 +304,15 @@ describe('createTable: destroy', () => {
     expect(seen[0]?.level).toBe('warn')
   })
 
+  it('destroy() from a listener stops the notification: later listeners are not called', () => {
+    const t = make()
+    const later = vi.fn()
+    t.subscribe(() => t.destroy())
+    t.subscribe(later)
+    t.setState({ page: 1 })
+    expect(later).not.toHaveBeenCalled()
+  })
+
   it('a second destroy() is a silent no-op (idempotent)', () => {
     const t = make()
     t.destroy()
