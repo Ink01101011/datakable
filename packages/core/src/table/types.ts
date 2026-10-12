@@ -1,4 +1,5 @@
 import type { ColumnDef, LooseRow, Path } from '../column'
+import type { RowExplanation, TableExplanation } from '../diagnostics/explain'
 import type { RedactFn, RedactLevel } from '../diagnostics/redact'
 import type { Diagnostic } from '../diagnostics/types'
 import type { AnyFeature } from '../feature/types'
@@ -7,6 +8,7 @@ import type { InvalidRowsMode } from '../ingest/schema-codes'
 import type { StandardSchemaV1 } from '../ingest/standard-schema'
 import type { Interceptor } from '../intercept/define'
 import type { OpName } from '../intercept/operations'
+import type { RowKey } from '../pipeline/row'
 import type { RowModel } from '../pipeline/types'
 import type { Fetcher, FetchOutcome } from '../source/fetcher'
 
@@ -132,6 +134,18 @@ export interface Table<
   getInvalidRows(): readonly InvalidRow[]
   /** Oldest first, at most 100 entries. */
   getDiagnostics(): Diagnostic[]
+  /**
+   * The last pipeline run (§8.4): rows per step, schema drops, the page, open diagnostics, and
+   * timings when traced (the tracer runs in development). `String(table.explain())` is a one-line
+   * summary. Read-only.
+   */
+  explain(): TableExplanation
+  /**
+   * Replays the row with key `key` through the schema and every step (§8.4): which step kept it
+   * where, and the step that removed it, with a fix. Values are redacted like diagnostics (§8.2).
+   * `String(table.explainRow(key))` is the console report. Read-only.
+   */
+  explainRow(key: RowKey): RowExplanation
   /**
    * Runs `options.fetcher` again with the current params (§7.1), e.g. a Retry button after
    * `DK_FETCH_FAILED`. Never rejects. Without a fetcher: `{ status: 'applied' }` at once.

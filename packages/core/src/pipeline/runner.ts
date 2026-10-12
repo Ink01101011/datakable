@@ -1,6 +1,6 @@
 import { getValue } from '../column/get-value'
 import { DEV } from '../diagnostics/env'
-import type { Emit } from '../diagnostics/types'
+import type { Emit, Trigger } from '../diagnostics/types'
 import { featureDiagnostics } from '../feature/codes'
 import type { AnyFeature, RowModelContext } from '../feature/types'
 import { type KeyOf, resolveRowKeys } from '../ingest/row-key'
@@ -22,6 +22,7 @@ void featureDiagnostics
 void stepDiagnostics
 
 const EMPTY: readonly never[] = []
+const NO_EMIT = (() => undefined) as Emit
 
 /** What `createTable` gives the runner. */
 export interface PipelineHost {
@@ -56,6 +57,34 @@ export interface Pipeline<T> {
   run(): RowModel<T>
   /** The last row model, if the pipeline ran. */
   current(): RowModel<T> | undefined
+  /** The last run (`explain`, §8.4); `undefined` before the first. */
+  lastRun(): RunRecord | undefined
+  /**
+   * A `rowModel` context over the current data and columns for replaying a step on chosen rows
+   * (`explainRow`, §8.4): diagnostics are dropped and `batch` runs its body directly (no
+   * interceptors), so a replay reports nothing and changes nothing.
+   */
+  replayContext(name: string): RowModelContext
+}
+
+/**
+ * One step of the last run (`explain` / `explainRow`, §8.4): references to the index arrays the
+ * step memo holds anyway, never copies. `cached`: served from the memo; `failed`: the step threw or
+ * returned a bad output and passed its input through.
+ */
+export interface RunRecord {
+  readonly run: number
+  readonly trigger: Trigger
+  /** The client steps that ran, in order (fewer when `pipeline:run` itself failed). */
+  readonly steps: readonly StepRecord[]
+}
+
+export interface StepRecord {
+  readonly feature: AnyFeature
+  readonly input: Uint32Array
+  readonly output: Uint32Array
+  readonly cached: boolean
+  readonly failed: boolean
 }
 
 interface StepMemo {
@@ -98,6 +127,8 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
   /** Row keys resolved over all rows (§5.2), per (data, rowKey) reference. */
   let keys: { data: readonly unknown[]; rowKey: unknown; keyOf: KeyOf } | undefined
   let model: RowModel<T> | undefined
+  /** The last run (replaced per run; a few references per step). */
+  let lastRun: RunRecord | undefined
 
   /** `Row.getValue` failures: one emit per failing cell, built only when a cell fails. */
   function reportCell(col: ResolvedColumn, index: number, e: unknown, field: string) {
@@ -227,6 +258,9 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
     const state = host.getState()
     let failed = false
     let result: RowModel<T> | undefined
+    const records: StepRecord[] = []
+    const { run: runId, trigger } = host.base()
+    lastRun = { run: runId, trigger, steps: records }
 
     const rowModelContext = (name: string): RowModelContext => ({
       name,
@@ -254,6 +288,7 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
       const slice = state[f.name]
       const m = memo.get(f)
       if (m && m.input === input && Object.is(m.state, slice) && m.columns === columns) {
+        records.push({ feature: f, input, output: m.output, cached: true, failed: false })
         return m.output
       }
       let ok = false
@@ -297,6 +332,7 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
         failed = true
         memo.delete(f)
       }
+      records.push({ feature: f, input, output, cached: false, failed: !ok })
       return output
     }
 
@@ -325,5 +361,32 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
     return model
   }
 
-  return { run, current: () => model }
+  function replayContext(name: string): RowModelContext {
+    const data = host.getData()
+    const columns = host.getColumns() ?? EMPTY
+    const cols = resolveColumns(columns)
+    return {
+      name,
+      data,
+      emit: NO_EMIT,
+      ...(host.flagMode ? { flagged: (i: number) => host.issues(i) } : {}),
+      run: host.base().run,
+      columns,
+      getColumnValues: (id) => {
+        const col = cols.byId.get(id)
+        return col ? cache.values(data, col) : undefined
+      },
+      getFormattedValues: (id) => {
+        const col = cols.byId.get(id)
+        return col ? cache.formatted(data, col) : undefined
+      },
+      batch: (id, _slot, _rows, body) => {
+        if (!cols.byId.has(id)) return false
+        body()
+        return true
+      },
+    }
+  }
+
+  return { run, current: () => model, lastRun: () => lastRun, replayContext }
 }

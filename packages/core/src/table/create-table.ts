@@ -1,8 +1,10 @@
 import { validateOptionChange, validateOptions } from '../catalog/validator'
 import { DatakableError, defaultPhase } from '../diagnostics/build'
 import { DEV } from '../diagnostics/env'
+import { type ExplainHost, explainRow, explainTable } from '../diagnostics/explain'
 import { createDiagnostics } from '../diagnostics/hub'
 import type { RedactionOptions } from '../diagnostics/redact'
+import { tracer } from '../diagnostics/tracer'
 import type { Trigger } from '../diagnostics/types'
 import { initialSlices, installApis } from '../feature/install'
 import { orderFeatures } from '../feature/order'
@@ -167,6 +169,9 @@ export function createTable<T, S extends TableState>(
     getRowModel,
     getInvalidRows: () => schemaOutcome?.invalid ?? EMPTY,
     getDiagnostics: () => hub.getDiagnostics(),
+    // Core methods (§8.4), read-only: also on the literal before installApis.
+    explain: () => explainTable(explainHost),
+    explainRow: (key) => explainRow(explainHost, key),
     refetch,
     destroy,
   }
@@ -207,8 +212,12 @@ export function createTable<T, S extends TableState>(
   // Feature interceptors (pipeline order) come next, then the user's. `timeout` is read once.
   const control = asyncControl(options.timeout === undefined ? {} : { timeout: options.timeout })
   const featureInterceptors = pipeline.flatMap((f) => f.interceptors ?? EMPTY)
+  // The tracer (§3.4, explain timings) is development-only: `DEV` folds to `false` in production
+  // builds, which drops it from the bundle; there it is opt-in with `interceptors: [tracer()]`.
+  const traced = DEV ? [tracer() as Interceptor<OpName>] : EMPTY
   const withControl = (list: readonly Interceptor<OpName>[] | undefined) => [
     control as Interceptor<OpName>,
+    ...traced,
     ...featureInterceptors,
     ...(list ?? EMPTY),
   ]
@@ -450,6 +459,21 @@ export function createTable<T, S extends TableState>(
     issues: (index) => schemaOutcome?.flagged?.get(index),
     flagMode: schemaIngest !== undefined && options.invalidRows === 'flag',
   })
+
+  const explainHost: ExplainHost = {
+    table,
+    features: pipeline,
+    rowModel: getRowModel as () => RowModel<unknown>,
+    lastRun: runner.lastRun,
+    replay: runner.replayContext,
+    data: () => data,
+    state: () => snapshot,
+    rowKey: () => options.rowKey,
+    schemaMode: () => (schemaIngest ? (options.invalidRows ?? 'drop') : undefined),
+    schema: () => schemaOutcome,
+    diagnostics: () => hub.getDiagnostics(),
+    redaction,
+  }
 
   /**
    * Status from outside the pipeline (§6.6): a failed ingest or fetch, an in-flight fetcher /

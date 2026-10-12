@@ -48,6 +48,13 @@ export {
 } from './catalog'
 export { coreDiagnostics } from './codes'
 export { formatDiagnostic } from './console'
+export type {
+  ExplainStep,
+  RowExplanation,
+  RowStep,
+  RowStepOutcome,
+  TableExplanation,
+} from './explain'
 export {
   createDiagnostics,
   type Diagnostics,
@@ -70,6 +77,7 @@ export {
   scrubSchemaIssue,
 } from './redact'
 export { toSafeJson } from './safe-json'
+export { tracer } from './tracer'
 export type {
   Diagnostic,
   DiagnosticCode,
