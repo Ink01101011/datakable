@@ -1,3 +1,4 @@
+export { searchDiagnostics } from './codes'
 export {
   type SearchApi,
   type SearchFn,
