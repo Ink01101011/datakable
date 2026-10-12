@@ -10,6 +10,7 @@ import {
   sorting,
   type VersionRegistry,
 } from '@datakable/core'
+import { withSearchFn } from '@datakable/core/search-async'
 import { withFetcher } from '@datakable/core/server'
 import { act, render, renderHook } from '@testing-library/react'
 import { Activity, type ReactNode, StrictMode, useState } from 'react'
@@ -351,7 +352,7 @@ describe('useDataTable (§10)', () => {
     const { rerender } = renderHook(() =>
       useDataTable({
         data: users,
-        features: [search<User>({ searchFn: ({ rows }) => rows })],
+        features: [search<User>({ searchFn: withSearchFn(({ rows }) => rows) })],
         onDiagnostic: (d) => diags.push(d),
       }),
     )

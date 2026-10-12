@@ -109,6 +109,16 @@
         "default": "./dist/ingest/schema-entry.cjs"
       }
     },
+    "./search-async": {
+      "import": {
+        "types": "./dist/search-async.d.ts",
+        "default": "./dist/features/search/search-async-entry.js"
+      },
+      "require": {
+        "types": "./dist/search-async.d.cts",
+        "default": "./dist/features/search/search-async-entry.cjs"
+      }
+    },
     "./server": {
       "import": {
         "types": "./dist/server.d.ts",

@@ -4,6 +4,7 @@ import type { Diagnostic } from '../diagnostics/types'
 import { defineFeature } from '../feature/define'
 import type { AnyFeature } from '../feature/types'
 import { search } from '../features/search/search'
+import { withSearchFn } from '../features/search/with-search-fn'
 import { sorting } from '../features/sorting/sorting'
 import { createTable } from '../table/create-table'
 import { runJob, SLICE_MS } from './slice'
@@ -354,7 +355,10 @@ describe('search: sliced projection and matching (§6.3, §9.1)', () => {
       columns,
       rowKey: 'id',
       features: [
-        search({ searchFn: ({ rows }) => rows.slice(0, 3), typing: { commitOn: 'enter' } }),
+        search({
+          searchFn: withSearchFn(({ rows }) => rows.slice(0, 3)),
+          typing: { commitOn: 'enter' },
+        }),
       ],
     })
     void t.setSearch('x')

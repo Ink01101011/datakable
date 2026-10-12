@@ -1,5 +1,4 @@
 import { keepDiagnostics } from '../diagnostics/catalog'
-import { asyncRequests } from '../source/requests'
 import { deferral, getTableInternals } from './internals'
 import { ssrDiagnostics } from './ssr-codes'
 
@@ -25,8 +24,11 @@ export function createDeferred<R extends object>(create: () => R): R {
   }
   if (typeof document === 'undefined') {
     const internals = getTableInternals(table)
-    for (const source of internals.peek(asyncRequests)?.deferred() ?? []) {
-      internals.emit('DK_SSR_ASYNC_DEFERRED', { source }, { phase: 'ssr' })
+    // Through the extensions: SSR does not import the request machinery (§9.3).
+    for (const e of internals.extensions()) {
+      for (const source of e.deferred?.() ?? []) {
+        internals.emit('DK_SSR_ASYNC_DEFERRED', { source }, { phase: 'ssr' })
+      }
     }
   }
   return table

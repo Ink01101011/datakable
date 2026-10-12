@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Diagnostic } from '../diagnostics/types'
 import { pagination } from '../features/pagination'
 import { search } from '../features/search'
+import { withSearchFn } from '../features/search/with-search-fn'
 import { sorting } from '../features/sorting'
 import { makeSchema } from '../ingest/test-schemas'
 import { withSchema } from '../ingest/with-schema'
@@ -115,7 +116,7 @@ describe('initialData (§7.2)', () => {
     const t = createTable({
       initialData: people(3),
       columns: [{ key: 'id' }],
-      features: [search<P>({ searchFn })],
+      features: [search<P>({ searchFn: withSearchFn(searchFn) })],
       initialState: { search: { input: 'p', query: 'p', status: 'idle' } },
     })
     expect(ns(t)).toEqual([0, 1, 2])
@@ -195,7 +196,7 @@ describe('createDeferred / startTable (§7.2)', () => {
       createTable({
         data: people(3),
         columns: [{ key: 'id' }],
-        features: [search<P>({ searchFn })],
+        features: [search<P>({ searchFn: withSearchFn(searchFn) })],
         initialState: { search: { input: 'p1', query: 'p1', status: 'idle' } },
         onDiagnostic: (d) => diags.push(d),
       }),
@@ -225,7 +226,7 @@ describe('createDeferred / startTable (§7.2)', () => {
     const t = createDeferred(() =>
       createTable({
         data: people(3),
-        features: [search<P>({ searchFn: () => [] }), sorting()],
+        features: [search<P>({ searchFn: withSearchFn<P>(() => []) }), sorting()],
         onDiagnostic: (d) => diags.push(d.code),
       }),
     )

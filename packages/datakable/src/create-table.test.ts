@@ -8,6 +8,7 @@ import {
   sorting,
   validity,
 } from '@datakable/core'
+import { withSearchFn } from '@datakable/core/search-async'
 import { withFetcher } from '@datakable/core/server'
 import { describe, expect, it, vi } from 'vitest'
 import { createTable, defaultFeatures } from './index'
@@ -151,7 +152,7 @@ describe('zero-config createTable: async paths (T19 searchFn / refetch through t
       features: [
         columnFilters({ mode: 'server' }),
         validity(),
-        search<User>({ searchFn }),
+        search<User>({ searchFn: withSearchFn(searchFn) }),
         sorting(),
         pagination(),
       ],

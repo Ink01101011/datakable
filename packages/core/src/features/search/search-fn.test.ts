@@ -2,8 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DatakableError } from '../../diagnostics/build'
 import type { Diagnostic } from '../../diagnostics/types'
 import { minFilter } from '../../pipeline/test-features'
+import { asyncRequests } from '../../source/requests'
 import { createTable } from '../../table/create-table'
-import { type SearchFnContext, type SearchOptions, type SearchTyping, search } from './search'
+import { getTableInternals } from '../../table/internals'
+import { type SearchFnContext, type SearchTyping, search } from './search'
+import type { SearchFn } from './search-fn-brand'
+import { withSearchFn } from './with-search-fn'
 
 let seen: Diagnostic[]
 const onDiagnostic = (d: Diagnostic) => {
@@ -67,7 +71,7 @@ function manual() {
 }
 
 const make = (
-  searchFn: NonNullable<SearchOptions<U>['searchFn']>,
+  fn: SearchFn<U>,
   typing?: SearchTyping,
   extra: { data?: readonly U[]; strict?: boolean; timeout?: number } = {},
 ) =>
@@ -76,7 +80,7 @@ const make = (
     onDiagnostic,
     rowKey: 'id',
     columns: [{ key: 'name', search: 1 }, { key: 'age' }],
-    features: [search<U>({ searchFn, ...(typing ? { typing } : {}) })],
+    features: [search<U>({ searchFn: withSearchFn(fn), ...(typing ? { typing } : {}) })],
     ...(extra.strict === undefined ? {} : { strict: extra.strict }),
     ...(extra.timeout === undefined ? {} : { timeout: extra.timeout }),
   })
@@ -213,7 +217,7 @@ describe('async searchFn (§6.3)', () => {
     const t = createTable({
       data: users,
       columns: [{ key: 'name' }, { key: 'age' }],
-      features: [search<U>({ searchFn: () => users }), minFilter('age')],
+      features: [search<U>({ searchFn: withSearchFn(() => users) }), minFilter('age')],
       initialState: { minFilter: { min: 30 } },
     })
     const api = t as unknown as { setSearch(q: string): Promise<unknown> }
@@ -390,7 +394,7 @@ describe('async searchFn (§6.3)', () => {
       data: users,
       onDiagnostic,
       columns: [{ key: 'name' }],
-      features: [search<U>({ searchFn })],
+      features: [search<U>({ searchFn: withSearchFn(searchFn) })],
       initialState: { search: { input: 'a', query: 'a', status: 'idle' } },
     })
     expect(t.getRowModel().rows).toHaveLength(4)
@@ -418,7 +422,7 @@ describe('async searchFn (§6.3)', () => {
     createTable({
       data: users,
       onDiagnostic,
-      features: [search<U>({ searchFn: () => [], threshold: 0.5 })],
+      features: [search<U>({ searchFn: withSearchFn<U>(() => []), threshold: 0.5 })],
     })
     const d = seen.find((x) => x.code === 'DK_OPTION_NO_EFFECT')
     expect(d?.problem).toMatch(/threshold/)
@@ -426,7 +430,7 @@ describe('async searchFn (§6.3)', () => {
     createTable({
       data: users,
       onDiagnostic,
-      features: [search<U>({ mode: 'server', searchFn: () => [] })],
+      features: [search<U>({ mode: 'server', searchFn: withSearchFn<U>(() => []) })],
     })
     expect(seen.find((x) => x.code === 'DK_OPTION_NO_EFFECT')?.problem).toMatch(/searchFn/)
   })
@@ -435,5 +439,36 @@ describe('async searchFn (§6.3)', () => {
     expect(() =>
       createTable({ data: users, features: [search({ searchFn: 'x' as never })] }),
     ).toThrow(/DK_INVALID_OPTION|searchFn/)
+  })
+})
+
+describe('withSearchFn: the async engine is an opt-in import (changed 2026-10-13 for §9.3)', () => {
+  it('a searchFn not opted in with withSearchFn() is DK_INVALID_OPTION naming the fix', () => {
+    let error: unknown
+    try {
+      createTable({ data: users, features: [search<U>({ searchFn: (() => users) as never })] })
+    } catch (e) {
+      error = e
+    }
+    expect(error).toBeInstanceOf(DatakableError)
+    expect((error as DatakableError).diagnostic.code).toBe('DK_INVALID_OPTION')
+    expect((error as Error).message).toMatch(/withSearchFn\(fn\)/)
+  })
+
+  it('keeps one identity per function and calls it', async () => {
+    const m = manual()
+    expect(withSearchFn(m.searchFn)).toBe(withSearchFn(m.searchFn))
+    expect(withSearchFn(manual().searchFn)).not.toBe(withSearchFn(m.searchFn))
+    const ctx = { query: 'a', rows: users, columns: [], signal: new AbortController().signal }
+    const p = withSearchFn(m.searchFn)(ctx)
+    expect(m.calls).toHaveLength(1)
+    m.last().resolve([users[0]])
+    await expect(p).resolves.toEqual([users[0]])
+  })
+
+  it('client search creates no request machinery', async () => {
+    const t = createTable({ data: users, features: [search()] })
+    await t.setSearch('ada')
+    expect(getTableInternals(t).peek(asyncRequests)).toBeUndefined()
   })
 })
