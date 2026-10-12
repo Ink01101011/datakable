@@ -1,6 +1,6 @@
 // Build helpers for tsup (§8.2, §9.1, §12).
 import { existsSync } from 'node:fs'
-import { readdir, readFile } from 'node:fs/promises'
+import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 
 const ENV_IMPORT = /^import \{ DEV \} from '(?:\.\.?\/)+(?:diagnostics\/)?env'\n/m
@@ -69,4 +69,28 @@ async function walk(dir) {
     else out.push(p)
   }
   return out
+}
+
+const AUGMENT = /declare module '(?:\.\.?\/)+(?:diagnostics\/)?catalog'/g
+
+/**
+ * The bundled `.d.ts` keep each codes module's `declare module '../diagnostics/catalog'`
+ * augmentation verbatim, but that path does not exist next to the bundle, so a consumer lost every
+ * core code from `DiagnosticCatalog` (and `skipLibCheck: false` reports TS2665). Point them at the
+ * package itself, the same way plugins augment it (§3.5). Run after tsup (the dts pass finishes
+ * after `onSuccess`).
+ */
+export async function fixDtsAugmentations(dist) {
+  let n = 0
+  for (const file of await walk(dist)) {
+    if (!/\.d\.c?ts$/.test(file)) continue
+    const src = await readFile(file, 'utf8')
+    const out = src.replace(AUGMENT, () => {
+      n++
+      return "declare module '@datakable/core'"
+    })
+    if (out !== src) await writeFile(file, out)
+  }
+  if (n === 0) throw new Error('fixDtsAugmentations: no DiagnosticCatalog augmentation found')
+  return n
 }

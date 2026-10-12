@@ -1,3 +1,4 @@
+import { optionDiagnostics } from '../../catalog/codes'
 import { defineOptions } from '../../catalog/options'
 import { describeReturn } from '../../catalog/slots'
 import type { SortAlgorithm } from '../../column/column-def'
@@ -9,6 +10,7 @@ import { defineFeature } from '../../feature/define'
 import type { FeatureTypes, RowModelContext } from '../../feature/types'
 import { CellFailures } from '../../intercept/cell-batch'
 import { errorName } from '../../intercept/classify'
+import { boundaryDiagnostics } from '../../intercept/codes'
 import { type ResolvedColumn, resolveColumns } from '../../pipeline/columns'
 import { allRows } from '../../pipeline/indices'
 import type { ColumnValues } from '../../pipeline/types'
@@ -31,7 +33,7 @@ import {
   sortWithComparator,
 } from './strategy'
 
-useDiagnostics(sortingDiagnostics, comparatorDiagnostics)
+useDiagnostics(sortingDiagnostics, comparatorDiagnostics, boundaryDiagnostics, optionDiagnostics)
 
 /** One sort key: a column id (a path of the row type) and its direction. */
 export type SortEntry<T> = { id: Path<T>; desc: boolean }

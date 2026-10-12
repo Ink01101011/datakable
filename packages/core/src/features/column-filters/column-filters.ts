@@ -4,6 +4,7 @@ import { defineFeature } from '../../feature/define'
 import type { RowModelContext } from '../../feature/types'
 import { CellFailures } from '../../intercept/cell-batch'
 import { errorName } from '../../intercept/classify'
+import { boundaryDiagnostics } from '../../intercept/codes'
 import type { ColumnValues } from '../../pipeline/types'
 import { type DataMode, modeOption } from '../../source/mode'
 import { columnFiltersDiagnostics } from './codes'
@@ -20,7 +21,7 @@ import {
 } from './match'
 import type { ColumnFiltersState, ColumnFiltersTypes } from './types'
 
-useDiagnostics(columnFiltersDiagnostics)
+useDiagnostics(columnFiltersDiagnostics, boundaryDiagnostics)
 
 export interface ColumnFiltersOptions {
   /**

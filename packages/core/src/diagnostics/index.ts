@@ -24,8 +24,13 @@
  * table's hub. Pass `{ cause }` for the original error. Data and runtime problems never throw;
  * `error (config)` codes are thrown at creation with `throwConfigError(code, details)`.
  *
- * Reference the exported definition from the emitting module so bundlers keep it
- * (`sideEffects: false`).
+ * Call `useDiagnostics(defs)` at the top level of the emitting module so bundlers keep the
+ * definitions (`sideEffects: false`, one dist file per module); a bare reference is dropped.
+ *
+ * Production builds strip the text (§8.2). Core passes it separately so it can be stripped:
+ * `defineDiagnostic({ code, level, where }, DEV && myMessages.DK_X)`, with `myMessages` installed
+ * for production by `@datakable/core/messages`. A plugin's single-object definition keeps working:
+ * its text is built in development, and in production once messages are installed.
  *
  * Redaction (§8.2): declare every detail field that carries user data on the definition, e.g.
  * `redact: { key: 'rowKey', value: 'value', issues: 'schemaIssues', error: 'error' }`. The builders
@@ -42,9 +47,16 @@ export {
 export {
   type DiagnosticCatalog,
   type DiagnosticDefinition,
+  type DiagnosticMessages,
+  type DiagnosticMeta,
+  type DiagnosticText,
   defineDiagnostic,
   getDiagnosticDefinition,
+  getDiagnosticText,
+  hasMessages,
+  installMessages,
   listDiagnosticCodes,
+  useDiagnostics,
 } from './catalog'
 export { coreDiagnostics } from './codes'
 export { formatDiagnostic } from './console'

@@ -61,6 +61,7 @@ const entryPaths = Object.keys(pkg.exports).filter(
   (k) => k !== './package.json' && k !== './messages',
 )
 const spec = (e) => (e === '.' ? '@datakable/core' : `@datakable/core${e.slice(1)}`)
+const MESSAGES = "import * from '@datakable/core' + '@datakable/core/messages'"
 const FEATURES = ['columnFilters', 'validity', 'search', 'sorting', 'pagination']
 const scenarios = [
   ['createTable', `import { createTable } from '@datakable/core'\nkeep(createTable)`],
@@ -72,6 +73,12 @@ const scenarios = [
     `import * from '${spec(e)}'`,
     `import * as m from '${spec(e)}'\nkeep(m)`,
   ]),
+  // Opted-in production text: every code the bundle can emit must have message text.
+  [
+    MESSAGES,
+    "import * as m from '@datakable/core'\nimport { allMessages } from '@datakable/core/messages'\n" +
+      'keep(m)\nexport { allMessages }',
+  ],
 ]
 const out = join(root, 'node_modules/.cache/check-catalog')
 rmSync(out, { recursive: true, force: true })
@@ -123,6 +130,12 @@ for (const env of ['production', 'development']) {
         !['problem', 'impact', 'fix'].every((k) => typeof def[k] === 'function')
       ) {
         failures.push(`${code}: no problem/impact/fix text in development (${label})`)
+      } else if (
+        env === 'production' &&
+        label === MESSAGES &&
+        !mod.allMessages.some((m) => Object.hasOwn(m, code))
+      ) {
+        failures.push(`${code}: no text in @datakable/core/messages (production)`)
       }
     }
   }
@@ -131,7 +144,7 @@ if (failures.length > 0) {
   console.error(`check:catalog: ${failures.length} problem(s) in consumer bundles:`)
   for (const f of failures) console.error(`  ${f}`)
   console.error(
-    'Use the definitions where the code is emitted (registerDiagnostics) so the bundle keeps them.',
+    'Use the definitions where the code is emitted (useDiagnostics) so the bundle keeps them.',
   )
   process.exit(1)
 }

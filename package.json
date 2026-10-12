@@ -15,11 +15,12 @@
     "test:watch": "vitest",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "check:pkg": "pnpm -r --filter \"./packages/*\" check:pkg",
+    "check:pkg": "pnpm -r --filter \"./packages/*\" check:pkg && pnpm check:consumer",
     "check:catalog": "pnpm --filter @datakable/core check:catalog",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "pnpm build && changeset publish"
+    "release": "pnpm build && changeset publish",
+    "check:consumer": "node scripts/check-consumer-types.mjs"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",

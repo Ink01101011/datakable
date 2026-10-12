@@ -1,5 +1,5 @@
 import { defineConfig } from 'tsup'
-import { checkDevInlined, preserveModules } from './scripts/preserve-modules.mjs'
+import { preserveModules } from './scripts/preserve-modules.mjs'
 
 /**
  * Public entry points (§12): the root plus one per feature. Only these get a bundled `.d.ts`; the
@@ -8,6 +8,12 @@ import { checkDevInlined, preserveModules } from './scripts/preserve-modules.mjs
  */
 const entries = {
   index: 'src/index.ts',
+  'column-filters': 'src/features/column-filters/index.ts',
+  validity: 'src/features/validity/index.ts',
+  search: 'src/features/search/index.ts',
+  sorting: 'src/features/sorting/index.ts',
+  pagination: 'src/features/pagination/index.ts',
+  messages: 'src/messages/index.ts',
 }
 
 export default defineConfig({
@@ -27,5 +33,4 @@ export default defineConfig({
   target: 'es2022',
   splitting: false,
   esbuildPlugins: [preserveModules],
-  onSuccess: () => checkDevInlined('dist'),
 })

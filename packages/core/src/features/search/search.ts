@@ -1,5 +1,6 @@
 import { debouncedSignal } from 'kk-debounce/debounceSignal'
 import { throttle } from 'kk-debounce/throttle'
+import { optionDiagnostics } from '../../catalog/codes'
 import { defineOptions } from '../../catalog/options'
 import { useDiagnostics } from '../../diagnostics/catalog'
 import { describeValue } from '../../diagnostics/redact'
@@ -22,7 +23,7 @@ import {
   type SearchIndex,
 } from './search-index'
 
-useDiagnostics(searchDiagnostics)
+useDiagnostics(searchDiagnostics, optionDiagnostics)
 
 /**
  * `state.search.status` (§6.3): `'pending'` = a debounce is waiting (T17), `'searching'` = an async
