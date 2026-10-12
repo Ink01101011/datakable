@@ -1,5 +1,6 @@
 export { tableDiagnostics } from './codes'
-export { createTable } from './create-table'
+export { type CreateTableOptions, createTable, type SchemaRow } from './create-table'
+export { dataMutationDiagnostics } from './data-mutation'
 export {
   type ControlledState,
   type Listener,

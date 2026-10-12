@@ -1,12 +1,12 @@
-import { defineOptions } from '../catalog/options'
-import { describeValue } from '../diagnostics/redact'
-import { defineFeature } from '../feature/define'
-import type { FeatureContext } from '../feature/types'
-import { defineInterceptor } from '../intercept/define'
-import { type DataMode, modeOption } from '../source/mode'
-import { getTableInternals } from '../table/internals'
-import type { Table, TableState } from '../table/types'
-import { paginationDiagnostics } from './pagination-codes'
+import { defineOptions } from '../../catalog/options'
+import { describeValue } from '../../diagnostics/redact'
+import { defineFeature } from '../../feature/define'
+import type { FeatureContext } from '../../feature/types'
+import { defineInterceptor } from '../../intercept/define'
+import { type DataMode, modeOption } from '../../source/mode'
+import { getTableInternals } from '../../table/internals'
+import type { Table, TableState } from '../../table/types'
+import { paginationDiagnostics } from './codes'
 
 void paginationDiagnostics
 

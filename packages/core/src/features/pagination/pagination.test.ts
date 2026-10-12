@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { DatakableError } from '../diagnostics/build'
-import { defineInterceptor } from '../intercept/define'
-import { minFilter, numSort } from '../pipeline/test-features'
-import { createTable } from '../table/create-table'
+import { DatakableError } from '../../diagnostics/build'
+import { defineInterceptor } from '../../intercept/define'
+import { minFilter, numSort } from '../../pipeline/test-features'
+import { createTable } from '../../table/create-table'
 import { pagination } from './pagination'
 
 beforeEach(() => {

@@ -1,4 +1,5 @@
 export { pipelineDiagnostics } from './codes'
+export { stepDiagnostics } from './dev-checks'
 export {
   type FlaggedInvalidRow,
   type FlaggedRow,
