@@ -28,14 +28,16 @@ export default [
     pkg: 'core',
     import: ['createTable'],
     ...CORE,
-    limit: 23 * KB,
+    // F2: 23 → 23.5 KB for lazy `RowModel.rows` (§9.3 memory, unpaginated 7.47 → 1.94 MB): +261 B.
+    limit: 23.5 * KB,
   },
   {
     name: '@datakable/core: createTable + columnFilters + sorting + pagination',
     pkg: 'core',
     import: ['createTable', 'columnFilters', 'sorting', 'pagination'],
     ...CORE,
-    limit: 30 * KB,
+    // F2: 30 → 30.5 KB, lazy `RowModel.rows` (§9.3 memory): +247 B.
+    limit: 30.5 * KB,
   },
   {
     name: '@datakable/core: createTable + columnFilters + sorting + pagination + search',
@@ -50,7 +52,8 @@ export default [
     pkg: 'datakable',
     import: ['createTable'],
     ...PRESET,
-    limit: 34.5 * KB,
+    // F2: 34.5 → 35 KB, lazy `RowModel.rows` + chunked search projection (§9.3 memory): +307 B.
+    limit: 35 * KB,
   },
   {
     name: 'datakable: useDataTable (default preset + react hook)',

@@ -79,11 +79,24 @@ export type FlaggedInvalidRow = Row<unknown> & { readonly valid: false }
 /** `getRowModel().rows` under `invalidRows: 'flag'` (§5.1): narrow on `row.valid`. */
 export type FlaggedRow<T> = ValidRow<T> | FlaggedInvalidRow
 
+/**
+ * An empty array of `length` without a backing store: setting `length` (or `new Array(n)`)
+ * allocates `n` slots; a write at `n - 1` then deleting it leaves sparse (dictionary) elements. V8
+ * turns it back into a plain array once it is filled.
+ */
+function sparse<R>(length: number): R[] {
+  const a: R[] = []
+  if (length > 0) {
+    a[length - 1] = undefined as R
+    delete a[length - 1]
+  }
+  return a
+}
+
 /** `p` as an index below `length` (a canonical array index string), else `-1`. */
-function indexOf(p: string | symbol, length: number): number {
-  if (typeof p !== 'string') return -1
-  const i = Number(p)
-  return Number.isInteger(i) && i >= 0 && i < length && String(i) === p ? i : -1
+export function arrayIndex(p: string | symbol, length: number): number {
+  const i = typeof p === 'string' ? Number(p) : -1
+  return i >= 0 && i < length && String(i) === p ? i : -1
 }
 
 /**
@@ -93,32 +106,23 @@ function indexOf(p: string | symbol, length: number): number {
  * stable. `Object.keys` / `ownKeys` build every row first.
  */
 export function lazyRows<R>(length: number, make: (i: number) => R): R[] {
-  const target: R[] = []
-  target.length = length
-  let complete = length === 0
-  const fill = () => {
-    if (complete) return
-    for (let i = 0; i < length; i++) if (!(i in target)) target[i] = make(i)
-    complete = true
+  const t = sparse<R>(length)
+  /** Builds row `i` (an index from {@link arrayIndex}; `-1` is not one) unless it exists. */
+  const build = (i: number) => {
+    if (i >= 0 && !(i in t)) t[i] = make(i)
   }
-  return new Proxy(target, {
-    get(t, p, receiver) {
-      const v = Reflect.get(t, p, receiver)
-      if (v !== undefined || complete) return v
-      const i = indexOf(p, length)
-      if (i < 0 || i in t) return v
-      const row = make(i)
-      t[i] = row
-      return row
+  return new Proxy(t, {
+    get(_, p, receiver) {
+      build(arrayIndex(p, length))
+      return Reflect.get(t, p, receiver)
     },
-    has: (t, p) => Reflect.has(t, p) || indexOf(p, length) >= 0,
-    getOwnPropertyDescriptor(t, p) {
-      const i = indexOf(p, length)
-      if (i >= 0 && !(i in t)) t[i] = make(i)
+    has: (_, p) => arrayIndex(p, length) >= 0 || Reflect.has(t, p),
+    getOwnPropertyDescriptor(_, p) {
+      build(arrayIndex(p, length))
       return Reflect.getOwnPropertyDescriptor(t, p)
     },
-    ownKeys(t) {
-      fill()
+    ownKeys() {
+      for (let i = 0; i < length; i++) build(i)
       return Reflect.ownKeys(t)
     },
   })

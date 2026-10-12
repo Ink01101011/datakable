@@ -238,6 +238,8 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
       },
       { cause: keyError },
     )
+    keyFailures.reset()
+    keyError = undefined
   }
 
   function build(
@@ -263,17 +265,11 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
     }
     const source = rowSource(resolveColumns(columns))
     keyFailures.reset()
-    let keyOf: KeyOf
-    try {
-      if (keys?.data !== data || keys.rowKey !== rowKey) {
-        keys = { data, rowKey, keyOf: resolveRowKeys(data, rowKey, host.emit, keyFailed) }
-      }
-      keyOf = keys.keyOf
-      reportKeyFailures()
-    } finally {
-      keyFailures.reset()
-      keyError = undefined
+    if (keys?.data !== data || keys.rowKey !== rowKey) {
+      keys = { data, rowKey, keyOf: resolveRowKeys(data, rowKey, host.emit, keyFailed) }
     }
+    const keyOf = keys.keyOf
+    reportKeyFailures()
     // A data array whose rows cannot be read fails this run (the last good row model is kept),
     // not a later read of `rows[i]`.
     for (let i = 0; i < indices.length; i++) void data[indices[i] as number]
@@ -282,13 +278,9 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
     const rows = lazyRows(indices.length, (i) => {
       const r = indices[i] as number
       const original = data[r] as T
-      try {
-        return new Row<T>(source, r, keyOf(original, r), original)
-      } finally {
-        reportKeyFailures()
-        keyFailures.reset()
-        keyError = undefined
-      }
+      const row = new Row<T>(source, r, keyOf(original, r), original)
+      reportKeyFailures()
+      return row
     })
     const m: RowModel<T> = { rows, filteredCount, totalCount: data.length, status, isInitialLoad }
     last = { model: m, data, indices, columns, rowKey }

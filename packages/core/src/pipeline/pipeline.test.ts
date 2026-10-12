@@ -349,6 +349,24 @@ describe('column cache', () => {
     expect(ctx?.getColumnValues('nope')).toBeUndefined()
   })
 
+  it('formatted values: a column already shown as its own strings reuses the values array', () => {
+    let ctx: RowModelContext | undefined
+    const data: { name: unknown }[] = [{ name: 'a' }, { name: 'b' }, { name: 'c' }]
+    const t = createTable({
+      data,
+      columns: [{ key: 'name' }, { id: 'mixed', accessor: (r) => (r.name === 'b' ? 2 : r.name) }],
+      features: [minFilter('name', (c) => (ctx = c))],
+    })
+    t.getRowModel()
+    const names = ctx?.getFormattedValues('name')
+    expect(names).toEqual(['a', 'b', 'c'])
+    expect(names).toBe(ctx?.getColumnValues('name'))
+    // A value that formats to another string: a copy, the values untouched.
+    const mixed = ctx?.getFormattedValues('mixed')
+    expect(mixed).toEqual(['a', '2', 'c'])
+    expect(ctx?.getColumnValues('mixed')).toEqual(['a', 2, 'c'])
+  })
+
   it('built once per data reference and column (cache hit across runs); rebuilt for new data', () => {
     const accessor = vi.fn((p: P) => p.age)
     let ctx: RowModelContext | undefined

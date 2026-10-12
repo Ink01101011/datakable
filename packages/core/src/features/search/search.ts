@@ -15,13 +15,7 @@ import type { AsyncStatus } from '../../source/async-control'
 import { type DataMode, modeOption } from '../../source/mode'
 import { getTableInternals } from '../../table/internals'
 import { searchDiagnostics } from './codes'
-import {
-  buildIndex,
-  type Item,
-  type MatchConfig,
-  probeExSearch,
-  type SearchIndex,
-} from './search-index'
+import { buildIndex, type MatchConfig, probeExSearch, type SearchIndex } from './search-index'
 
 keepDiagnostics(searchDiagnostics, optionDiagnostics)
 
@@ -262,8 +256,9 @@ const toText = (q: unknown): string => (typeof q === 'string' ? q : q == null ? 
  * Global search (§6.3), client mode: fuzzy matching with `ex-search` on the formatted values of the
  * searchable columns (`search: weight`; every column at weight 1 when none declares one).
  *
- * - The projection `{ i, c0, c1, … }` and the matcher are built on the first non-blank query, once
- *   per data + columns (not per keystroke); results map back to rows by index.
+ * - The matcher is built on the first non-blank query, once per data + columns (not per keystroke),
+ *   over the column cache's values; ex-search reads the projection `{ i, c0, c1, … }` one chunk of
+ *   rows at a time, built while matching and not kept (§9.3 memory); results map back by index.
  * - A blank or whitespace-only query keeps every row. The query is trimmed before matching.
  * - Rows are ordered by relevance (score descending, ties by original index); a sort stage after
  *   search overrides that order.
@@ -289,9 +284,8 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
   let last:
     | { input: Uint32Array; query: string; index: SearchIndex; output: Uint32Array }
     | undefined
-  let subset: { input: Uint32Array; index: SearchIndex; items: readonly Item[] } | undefined
-  /** The key of the latest matching job (one query over one set of items). */
-  let matching: { items: readonly Item[]; query: string; key: object } | undefined
+  /** The key of the latest matching job (one query over one set of rows). */
+  let matching: { rows: Uint32Array; index: SearchIndex; query: string; key: object } | undefined
   /** The step's last output and its input: the stand-in while sliced work runs (§9.1). */
   let shown: { input: Uint32Array; output: Uint32Array } | undefined
   /** The last searchFn step: same input and hits → same output (no per-run allocation). */
@@ -401,34 +395,29 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
     return index
   }
 
-  /** The ranked matches of `query` over `items`: a sliced job; `undefined` while it runs. */
+  /** The ranked matches of `query` over `rows`: a sliced job; `undefined` while it runs. */
   function matchFor(
     ctx: RowModelContext,
     index: SearchIndex,
-    items: readonly Item[],
+    rows: Uint32Array,
     query: string,
   ): Uint32Array | undefined {
     // A replay (`explainRow`) matches its one row at once, leaving the table's job alone.
-    if (!ctx.slice) return runJob(() => index.match(items, query))
-    if (!matching || matching.items !== items || matching.query !== query) {
-      matching = { items, query, key: {} }
+    if (!ctx.slice) return runJob(() => index.match(rows, query))
+    if (
+      !matching ||
+      matching.rows !== rows ||
+      matching.index !== index ||
+      matching.query !== query
+    ) {
+      matching = { rows, index, query, key: {} }
     }
-    return sliced(ctx, matching.key, () => index.match(items, query))
+    return sliced(ctx, matching.key, () => index.match(rows, query))
   }
 
   /** While sliced work runs: the previous output for the same input, else the input. */
   const standIn = (indices: Uint32Array) =>
     shown && shown.input === indices ? shown.output : indices
-
-  function itemsFor(input: Uint32Array, index: SearchIndex): readonly Item[] {
-    // Search runs after filters: only the input rows are matched (order is re-ranked anyway).
-    if (input.length === index.items.length) return index.items
-    if (subset && subset.input === input && subset.index === index) return subset.items
-    const items = new Array<Item>(input.length)
-    for (let k = 0; k < input.length; k++) items[k] = index.items[input[k] as number] as Item
-    subset = { input, index, items }
-    return items
-  }
 
   /** The client step (§6.3); the rowModel below records its output for {@link standIn}. */
   function step(indices: Uint32Array, state: SearchState, ctx: RowModelContext): Uint32Array {
@@ -456,7 +445,8 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
     if (last && last.input === indices && last.query === query && last.index === index) {
       return last.output
     }
-    const output = matchFor(ctx, index, itemsFor(indices, index), query)
+    // Search runs after filters: only the input rows are matched (order is re-ranked anyway).
+    const output = matchFor(ctx, index, indices, query)
     if (output === undefined) return standIn(indices)
     last = { input: indices, query, index, output }
     return output

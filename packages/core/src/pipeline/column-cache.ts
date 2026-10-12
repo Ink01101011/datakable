@@ -61,6 +61,11 @@ interface Entry {
 const NULL = 1
 const UNDEFINED = 2
 
+function allStrings(values: readonly unknown[]): boolean {
+  for (let i = 0; i < values.length; i++) if (typeof values[i] !== 'string') return false
+  return true
+}
+
 const typeName = (v: unknown) => (Array.isArray(v) ? 'array' : typeof v)
 
 /**
@@ -204,9 +209,16 @@ export function createColumnCache(host: ColumnCacheHost): ColumnCache {
     }
     const n = data.length
     const rows = allRows(data)
-    const out: string[] = new Array(n).fill('')
+    let out: string[] | undefined
     const format = column.format
     batch(column, 'format', 'format', rows, () => {
+      // Values that are all strings already format to themselves: no copy (§9.3 memory).
+      if (!format && !(vals instanceof Float64Array) && allStrings(vals)) {
+        out = vals as string[]
+        return
+      }
+      const cells: string[] = new Array(n).fill('')
+      out = cells
       if (format) {
         let firstBad: unknown
         runCells(
@@ -221,7 +233,7 @@ export function createColumnCache(host: ColumnCacheHost): ColumnCache {
             }
             return defaultFormat(s)
           },
-          out,
+          cells,
           '',
           failures,
         )
@@ -254,7 +266,7 @@ export function createColumnCache(host: ColumnCacheHost): ColumnCache {
           cur = r
           return defaultFormat(valueAt(r), onUnrenderable)
         },
-        out,
+        cells,
         '',
         failures,
       )
@@ -269,9 +281,10 @@ export function createColumnCache(host: ColumnCacheHost): ColumnCache {
         })
       }
     })
-    e.formatted = out
+    // An interceptor skipped the batch: every cell is the slot fallback.
+    e.formatted = out ?? new Array<string>(n).fill('')
     if (flags && flags.count > before) e.flaggedFormatted = true
-    return out
+    return e.formatted
   }
 
   return { values, formatted, batch }
