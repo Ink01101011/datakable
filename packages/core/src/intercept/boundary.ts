@@ -1,5 +1,7 @@
 import { DatakableError } from '../diagnostics/build'
 import { keepDiagnostics } from '../diagnostics/catalog'
+import { DEV } from '../diagnostics/env'
+import { scrubError } from '../diagnostics/redact'
 import type { EmitOptions } from '../diagnostics/types'
 import { type CallbackError, classifyError, errorName } from './classify'
 import { boundaryDiagnostics } from './codes'
@@ -25,9 +27,10 @@ function recover(ctx: InterceptorContext, error: unknown): unknown {
   if (fallback.silent) {
     if (!silenced.has(ctx.emit)) {
       silenced.add(ctx.emit)
+      // Production prints the error name only: its message can embed row values (§8.2).
       console.error(
         `[DataKable] ${ctx.op} failed; ${fallback.describe}. Later failures are silent.`,
-        error,
+        DEV ? error : scrubError(error),
       )
     }
     return fallback.value(ctx as never)

@@ -9,6 +9,7 @@ import {
   type RedactionOptions,
   type RedactLevel,
   resolveRedaction,
+  scrubError,
 } from './redact'
 import { RingBuffer } from './ring-buffer'
 import type { Diagnostic, DiagnosticStateSummary, EmitOptions, Phase, Trigger } from './types'
@@ -115,7 +116,11 @@ export function createDiagnostics(options: DiagnosticsOptions = {}): Diagnostics
     // The logger never kills the table: one console.error, then silence.
     if (failed) return
     failed = true
-    console.error(`[DataKable ${table}] diagnostics pipeline failed; later failures are silent`, e)
+    // Production prints the error name only: its message can embed row values (§8.2).
+    console.error(
+      `[DataKable ${table}] diagnostics pipeline failed; later failures are silent`,
+      dev ? e : scrubError(e),
+    )
   }
 
   function deliver(input: Diagnostic): Diagnostic {
