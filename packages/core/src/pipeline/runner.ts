@@ -16,6 +16,7 @@ import { type ResolvedColumn, type ResolvedColumns, resolveColumns } from './col
 import { checkStep, indexPrint, stepDiagnostics } from './dev-checks'
 import { allRows } from './indices'
 import { Row, type RowIssue, type RowSource } from './row'
+import { inStepDiagnosticSetsError } from './status-rule'
 import type { RowModel, RowModelStatus } from './types'
 
 void featureDiagnostics
@@ -108,7 +109,22 @@ interface Built<T> {
  * for the final (visible) indices.
  */
 export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
-  const cache = createColumnCache(host)
+  /**
+   * In-step diagnostics the §6.6 status rule counts (`inStepDiagnosticSetsError`), ever reported:
+   * a step whose run moved it makes the row model `'error'` and is not memoised.
+   */
+  const flags = { count: 0 }
+  /** `emit` for steps and the column cache: counts through the status rule. */
+  const stepEmit = ((code, details, options) => {
+    if (inStepDiagnosticSetsError(code)) flags.count++
+    host.emit(code, details, options)
+  }) as Emit
+  const cache = createColumnCache({
+    runtime: host.runtime,
+    emit: stepEmit,
+    base: () => host.base(),
+    flags,
+  })
   // A server-mode feature (§7.1) only holds state: the server ran its step.
   const steps = host.features.filter(
     (f) => f.stage !== 'none' && f.mode !== 'server' && typeof f.rowModel === 'function',
@@ -265,7 +281,7 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
     const rowModelContext = (name: string): RowModelContext => ({
       name,
       data,
-      emit: host.emit,
+      emit: stepEmit,
       ...(host.flagMode ? { flagged: (i: number) => host.issues(i) } : {}),
       run: host.base().run,
       columns,
@@ -292,6 +308,7 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
         return m.output
       }
       let ok = false
+      const flagged = flags.count
       const ctx = createContext(
         'pipeline:step',
         { stage: f.stage, feature: f.name, indices: input },
@@ -323,11 +340,12 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
           return input
         }
         // Dev: a mutated input warns; a bad output passes the input through, not memoised.
-        if (DEV && !checkStep(host.emit, f.name, input, before, out, data.length)) return input
+        if (DEV && !checkStep(stepEmit, f.name, input, before, out, data.length)) return input
         ok = true
         return out instanceof Uint32Array ? out : input
       })
-      if (ok) memo.set(f, { input, state: slice, columns, output })
+      // A counted in-step diagnostic (status rule): 'error' with the step's output, re-run next time.
+      if (ok && flags.count === flagged) memo.set(f, { input, state: slice, columns, output })
       else {
         failed = true
         memo.delete(f)

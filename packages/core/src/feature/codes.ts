@@ -23,6 +23,11 @@ declare module '../diagnostics/catalog' {
       fallback: string
       /** `error.name` only; the full error is `context.cause`. */
       errorName?: string
+      /**
+       * Dev: a method of a feature whose `createApi()` threw was called later (`hook: 'createApi'`);
+       * `feature` names every feature whose API is missing.
+       */
+      method?: string
     }
   }
 }
@@ -71,9 +76,18 @@ export const featureDiagnostics = [
     level: 'error',
     where: (d) => ({ kind: 'feature', name: d.feature }),
     problem: (d) =>
-      `feature "${d.feature}" ${d.hook}() threw${d.errorName ? ` ${d.errorName}` : ''}`,
+      d.method === undefined
+        ? `feature "${d.feature}" ${d.hook}() threw${d.errorName ? ` ${d.errorName}` : ''}`
+        : `table.${d.method}() was called, but it does not exist: createApi() threw at creation ` +
+          `for feature "${d.feature}", so its API is missing`,
     impact: (d) => `${d.fallback}; the rest of the table is unaffected`,
     fix: (d) => [
+      ...(d.method === undefined
+        ? []
+        : [
+            `see the first DK_FEATURE_FAILED of feature "${d.feature}" (trigger init): its ` +
+              'context.cause is the createApi() error',
+          ]),
       `fix ${d.hook}() of feature "${d.feature}": it must not throw` +
         (d.hook === 'rowModel' ? ' (return its input indices when it cannot filter)' : ''),
       'the original error is context.cause (passed to onDiagnostic)',

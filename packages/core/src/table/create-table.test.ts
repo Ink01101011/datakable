@@ -264,7 +264,8 @@ describe('createTable: controlled state per slice', () => {
       throw new Error('bad')
     })
     expect(codes()).toEqual(['DK_CALLBACK_FAILED'])
-    expect(seen[0]?.where).toEqual({ kind: 'option', path: 'setState' })
+    // A method argument, not an option (T30): `operation table.setState at updater`.
+    expect(seen[0]?.where).toEqual({ kind: 'operation', op: 'table.setState', slot: 'updater' })
   })
 })
 

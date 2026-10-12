@@ -42,6 +42,7 @@ function recover(ctx: InterceptorContext, error: unknown): unknown {
       'DK_CALLBACK_FAILED',
       {
         slot: e.slot,
+        ...(e.op === undefined ? {} : { op: e.op }),
         ...(e.row === undefined ? {} : { rows: [e.row] }),
         count: 1,
         fallback: fallback.describe,

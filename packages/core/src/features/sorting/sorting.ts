@@ -253,6 +253,8 @@ export const sorting = (opts: SortingOptions = {}) => {
     mode: opts.mode ?? 'client',
     options: defineOptions(sortingOptions, opts),
     initialState: () => ({ by: [] }),
+    // After destroy(): still a declared value (`aria-sort` reads it during teardown renders).
+    destroyedResult: { getSortDirection: () => false },
     createApi: (ctx) => ({
       toggleSort: (id, options) =>
         ctx.setState((s) => {
