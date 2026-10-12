@@ -667,3 +667,52 @@ describe('slots without a diagnostic of their own', () => {
     expect(JSON.stringify(t.getDiagnostics())).not.toContain(SECRET)
   })
 })
+
+describe("a failure that sets 'error' is never silent (§6.6)", () => {
+  /** Statuses listeners saw, read from the row model inside each notification. */
+  const watch = (t: AnyTable) => {
+    const statuses: string[] = []
+    t.subscribe(() => void statuses.push(t.getRowModel().status))
+    return statuses
+  }
+
+  it.each(['throw', 'reject', 'bad return'] as const)('fetcher %s', async (inject) => {
+    const t = loose(
+      createTable({
+        features: [sorting({ mode: 'server' })],
+        fetcher: inject === 'throw' ? fail : inject === 'reject' ? reject : ((() => 1) as never),
+      }),
+    )
+    const statuses = watch(t)
+    await settle()
+    expect(statuses.at(-1)).toBe('error')
+    // A retry that fails again: 'error' throughout (error > fetching, §6.6).
+    await expect(t.refetch()).resolves.toEqual({ status: 'error' })
+    expect(t.getRowModel().status).toBe('error')
+  })
+
+  it.each(['throw', 'reject', 'bad return'] as const)('searchFn %s', async (inject) => {
+    const searchFn = inject === 'throw' ? fail : inject === 'reject' ? reject : () => 42 as never
+    const t = loose(createTable({ data: people(), features: [search({ searchFn })] }))
+    const statuses = watch(t)
+    await t.setSearch('ada')
+    expect(statuses).toContain('searching')
+    expect(statuses.at(-1)).toBe('error')
+  })
+
+  it('a feature rowModel that starts throwing after a state change', () => {
+    let throwing = false
+    const probe = defineFeature({
+      name: 'probe',
+      stage: 'filter',
+      initialState: () => 0,
+      createApi: () => ({}),
+      rowModel: (i: Uint32Array) => (throwing ? fail() : i),
+    })
+    const t = loose(createTable({ data: people(), features: [probe] }))
+    const statuses = watch(t)
+    throwing = true
+    t.setState({ probe: 1 })
+    expect(statuses).toEqual(['error'])
+  })
+})
