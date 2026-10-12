@@ -69,6 +69,8 @@ export function createTable<T, S extends TableState>(
   let run = 0
   let data: readonly T[] = EMPTY
   let ingestSeq = 0
+  /** Data given by the user has been applied once (`RowModel.isInitialLoad`, §6.6). */
+  let loaded = false
 
   let controlled = new Set<string>()
   let snapshot: S
@@ -326,7 +328,14 @@ export function createTable<T, S extends TableState>(
 
   // --- data --------------------------------------------------------------------------------------
 
-  function setData(next: readonly T[]) {
+  /** Applies ingested data; `given`: it came from a user `options.data` (marks the first load). */
+  function setData(next: readonly T[], given: boolean) {
+    if (given && !loaded) {
+      // isInitialLoad flips: a new row model and a notification even for the same reference.
+      loaded = true
+      pending = true
+      rowModelDirty = true
+    }
     if (next === data) return
     data = next
     pending = true
@@ -348,6 +357,7 @@ export function createTable<T, S extends TableState>(
     getState: () => snapshot,
     getColumns: () => options.columns,
     getRowKey: () => options.rowKey,
+    isInitialLoad: () => !loaded,
   })
 
   /** Recomputes the row model if data, state or columns changed (never after destroy). */
@@ -360,12 +370,21 @@ export function createTable<T, S extends TableState>(
   function getRowModel(): RowModel<T> {
     ensureRowModel()
     // Only empty when destroyed before the first run.
-    return runner.current() ?? { rows: EMPTY, filteredCount: 0, totalCount: 0, status: 'idle' }
+    return (
+      runner.current() ?? {
+        rows: EMPTY,
+        filteredCount: 0,
+        totalCount: 0,
+        status: 'idle',
+        isInitialLoad: !loaded,
+      }
+    )
   }
 
   /** `data:ingest` with the previous data as fallback; an async result is applied if still latest. */
   function ingest() {
     const seq = ++ingestSeq
+    const given = options.data !== undefined
     withTrigger('data-change', () => {
       const out = op(
         'data:ingest',
@@ -375,14 +394,14 @@ export function createTable<T, S extends TableState>(
         data,
       )
       if (!isThenable(out)) {
-        setData(out as readonly T[])
+        setData(out as readonly T[], given)
         return
       }
       Promise.resolve(out).then(
         (d) => {
           if (seq !== ingestSeq || destroyed) return
           withTrigger('data-change', () => {
-            setData(d as readonly T[])
+            setData(d as readonly T[], given)
             flush()
           })
         },

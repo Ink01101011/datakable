@@ -9,7 +9,7 @@ import { FALLBACK } from '../intercept/fallbacks'
 import type { InterceptorRuntime } from '../intercept/runtime'
 import type { TableState } from '../table/types'
 import { createColumnCache } from './column-cache'
-import { type ResolvedColumns, resolveColumns } from './columns'
+import { type ResolvedColumn, type ResolvedColumns, resolveColumns } from './columns'
 import { allRows } from './indices'
 import { Row, type RowKey, type RowSource } from './row'
 import type { RowModel, RowModelStatus } from './types'
@@ -33,6 +33,8 @@ export interface PipelineHost {
   getState(): TableState
   getColumns(): readonly unknown[] | undefined
   getRowKey(): unknown
+  /** `RowModel.isInitialLoad`: no data applied yet (§6.6). */
+  isInitialLoad(): boolean
 }
 
 export interface Pipeline<T> {
@@ -78,6 +80,31 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
   let last: Built<T> | undefined
   let model: RowModel<T> | undefined
 
+  /** `Row.getValue` failures: one emit per failing cell, built only when a cell fails. */
+  function reportCell(col: ResolvedColumn, index: number, e: unknown, field: string) {
+    const name = errorName(e)
+    host.emit(
+      'DK_CALLBACK_FAILED',
+      {
+        slot: `columns[${col.index}].${field}`,
+        column: col.id,
+        rows: [index],
+        count: 1,
+        fallback: 'the cell reads as undefined',
+        ...(name === undefined ? {} : { errorName: name }),
+      },
+      { cause: e },
+    )
+  }
+  // A key-path read error, captured by a closure made once (Row.getValue is per cell: no
+  // allocation per call).
+  let pathFailed = false
+  let pathError: unknown
+  const onPathError = (e: unknown) => {
+    pathFailed = true
+    pathError = e
+  }
+
   function rowSource(cols: ResolvedColumns): RowSource {
     let s = sources.get(cols)
     if (s) return s
@@ -85,27 +112,21 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
       value(index, original, id) {
         const col = cols.byId.get(id)
         if (!col) return undefined
-        const report = (e: unknown, field: string) => {
-          const name = errorName(e)
-          host.emit(
-            'DK_CALLBACK_FAILED',
-            {
-              slot: `columns[${col.index}].${field}`,
-              column: col.id,
-              rows: [index],
-              count: 1,
-              fallback: 'the cell reads as undefined',
-              ...(name === undefined ? {} : { errorName: name }),
-            },
-            { cause: e },
-          )
+        if (col.path) {
+          const v = getValue(original, col.path, onPathError)
+          if (pathFailed) {
+            const e = pathError
+            pathFailed = false
+            pathError = undefined
+            reportCell(col, index, e, 'key')
+          }
+          return v
         }
-        if (col.path) return getValue(original, col.path, (e) => report(e, 'key'))
         if (!col.accessor) return undefined
         try {
           return col.accessor(original)
         } catch (e) {
-          report(e, 'accessor')
+          reportCell(col, index, e, 'accessor')
           return undefined
         }
       },
@@ -166,6 +187,7 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
     status: RowModelStatus,
   ): RowModel<T> {
     const rowKey = host.getRowKey()
+    const isInitialLoad = host.isInitialLoad()
     const prev = last
     if (
       prev &&
@@ -173,7 +195,8 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
       prev.data === data &&
       prev.columns === columns &&
       prev.rowKey === rowKey &&
-      prev.model.status === status
+      prev.model.status === status &&
+      prev.model.isInitialLoad === isInitialLoad
     ) {
       return prev.model
     }
@@ -192,7 +215,7 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
       keyFailures.reset()
       keyError = undefined
     }
-    const m: RowModel<T> = { rows, filteredCount, totalCount: data.length, status }
+    const m: RowModel<T> = { rows, filteredCount, totalCount: data.length, status, isInitialLoad }
     last = { model: m, data, indices, columns, rowKey }
     return m
   }
@@ -286,9 +309,10 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
     if (result) model = result
     else {
       // pipeline:run failed: the boundary reported it; keep the last good rows.
+      const isInitialLoad = host.isInitialLoad()
       model = last
-        ? { ...last.model, status: 'error' }
-        : { rows: EMPTY, filteredCount: 0, totalCount: 0, status: 'error' }
+        ? { ...last.model, status: 'error', isInitialLoad }
+        : { rows: EMPTY, filteredCount: 0, totalCount: 0, status: 'error', isInitialLoad }
     }
     return model
   }

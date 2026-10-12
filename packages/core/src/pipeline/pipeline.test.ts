@@ -105,6 +105,25 @@ describe('getRowModel: no features', () => {
     expect(codes()).toEqual(['DK_CALLBACK_FAILED'])
     expect(seen[0]?.details).toMatchObject({ slot: 'columns[1].accessor', rows: [1], count: 1 })
   })
+  it('a throwing getter read through Row.getValue: DK_CALLBACK_FAILED at columns[i].key', () => {
+    const data = people(2).map((p, i) =>
+      i === 1
+        ? Object.defineProperty({ ...p }, 'age', {
+            get() {
+              throw new Error('getter')
+            },
+          })
+        : p,
+    )
+    const t = createTable({ data, onDiagnostic, columns: [{ key: 'age' }] })
+    const [r0, r1] = t.getRowModel().rows as Row<P>[]
+    expect(r1?.getValue('age')).toBeUndefined()
+    expect(codes()).toEqual(['DK_CALLBACK_FAILED'])
+    expect(seen[0]?.details).toMatchObject({ slot: 'columns[0].key', rows: [1], count: 1 })
+    // The failure does not leak into the next read.
+    expect(r0?.getValue('age')).toBe(0)
+    expect(codes()).toEqual(['DK_CALLBACK_FAILED'])
+  })
 })
 
 describe('pipeline: stage order and counts', () => {
@@ -528,7 +547,13 @@ describe('table integration', () => {
   it('destroyed before the first run: an empty row model', () => {
     const t = createTable({ data: people(2) })
     t.destroy()
-    expect(t.getRowModel()).toEqual({ rows: [], filteredCount: 0, totalCount: 0, status: 'idle' })
+    expect(t.getRowModel()).toEqual({
+      rows: [],
+      filteredCount: 0,
+      totalCount: 0,
+      status: 'idle',
+      isInitialLoad: false,
+    })
   })
 
   it('after destroy, getRowModel returns the last row model', () => {
