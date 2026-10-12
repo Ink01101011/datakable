@@ -80,4 +80,4 @@ Tasks within a wave do not depend on each other and can run in parallel.
 ## Follow-ups outside this breakdown
 
 - **Spec 2 — Selection** (row/cell, Ctrl/Cmd+click, Shift+click range): brainstorm after T24 lands, because it builds on the feature contract and the interceptors.
-- **kk-debounce 1.1.0** (released 2026-10-12) fixed kk-debounce#28 (`autoAbort` + `withSignal: true` now pass and abort the signal). Bump the `kk-debounce` dependency to 1.1.0. T18 still owns async control (no result to the caller, no timeout, signal-ignoring callbacks, unhandled rejections, non-debounced fetcher requests; §6.3).
+- **kk-debounce 1.1.0** (released 2026-10-12) fixed kk-debounce#28 (`autoAbort` + `withSignal: true` now pass and abort the signal). The dependency was bumped to 1.1.0 in e803a64. T18 still owns async control (no result to the caller, no timeout, signal-ignoring callbacks, unhandled rejections, non-debounced fetcher requests; §6.3).
