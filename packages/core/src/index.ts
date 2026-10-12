@@ -1,3 +1,4 @@
+export * from './catalog'
 export type {
   AccessorColumn,
   CellContext,

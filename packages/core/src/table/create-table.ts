@@ -1,3 +1,4 @@
+import { validateOptionChange, validateOptions } from '../catalog/validator'
 import { DatakableError, defaultPhase } from '../diagnostics/build'
 import { DEV } from '../diagnostics/env'
 import { createDiagnostics } from '../diagnostics/hub'
@@ -118,6 +119,9 @@ export function createTable<T, S extends TableState>(
     getDataRef: () => data,
     redaction,
   })
+  // Option validator (§3.4, `table:init`): before anything reads the options. Invalid values throw
+  // DK_INVALID_OPTION; unknown / no-effect options are reported on the hub.
+  validateOptions(options, { table: hub.table, emit: hub.emit })
   // Features (§3.3) are read once, at creation. `features` is the listed order (API install, conflict
   // reports); `pipeline` is stage order for the runner. Duplicates throw here (config error).
   const features: readonly AnyFeature[] = options.features ?? EMPTY
@@ -446,12 +450,10 @@ export function createTable<T, S extends TableState>(
     if (!admit(Object.keys(partial.state ?? {}))) return
     withTrigger('setOptions', () => {
       const previous = options
-      // `features` is read once, at creation: a new value is ignored.
       const next = { ...options, ...partial }
-      if ('features' in next && next.features !== previous.features) {
-        if (previous.features === undefined) delete next.features
-        else next.features = previous.features
-      }
+      // Option validator (§3.4, `table:setOptions`): an invalid value throws before anything
+      // changes; read-once options (`features`, `timeout`, `diagnostics`, …) keep their value.
+      validateOptionChange(partial, next, previous, { table: hub.table, emit: hub.emit })
       void op('table:setOptions', { options: next, previous }, 'options', (): undefined => {
         options = next
         if (next.interceptors !== previous.interceptors) {
