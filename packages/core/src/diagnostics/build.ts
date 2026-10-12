@@ -7,6 +7,13 @@ import {
 } from './catalog'
 import { coreDiagnostics } from './codes'
 import { DEV } from './env'
+import {
+  type RedactField,
+  type Redactor,
+  redactDetails,
+  redactLocation,
+  resolveRedaction,
+} from './redact'
 import { toSafeJson } from './safe-json'
 import type {
   Diagnostic,
@@ -39,6 +46,8 @@ export interface BuildInput {
   causedBy?: string
   /** Build the problem / impact / fix text. Default: development builds only (§8.2). */
   dev?: boolean
+  /** Redaction policy (§8.2). Default: `'keys'` when `dev`, else `'safe'`. */
+  redaction?: Redactor
 }
 
 export const defaultPhase = (): Phase => (typeof document === 'undefined' ? 'ssr' : 'client')
@@ -112,10 +121,19 @@ export function buildDiagnostic<C extends DiagnosticCode>(
     }
   }
   const b = def as unknown as DiagnosticDefinition<'DK_INTERNAL'>
-  const dd = d as DiagnosticDetails<'DK_INTERNAL'>
-  const where = b.where(dd)
-  const whereText = formatWhere(where)
   const dev = input.dev ?? DEV
+  // Redact first: `where`, the text builders, the fingerprint and the docs URL only ever see
+  // redacted data, so no consumer downstream (interceptors, sinks, strict errors) can leak it.
+  const r = input.redaction ?? resolveRedaction(undefined, dev)
+  const where = redactLocation(b.where(d as DiagnosticDetails<'DK_INTERNAL'>), r)
+  d = redactDetails(
+    d,
+    def.redact as Readonly<Record<string, RedactField | undefined>> | undefined,
+    where,
+    r,
+  )
+  const dd = d as DiagnosticDetails<'DK_INTERNAL'>
+  const whereText = formatWhere(where)
   const now = input.now ?? Date.now()
   const context: DiagnosticContext = {
     table: input.table ?? '(global)',
