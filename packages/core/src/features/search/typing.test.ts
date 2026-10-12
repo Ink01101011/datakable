@@ -292,3 +292,34 @@ describe('typing: options (§3.5)', () => {
     expect(codes()).not.toContain('DK_OPTION_NO_EFFECT')
   })
 })
+
+describe("typing: mode 'server' defaults (§6.3: debounce, wait 300, minLength 2)", () => {
+  const server = (typing?: SearchTyping) =>
+    createTable({
+      data: users,
+      onDiagnostic,
+      columns: [{ key: 'name', search: 1 }],
+      features: [search({ mode: 'server', ...(typing ? { typing } : {}) })],
+    })
+
+  it('debounces 300 ms by default and treats a 1-character input as no query', () => {
+    const t = server()
+    void t.setSearch('b')
+    expect(t.getState().search).toEqual({ input: 'b', query: '', status: 'idle' })
+    void t.setSearch('bo')
+    expect(t.getState().search).toEqual({ input: 'bo', query: '', status: 'pending' })
+    vi.advanceTimersByTime(299)
+    expect(t.getState().search.query).toBe('')
+    vi.advanceTimersByTime(1)
+    expect(t.getState().search).toEqual({ input: 'bo', query: 'bo', status: 'idle' })
+  })
+
+  it('explicit typing options still win; wait alone is not DK_OPTION_NO_EFFECT', () => {
+    const t = server({ strategy: 'immediate', minLength: 0 })
+    void t.setSearch('b')
+    expect(t.getState().search).toEqual({ input: 'b', query: 'b', status: 'idle' })
+    seen = []
+    server({ wait: 100 })
+    expect(codes()).not.toContain('DK_OPTION_NO_EFFECT')
+  })
+})

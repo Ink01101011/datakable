@@ -11,6 +11,9 @@ import { createTable } from '../table/create-table'
 import { getTableInternals } from '../table/internals'
 import type { FetchParams, FetchResult } from './fetcher'
 
+/** Server search that commits on every keystroke (overrides the §6.3 server typing defaults). */
+const serverNow = { mode: 'server', typing: { strategy: 'immediate', minLength: 0 } } as const
+
 beforeEach(() => {
   vi.spyOn(console, 'warn').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -244,7 +247,8 @@ describe('fetcher (§7.1)', () => {
     const t = createTable({
       fetcher: m.fetcher,
       columns: [{ key: 'n' }, { key: 'id' }],
-      features: [columnFilters({ mode: 'server' }), search({ mode: 'server' }), sorting()],
+      // Immediate typing (the server default debounces, §6.3): each setSearch commits at once.
+      features: [columnFilters({ mode: 'server' }), search(serverNow), sorting()],
     })
     expect(Object.keys(m.last().params).sort()).toEqual(['filters', 'query', 'signal'])
     m.last().resolve({ rows: people(3) })
@@ -447,7 +451,7 @@ describe('fetcher (§7.1)', () => {
 describe("status 'searching' (async searchFn seam, §6.6)", () => {
   it("a searchFn request is 'searching'; a fetcher overlapping it wins ('fetching')", async () => {
     const m = manual()
-    const t = createTable({ fetcher: m.fetcher, features: [search({ mode: 'server' })] })
+    const t = createTable({ fetcher: m.fetcher, features: [search(serverNow)] })
     m.last().resolve({ rows: people(2) })
     await tick()
     const seen = watch(t)

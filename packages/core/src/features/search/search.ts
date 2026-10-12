@@ -81,14 +81,17 @@ export interface SearchOptions {
   fuzzyMaxDistance?: number
   /** Default `false`. */
   caseSensitive?: boolean
-  /** Typing timing: when `query` follows `input`. Default: immediate. */
+  /**
+   * Typing timing: when `query` follows `input`. Default: immediate; with `mode: 'server'`,
+   * debounce 300 ms and `minLength` 2 (§6.3).
+   */
   typing?: SearchTyping
   /**
-   * `'server'`: the server matches `query` (its state goes to `options.fetcher`, or the app fetches); core
-   * skips this step (§7.1). Default `'client'`.
+   * `'server'`: the server matches `query` (its state goes to `options.fetcher`, or the app
+   * fetches); core skips this step (§7.1). Default `'client'`.
    */
   mode?: DataMode
-  // Seams: `searchFn` / `useWorker` (T19); `mode: 'server'` typing defaults (debounce, minLength 2).
+  // Seams: `searchFn` / `useWorker` (T19).
 }
 
 const DEFAULT_WAIT = 300
@@ -178,7 +181,12 @@ export const search = (opts: SearchOptions = {}) => {
     | { input: Uint32Array; query: string; index: SearchIndex; output: Uint32Array }
     | undefined
   let subset: { input: Uint32Array; index: SearchIndex; items: readonly Item[] } | undefined
-  const typing = opts.typing ?? {}
+  const server = opts.mode === 'server'
+  // Server defaults (§6.3): debounce, minLength 2. Filled in before the option check, so `wait` /
+  // `behavior` alone are not reported as having no effect.
+  const typing: SearchTyping = server
+    ? { strategy: 'debounce', minLength: 2, ...opts.typing }
+    : (opts.typing ?? {})
   const strategy = typing.commitOn === 'enter' ? 'enter' : (typing.strategy ?? 'immediate')
   const wait = typing.wait ?? DEFAULT_WAIT
   const minLength = typing.minLength ?? 0
@@ -216,7 +224,7 @@ export const search = (opts: SearchOptions = {}) => {
     name: 'search',
     stage: 'search',
     mode: opts.mode ?? 'client',
-    options: defineOptions(searchOptions, opts),
+    options: defineOptions(searchOptions, server ? { ...opts, typing } : opts),
     initialState: (): SearchState => ({ input: '', query: '', status: 'idle' }),
     interceptors: [
       defineInterceptor({
