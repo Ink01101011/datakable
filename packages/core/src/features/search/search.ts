@@ -251,6 +251,7 @@ interface Waiter {
 
 const APPLIED: SearchOutcome = Object.freeze({ status: 'applied' })
 const SUPERSEDED: SearchOutcome = Object.freeze({ status: 'superseded' })
+const settledSuperseded = () => Promise.resolve(SUPERSEDED)
 const ERROR: SearchOutcome = Object.freeze({ status: 'error' })
 const NO_KEYS = () => {}
 
@@ -395,6 +396,8 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
     mode: opts.mode ?? 'client',
     options: defineOptions(searchOptions, server ? { ...opts, typing } : opts),
     initialState: (): SearchState => ({ input: '', query: '', status: 'idle' }),
+    // After destroy(): still a promise, so `setSearch(q).then(…)` never throws.
+    destroyedResult: { setSearch: settledSuperseded, flushSearch: settledSuperseded },
     interceptors: [
       defineInterceptor({
         name: 'search',

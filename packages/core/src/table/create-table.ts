@@ -622,8 +622,11 @@ export function createTable<T, S extends TableState>(
   }
 
   /** Runs a feature API method (wrapped once by `installApis`). */
-  function callApi(method: string, fn: () => unknown): unknown {
-    if (destroyed) return destroyedCall(method)
+  function callApi(method: string, fn: () => unknown, ifDestroyed?: () => unknown): unknown {
+    if (destroyed) {
+      destroyedCall(method)
+      return ifDestroyed?.()
+    }
     return withTrigger(`api:${method}`, () => {
       apiDepth++
       try {

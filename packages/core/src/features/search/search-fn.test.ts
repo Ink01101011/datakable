@@ -162,6 +162,18 @@ describe('setSearch / flushSearch outcomes without searchFn (R7: resolve when ap
     t.destroy()
     await expect(a).resolves.toEqual({ status: 'superseded' })
   })
+
+  it("after destroy(), setSearch / flushSearch still return a promise: 'superseded'", async () => {
+    const t = plain({ strategy: 'debounce', wait: 100 })
+    t.destroy()
+    const a = t.setSearch('bob')
+    const b = t.flushSearch()
+    expect(typeof a?.then).toBe('function')
+    await expect(a).resolves.toEqual({ status: 'superseded' })
+    await expect(b).resolves.toEqual({ status: 'superseded' })
+    expect(t.clearSearch()).toBeUndefined()
+    expect(codes().filter((c) => c === 'DK_TABLE_DESTROYED')).toHaveLength(3)
+  })
 })
 
 describe('async searchFn (§6.3)', () => {

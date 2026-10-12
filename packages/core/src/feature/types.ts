@@ -143,6 +143,12 @@ export interface Feature<Name extends string = string, F extends FeatureTypes = 
     state: Apply<F, AnyRow, 'state'>,
     ctx: RowModelContext<AnyRow>,
   ) => Uint32Array
+  /**
+   * What an API method returns when called after `destroy()` (still a no-op reporting
+   * `DK_TABLE_DESTROYED`), per method name; unlisted methods return `undefined`. A method that
+   * returns a promise lists one here so callers can still `.then` it.
+   */
+  readonly destroyedResult?: { readonly [method: string]: () => unknown }
   /** Interceptors this feature contributes (installed after asyncControl, before the user's). */
   readonly interceptors?: readonly Interceptor<OpName>[]
   /** Semver range of `@datakable/core` the feature needs (`DK_FEATURE_INCOMPATIBLE`, T28). */

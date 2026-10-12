@@ -17,10 +17,10 @@ export interface FeatureHost {
   /** `state:dispatch` of one slice (where = the feature name); notifies unless inside an API call. */
   setSlice(name: string, updater: SliceUpdater<unknown>): void
   /**
-   * Runs an API method: no-op + `DK_TABLE_DESTROYED` after destroy, trigger `api:<method>`,
-   * listeners notified once when the outermost call returns.
+   * Runs an API method: no-op + `DK_TABLE_DESTROYED` after destroy (returning `destroyed?.()`),
+   * trigger `api:<method>`, listeners notified once when the outermost call returns.
    */
-  call(method: string, fn: () => unknown): unknown
+  call(method: string, fn: () => unknown, destroyed?: () => unknown): unknown
 }
 
 function reportFailure(
@@ -101,9 +101,10 @@ export function installApis(features: readonly AnyFeature[], host: FeatureHost):
     for (const method of keys) {
       owners.set(method, name)
       const member = members[method]
+      const destroyed = f.destroyedResult?.[method]
       target[method] =
         typeof member === 'function'
-          ? (...args: unknown[]) => host.call(method, () => member.apply(members, args))
+          ? (...args: unknown[]) => host.call(method, () => member.apply(members, args), destroyed)
           : member
     }
   }

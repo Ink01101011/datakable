@@ -243,6 +243,17 @@ describe('createTable with features', () => {
     expect(seen[0]?.details).toEqual({ method: 'inca' })
   })
 
+  it('after destroy(), a method listed in destroyedResult returns that value (still a no-op)', () => {
+    const f = { ...counter('a'), destroyedResult: { geta: () => -1 } } as AnyFeature
+    const t = createTable({ data: [], features: [f], onDiagnostic })
+    expect(api(t).geta?.()).toBe(0)
+    t.destroy()
+    expect(api(t).geta?.()).toBe(-1)
+    expect(api(t).inca?.()).toBeUndefined()
+    expect(t.getState()).toEqual({ a: { n: 0 } })
+    expect(codes()).toEqual(['DK_TABLE_DESTROYED', 'DK_TABLE_DESTROYED'])
+  })
+
   it('ctx gives the feature its name, the table and the hub emitter', () => {
     let captured: { name: string; table: unknown } | undefined
     const f = defineFeature({
