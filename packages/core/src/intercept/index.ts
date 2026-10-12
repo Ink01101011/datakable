@@ -1,3 +1,7 @@
+export { errorBoundary } from './boundary'
+export { CELL_FALLBACK, CellFailures, type CellSlot, runCells } from './cell-batch'
+export { CallbackError, callUser, classifyError, type ErrorClass } from './classify'
+export { boundaryDiagnostics } from './codes'
 export {
   type ContextBase,
   type ContextPool,
@@ -6,6 +10,7 @@ export {
   type InterceptorContext,
 } from './context'
 export { defineInterceptor, type Interceptor } from './define'
+export { FALLBACK, type Fallback, getFallback, registerFallback } from './fallbacks'
 export {
   type BuiltinOperations,
   getOperation,

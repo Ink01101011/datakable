@@ -18,7 +18,7 @@ export type Location =
   | { kind: 'option'; path: string }
   | { kind: 'row'; index: number; key?: string }
   | { kind: 'interceptor'; name: string; op: string }
-  | { kind: 'operation'; op: string }
+  | { kind: 'operation'; op: string; slot?: string }
 
 /** A summary of table state — never raw input (§8.1). */
 export interface DiagnosticStateSummary {

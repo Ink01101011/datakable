@@ -1,3 +1,4 @@
+import { VERSION } from '../version'
 import { defineDiagnostic } from './catalog'
 
 declare module './catalog' {
@@ -11,11 +12,37 @@ declare module './catalog' {
       previousKind: string
       previousHot: boolean
     }
-    DK_INTERNAL: { op: string; problem: string }
+    DK_INTERNAL: {
+      op: string
+      problem: string
+      /** The ctx `where` of the failed call (errorBoundary). */
+      slot?: string
+      /** `error.name` of the classified throw (errorBoundary). */
+      errorName?: string
+      /** The registry fallback applied (errorBoundary); invariant callers abort instead. */
+      fallback?: string
+    }
   }
 }
 
 const ISSUES = 'https://github.com/Ink01101011/datakable/issues/new'
+
+/** Prefilled GitHub issue (§8.3): version, op, slot and error name — never values. */
+function issueLink(d: { op: string; slot?: string; errorName?: string }): string {
+  const title = `DK_INTERNAL in ${d.op}${d.errorName ? ` (${d.errorName})` : ''}`
+  const body = [
+    `package: @datakable/core@${VERSION}`,
+    `operation: ${d.op}`,
+    `slot: ${d.slot ?? '-'}`,
+    `error: ${d.errorName ?? '-'}`,
+    '',
+    'diagnostic.toJSON():',
+    '',
+    'table.explain():',
+    '',
+  ].join('\n')
+  return `${ISSUES}?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`
+}
 
 // Measured by intercept/chain.bench.ts (Apple M4 Pro, Node 25.2.1): one pass-through interceptor
 // adds ~10 ns per call; spec §9.2 measured +15% when the same wrapping is done per cell.
@@ -64,16 +91,22 @@ export const coreDiagnostics = [
       `or give the new operation its own name, e.g. "myplugin:${d.op.split(':').pop()}"`,
     ],
   }),
-  // Minimal entry for core-internal invariants; T06 adds the classification and issue details.
+  // Core invariants (unknown op, boundary installed twice) and throws that errorBoundary traced to
+  // DataKable's own code (top stack frame in a datakable path).
   defineDiagnostic({
     code: 'DK_INTERNAL',
     level: 'error',
-    where: (d) => ({ kind: 'operation', op: d.op }),
-    problem: (d) => d.problem,
-    impact: () => 'the call was aborted',
-    fix: () => [
-      'this is likely a DataKable bug or a plugin wiring error',
-      `report it at ${ISSUES} with the diagnostic JSON`,
+    where: (d) =>
+      d.slot ? { kind: 'operation', op: d.op, slot: d.slot } : { kind: 'operation', op: d.op },
+    problem: (d) =>
+      d.errorName
+        ? `${d.errorName} thrown inside DataKable code during ${d.op}: ${d.problem} — likely a DataKable bug`
+        : d.problem,
+    impact: (d) => (d.fallback ? `${d.fallback}; the table keeps working` : 'the call was aborted'),
+    fix: (d) => [
+      `this is likely a DataKable bug or a plugin wiring error — report it: ${issueLink(d)}`,
+      'attach diagnostic.toJSON() and table.explain() (both redacted) to the issue',
+      'meanwhile, check plugins / interceptors registered on this operation',
     ],
   }),
 ]
