@@ -1,7 +1,8 @@
-import { compilePath, getValue } from '../column/get-value'
+import { getValue } from '../column/get-value'
 import type { Emit } from '../diagnostics/types'
 import { featureDiagnostics } from '../feature/codes'
 import type { AnyFeature, RowModelContext } from '../feature/types'
+import { type KeyOf, resolveRowKeys } from '../ingest/row-key'
 import { CellFailures } from '../intercept/cell-batch'
 import { errorName } from '../intercept/classify'
 import { type ContextBase, createContext } from '../intercept/context'
@@ -11,7 +12,7 @@ import type { TableState } from '../table/types'
 import { createColumnCache } from './column-cache'
 import { type ResolvedColumn, type ResolvedColumns, resolveColumns } from './columns'
 import { allRows } from './indices'
-import { Row, type RowKey, type RowSource } from './row'
+import { Row, type RowSource } from './row'
 import type { RowModel, RowModelStatus } from './types'
 
 void featureDiagnostics
@@ -78,6 +79,8 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
     keyFailures.add(index, e)
   }
   let last: Built<T> | undefined
+  /** Row keys resolved over all rows (§5.2), per (data, rowKey) reference. */
+  let keys: { data: readonly unknown[]; rowKey: unknown; keyOf: KeyOf } | undefined
   let model: RowModel<T> | undefined
 
   /** `Row.getValue` failures: one emit per failing cell, built only when a cell fails. */
@@ -135,34 +138,6 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
     return s
   }
 
-  /** `(row, index) => key`; failures are recorded in `keyFailures` (reported once per run). */
-  function keyReader(rowKey: unknown): (row: unknown, index: number) => RowKey {
-    const ok = (k: unknown, index: number): RowKey =>
-      typeof k === 'string' || (typeof k === 'number' && !Number.isNaN(k)) ? k : `#${index}`
-    if (typeof rowKey === 'function') {
-      const fn = rowKey as (row: unknown) => unknown
-      return (row, index) => {
-        try {
-          return ok(fn(row), index)
-        } catch (e) {
-          keyFailed(index, e)
-          return `#${index}`
-        }
-      }
-    }
-    if (typeof rowKey === 'string') {
-      const path = compilePath(rowKey)
-      let cur = 0
-      const onError = (e: unknown) => keyFailed(cur, e)
-      return (row, index) => {
-        cur = index
-        return ok(getValue(row, path, onError), index)
-      }
-    }
-    // TODO(T11): DK_MISSING_ROW_KEY / DK_DUPLICATE_ROW_KEY and the `key#n` fallback keys.
-    return (_row, index) => index
-  }
-
   function reportKeyFailures() {
     if (keyFailures.count === 0) return
     const name = errorName(keyError)
@@ -201,10 +176,13 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
       return prev.model
     }
     const source = rowSource(resolveColumns(columns))
-    const keyOf = keyReader(rowKey)
     const rows = new Array<Row<T>>(indices.length)
     keyFailures.reset()
     try {
+      if (keys?.data !== data || keys.rowKey !== rowKey) {
+        keys = { data, rowKey, keyOf: resolveRowKeys(data, rowKey, host.emit, keyFailed) }
+      }
+      const keyOf = keys.keyOf
       for (let i = 0; i < indices.length; i++) {
         const r = indices[i] as number
         const original = data[r] as T
