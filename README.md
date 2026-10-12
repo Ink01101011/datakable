@@ -76,8 +76,13 @@ The default preset is `columnFilters`, `validity`, `search`, `sorting` and `pagi
 schema validation, server mode, the status model, diagnostics and `explain()`.
 
 **Bundler requirement:** DataKable reads `process.env.NODE_ENV` to strip development-only code. Vite,
-webpack, Next.js, Rollup (with `@rollup/plugin-replace`) and esbuild (`--define`) all replace it;
-a bundler that does not leaves `process` undefined in the browser.
+webpack, Next.js, Rollup (with `@rollup/plugin-replace`) and esbuild (`--define`) all replace it.
+Without a replacement, unbundled browser code throws `ReferenceError: process is not defined`, as
+React and Redux do.
+
+**Next.js app router:** `@datakable/react` is marked `"use client"`; `datakable` is not, so its
+`createTable` also works on the server. Import `<DataTable />` / `useDataTable` from a client
+component (a `'use client'` file), or from `@datakable/react`.
 
 ## Packages
 

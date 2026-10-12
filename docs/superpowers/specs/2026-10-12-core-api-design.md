@@ -360,6 +360,8 @@ search({
 | … otherwise (not nearly sorted, wide range, n < 10k) | `exsorted` `timSort` |
 | strings, floats, multi-column, custom `sortFn` | native `Array.prototype.sort` (stable since ES2019) |
 
+- **Decided 2026-10-13:** `auto` keeps the table above (radix for n ≥ 10k wide-range integer keys), plus the T29 collation-rank path: from n ≥ 10k, a string column is sorted by precomputed `Intl.Collator` ranks (one time-sliced job, §9.1) and then as integer keys, instead of a collator call per comparison.
+
 - Sorting operates on index arrays through a key selector over the column cache. exsorted's in-place algorithms get a copy (timSort mutates its input — verified).
 - **Overrides:** table-level `sorting({ algorithm: 'tim' | 'radix' | 'counting' | 'native' | (indices, cmp) => indices })`, or column-level `sortAlgorithm`. *(Changed 2026-10-13 for §9.3: the `merge` algorithm was dropped; `tim` covers the stable comparator case.)*
 - `DK_SORT_STRATEGY` (info, debug only) reports the algorithm chosen, the reason, n and the time taken.
@@ -383,7 +385,7 @@ search({
 - `autoResetPageIndex: true` resets to page 0 when search, filters or sort change.
 - `pageIndex` is clamped when the row count shrinks.
 - Omitting the feature means no pagination.
-- **Server mode:** the page count is `ceil(rowCount / pageSize)`. `rowCount` comes from the fetcher result, or from the `rowCount` option when there is no fetcher (§7.1). Server-mode pagination with neither emits `DK_ROW_COUNT_MISSING` (warn); the page count falls back to `data.length` treated as the total (one page, `canNextPage()` false).
+- **Server mode:** the page count is `ceil(rowCount / pageSize)`. `rowCount` comes from the fetcher result, or from the `rowCount` option when there is no fetcher (§7.1). Server-mode pagination with neither emits `DK_ROW_COUNT_MISSING` (warn); the page count falls back to `data.length` treated as the total (one page, `canNextPage()` false; decided 2026-10-13).
 
 ### 6.6 Row model output
 
@@ -398,13 +400,15 @@ search({
 | `'pending'` | a search debounce is waiting, or time-sliced work is in progress (§9.1) |
 | `'searching'` | an async `searchFn` request is in flight |
 | `'fetching'` | a `fetcher` request is in flight (initial load, or page / sort / filter / query change in server mode) |
+
+`'fetching'` is only ever the `fetcher`, and `'searching'` only ever an async `searchFn` (decided 2026-10-13).
 | `'error'` | a diagnostic affected the row model; the last good row model is shown |
 
 `isInitialLoad: boolean` is `true` until the table has had rows to show for the first time (data given at creation, `initialData`, or the first fetcher / `searchFn` result applied). It lets the UI choose between a full loading state (`fetching` + `isInitialLoad`, nothing to show yet) and a refresh indicator over stale rows (`fetching` + `!isInitialLoad`). It never goes back to `true`; an empty applied result counts as loaded (the UI shows Empty, not Loading). If the first request fails, `status` is `'error'` and `isInitialLoad` stays `true`, so the UI can show an error with nothing behind it.
 
-**Status is never silent** (decided 2026-10-12): every change of `status` or `isInitialLoad` produces a new row model and notifies subscribers, so a UI bound to `getRowModel()` always reflects what the table is doing. When two activities overlap, the most specific in-flight one wins: `error` > `fetching` > `searching` > `validating` > `pending` > `idle`.
+**Status is never silent** (decided 2026-10-12): every change of `status` or `isInitialLoad` produces a new row model and notifies subscribers, so a UI bound to `getRowModel()` always reflects what the table is doing. When two activities overlap, the most specific in-flight one wins: `error` > `fetching` > `searching` > `validating` > `pending` > `idle`. So during an explicit `refetch()` after an error, `status` stays `'error'` until a request applies; the promise `refetch()` returns is the signal for that retry (decided 2026-10-13).
 
-**Rule:** any diagnostic that affects the row model sets `status: 'error'`.
+**Rule** (decided 2026-10-13): any diagnostic that affects the row model sets `status: 'error'`. That is a pipeline step that throws or returns a bad output, a failed `data:ingest`, a failed fetcher request, or a failed `searchFn`. A cell-level problem handled inside a step (`DK_FILTER_TYPE_MISMATCH`, a throwing `format` / `accessor` / filter `fn` / `sortBy` / `sortFn`) is a diagnostic only and does **not** set `'error'`. The predicate is `inStepDiagnosticSetsError` in `pipeline/status-rule.ts` (it returns `false`).
 
 `Row<T>` is a class instance with its methods on the prototype: `key`, `index`, `original`, `valid`, `issues`, `getValue(id)`, `getCellIssues(id)`.
 
@@ -513,6 +517,7 @@ interface DiagnosticContext {
   - Schema messages are replaced by the issue path plus DataKable's own text under `'safe'` / `'keys'`, because validators embed received values.
   - Fetcher errors are printed as `error.name` + code only. The full error goes to `onDiagnostic` as `cause`.
 - **Production stripping:** `problem` / `fix` text builders, `devChecks`, deprecation texts and the tracer are behind `process.env.NODE_ENV !== 'production'`. Prod diagnostics keep `code`, `where`, `context` and a docs URL with parameters. `import 'datakable/messages'` opts back into full text.
+- **Bundler requirement** (decided 2026-10-13): core reads the bare `process.env.NODE_ENV` so bundlers fold it to a constant. A bundler (or a define) must replace it; unbundled browser use without a replacement throws a `ReferenceError` (`process` is not defined), as React and Redux do. Node needs nothing. The READMEs state this.
 - **Language:** all messages are English-only in v1. The stable `code` is the reference; localisation is v2+ (§2).
 
 ### 8.3 Diagnostic catalog
@@ -545,9 +550,9 @@ Each code's section in `docs/errors.md` has: problem / common causes / fix / exa
 | | `DK_ASYNC_TIMEOUT` | error | async op exceeded `timeout` | aborts; previous results kept |
 | | `DK_ROW_COUNT_MISSING` | warn | server-mode pagination with no fetcher and no `rowCount` option | page count from `data.length` (one page); pass `rowCount` |
 | Callbacks & plugins | `DK_CALLBACK_FAILED` | error | any user callback threw (`where` = slot + row) | slot fallback |
-| | `DK_CALLBACK_BAD_RETURN` | warn | slot contract violated (e.g. `format` returned a non-string, `cell` returned a Promise) | coerced / fallback |
+| | `DK_CALLBACK_BAD_RETURN` | warn | slot contract violated (e.g. `format` returned a non-string, `cell` returned a Promise) (dev) | coerced / fallback |
 | | `DK_FEATURE_FAILED` | error | a feature `rowModel` / `createApi` / `initialState` threw | step passes through / API missing / slice starts `undefined` |
-| | `DK_FEATURE_BAD_OUTPUT` | error | `rowModel` returned a non-index-array | step passes through |
+| | `DK_FEATURE_BAD_OUTPUT` | error | `rowModel` returned a non-index-array (dev) | step passes through |
 | | `DK_FEATURE_MUTATED_INPUT` | warn | `rowModel` mutated its input (dev) | — |
 | | `DK_INTERCEPTOR_FAILED` | error | an interceptor threw | interceptor skipped |
 | | `DK_HOT_INTERCEPTOR` | warn | an interceptor attached to a hot op (`column:batch`, also via `'*'`) without `hot: true` (dev) | still runs; states the measured cost |
@@ -582,6 +587,8 @@ Each code's section in `docs/errors.md` has: problem / common causes / fix / exa
 
 `DatakableConfigError` (thrown at creation) uses the same shape: code, problem, where, fix, docs.
 
+**Dev-only codes** (decided 2026-10-13): `DK_FEATURE_BAD_OUTPUT`, `DK_CALLBACK_BAD_RETURN`, `DK_DATA_MUTATED`, `DK_FEATURE_MUTATED_INPUT`, `DK_SORT_COMPARATOR_INVALID`, `DK_UNSTABLE_COLUMNS` and `DK_UNSTABLE_OPTION` (with `DK_HOT_INTERCEPTOR`, already marked dev above) are emitted by development builds only: their checks sit behind `process.env.NODE_ENV !== 'production'` and are absent from production bundles. The fallbacks they describe (step passes through, coercion) still apply where they do not depend on the check.
+
 ### 8.4 `explain()` and `explainRow(key)`
 
 These are part of the v1 core API and are usable from the console, tests and the server.
@@ -601,6 +608,7 @@ table.explainRow(42)
 - `explainRow` replays each step's `rowModel` on a single row, so normal runs carry no per-row bookkeeping.
 - `explain` uses the last run's tracer counts. In prod, where the tracer is off by default, it recomputes on demand.
 - Both outputs go through the redaction policy.
+- **Both stay available in production** (decided 2026-10-13): only their console text formatter is dev-only; in production `String(…)` is the JSON of the same object.
 
 ### 8.5 Versioning
 
@@ -618,7 +626,7 @@ table.explainRow(42)
 ### 8.6 Error handling guarantees
 
 - **Config errors** (deterministic programmer errors, the `error (config)` codes in §8.3) throw `DatakableConfigError` at creation.
-- Any diagnostic that affects the row model sets `status: 'error'` (§6.6) and keeps the last good row model.
+- Any diagnostic that affects the row model sets `status: 'error'` (§6.6) and keeps the last good row model. Handled cell-level diagnostics inside a step do not (decided 2026-10-13, §6.6).
 - **Data and runtime problems never throw**, except under `strict: true` or `invalidRows: 'throw'`.
 - Every user callback is invoked inside an `errorBoundary` scope with a slot `where`. Every public method and pipeline step is guarded. Unknown errors are classified as `DK_INTERNAL` (stack in DataKable code) or `DK_UNKNOWN`.
 - Every promise DataKable creates is handled. There are no unhandled rejections.
@@ -677,6 +685,8 @@ table.explainRow(42)
 
 The bundle budgets are estimates from measured dependency sizes plus an assumed DataKable code size. The first implementation measures a baseline. If it exceeds a budget, the budget is **discussed with the user** — it is never raised silently.
 
+**Decided 2026-10-13 (user):** the memory budget applies to **every** scenario — paginated, unpaginated and client search at 100k rows — not only the paginated one. The size budgets stay as written (core ≤ 8 KB, `datakable` default preset + react ≤ 20 KB); they are met by shrinking the code, never by raising the budget.
+
 *Measured 2026-10-13 after the approved §9.3 changes (opt-in `withSchema` / `withFetcher`, development-only option validation, version and data checks, no `merge` sort, the feature runtime brought by `defineFeature`), with the committed method (`pnpm size`): core `createTable` 23,535 → 14,553 B gzip; with filters + sorting + pagination 30,703 → 22,198 B; the `datakable` preset 35,318 → 27,697 B. The 8 KB core budget is still unmet: the remaining bare table is the store, the index pipeline and `Row`s, row keys, the diagnostics pipeline (build, redaction, safe JSON, hub, console sink), the interceptor runtime with the error boundary, and `explain` — all production behaviour this spec requires. The budgets are unchanged and the gap is raised with the user.*
 
 ---
@@ -699,7 +709,8 @@ The bundle budgets are estimates from measured dependency sizes plus an assumed 
     - `data-invalid` / `aria-invalid` on flagged rows and cells.
 - **Customisation:** unstyled, with `data-*` hooks only. An optional `datakable/styles.css` is available. `components={{ SearchInput, Pagination, Empty, Loading, Error }}` overrides the defaults.
 - **Errors:** an error boundary around the body (`DK_RENDER_FAILED`), and per-cell `cell` throws render `⚠` (`DK_CALLBACK_FAILED`).
-- `react` peer: `^18.2 || ^19`. The `"use client"` banner is preserved.
+- `react` peer: `>=18` (matches `package.json`; decided 2026-10-13).
+- **`"use client"`** (decided 2026-10-13): every `@datakable/react` output module carries the `"use client"` banner. `datakable` carries none, so its `createTable` stays usable on the server. Next.js app-router users import `<DataTable />` / `useDataTable` from inside a client component (`'use client'` file), or from `@datakable/react`.
 
 ---
 
@@ -742,3 +753,24 @@ The bundle budgets are estimates from measured dependency sizes plus an assumed 
 4. tsc prototypes: column types (`proto.ts`), loose types (`anyp.ts`), HKT features (`feat.ts`), custom type-error attempts (`msg.ts`, `vA.ts`, `vB.ts`), interceptor typing (`icpt.ts`).
 5. Benchmarks: sorting (`bench.mjs`), interceptor overhead (`icpt.ts`), pipeline shape and batch granularity (`opt.mjs`), dependency bundle sizes (esbuild).
 6. kk-debounce `autoAbort` probe (`kkprobe.mjs`) → [kk-debounce#28](https://github.com/Ink01101011/kk-debounce/issues/28), fixed in kk-debounce 1.1.0 (§6.3).
+
+---
+
+## 14. Decisions log
+
+The open questions of the draft, resolved by the user on 2026-10-13 ("use all defaults"; 11 and 12 chosen explicitly). Each entry is also stated, marked "decided 2026-10-13", where it applies. Earlier decisions are marked in place (e.g. R5 in §3.4, "status is never silent" in §6.6).
+
+| # | Date | Decision | Where |
+|---|---|---|---|
+| 1 | 2026-10-13 | Status rule: handled cell-level diagnostics inside a step do not set `'error'`; `'error'` = a step that throws or returns bad output, failed ingest, failed fetch, failed `searchFn` (`inStepDiagnosticSetsError` → `false`) | §6.6, §8.6 |
+| 2 | 2026-10-13 | Core requires a bundler to replace `process.env.NODE_ENV`; unbundled browser use without it throws `ReferenceError` (as React / Redux) | §8.2, READMEs |
+| 3 | 2026-10-13 | Dev-only codes: `DK_FEATURE_BAD_OUTPUT`, `DK_CALLBACK_BAD_RETURN`, `DK_DATA_MUTATED`, `DK_FEATURE_MUTATED_INPUT`, `DK_SORT_COMPARATOR_INVALID`, `DK_UNSTABLE_COLUMNS`, `DK_UNSTABLE_OPTION` | §8.3, `docs/errors.md` |
+| 4 | 2026-10-13 | `DK_ROW_COUNT_MISSING` falls back to `data.length` as the total (one page, `canNextPage()` false) | §6.5 |
+| 5 | 2026-10-13 | `'fetching'` = the `fetcher`; `'searching'` = an async `searchFn` | §6.6 |
+| 6 | 2026-10-13 | Sort `auto` keeps the §6.4 table (radix for n ≥ 10k integer keys) plus the T29 collation-rank path for strings | §6.4 |
+| 7 | 2026-10-13 | `explain()` / `explainRow()` stay available in production (JSON `toString()`) | §8.4 |
+| 8 | 2026-10-13 | During an explicit `refetch()` after an error, `status` stays `'error'` (`error` > `fetching`); `refetch()`'s promise is the signal | §6.6 |
+| 9 | 2026-10-13 | React peer range `>=18` (matches `package.json`) | §10 |
+| 10 | 2026-10-13 | `"use client"` on every `@datakable/react` module, none in `datakable` (server-usable `createTable`); Next.js app router imports `<DataTable />` / `useDataTable` from a client component or `@datakable/react` | §10, READMEs |
+| 11 | 2026-10-13 | (user) The §9.3 memory budget applies to every scenario: paginated, unpaginated, client search | §9.3 |
+| 12 | 2026-10-13 | (user) The §9.3 size budgets stay as written: core ≤ 8 KB, `datakable` preset + react ≤ 20 KB | §9.3 |
