@@ -1,3 +1,4 @@
+export { comparatorDiagnostics, sortingDiagnostics } from './codes'
 export { compareValues, typeRank } from './compare'
 export {
   type SortAlgorithmOption,

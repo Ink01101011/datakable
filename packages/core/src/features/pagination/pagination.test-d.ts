@@ -6,7 +6,7 @@ import {
   type PaginationState,
   pagination,
   type StateOf,
-} from '../index'
+} from '../../index'
 
 type Item = { sku: string; price: number }
 declare const items: Item[]

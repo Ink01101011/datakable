@@ -1,6 +1,6 @@
-import { defineDiagnostic } from '../diagnostics/catalog'
+import { defineDiagnostic } from '../../diagnostics/catalog'
 
-declare module '../diagnostics/catalog' {
+declare module '../../diagnostics/catalog' {
   interface DiagnosticCatalog {
     DK_INVALID_PAGINATION: {
       /** The API method that received the value, or `'state'` for a slice written to the store. */
