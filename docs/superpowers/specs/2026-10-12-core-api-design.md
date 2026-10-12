@@ -677,6 +677,8 @@ table.explainRow(42)
 
 The bundle budgets are estimates from measured dependency sizes plus an assumed DataKable code size. The first implementation measures a baseline. If it exceeds a budget, the budget is **discussed with the user** — it is never raised silently.
 
+*Measured 2026-10-13 after the approved §9.3 changes (opt-in `withSchema` / `withFetcher`, development-only option validation, version and data checks, no `merge` sort, the feature runtime brought by `defineFeature`), with the committed method (`pnpm size`): core `createTable` 23,535 → 14,553 B gzip; with filters + sorting + pagination 30,703 → 22,198 B; the `datakable` preset 35,318 → 27,697 B. The 8 KB core budget is still unmet: the remaining bare table is the store, the index pipeline and `Row`s, row keys, the diagnostics pipeline (build, redaction, safe JSON, hub, console sink), the interceptor runtime with the error boundary, and `explain` — all production behaviour this spec requires. The budgets are unchanged and the gap is raised with the user.*
+
 ---
 
 ## 10. React binding (`@datakable/react`)
