@@ -8,6 +8,7 @@ import {
   emitTableDiagnostic,
   type InvalidRowsMode,
   isOptionsDefinition,
+  useDiagnostics as keepDiagnostics,
   type RowModel,
   registerPackage,
   type SchemaRow,
@@ -28,12 +29,12 @@ import {
 import { version } from '../package.json'
 import { reactDiagnostics } from './codes'
 
-// Referencing the definitions keeps them in the bundle (`sideEffects: false`).
-void reactDiagnostics
+// Registers the (development-only) definitions where they are emitted, so bundlers keep them.
+// Core's `useDiagnostics` is not a React hook; renamed here for the rules-of-hooks lint.
+keepDiagnostics(reactDiagnostics)
 
-// No @types/node here: declare just what is read (bundlers fold it, like core's `DEV`).
+// No @types/node here: declare just what is read.
 declare const process: { env: { NODE_ENV?: string } }
-const DEV: boolean = process.env.NODE_ENV !== 'production'
 
 /** No layout effects on the server (React 18 warns about them there). */
 const useIsomorphicLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect
@@ -302,7 +303,8 @@ function snapshot(inst: Instance, table: AnyTable): object {
  * function) are not forwarded again: an inline `columns` / `data` would otherwise loop.
  */
 function sync(inst: Instance, options: Options, selfCaused: boolean) {
-  if (DEV) checkUnstable(inst, options)
+  // Written out (not a module-level flag) so bundlers fold it while parsing (§8.2).
+  if (process.env.NODE_ENV !== 'production') checkUnstable(inst, options)
   const prev = inst.synced
   let partial: Record<string, unknown> | undefined
   for (const k of SYNCED) {

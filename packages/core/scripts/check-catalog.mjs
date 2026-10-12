@@ -7,7 +7,7 @@
 //    (bare createTable, each feature, each entry point, everything) the scenario is bundled like
 //    an app would (esbuild, minified, NODE_ENV production and development) and run: every code the
 //    bundle can emit (each DK_* string left in it) must be registered in that same bundle, and in
-//    development it must carry its where/problem/impact/fix.
+//    development it must carry its where/problem/impact/fix, and in production no text.
 import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -130,6 +130,12 @@ for (const env of ['production', 'development']) {
         !['problem', 'impact', 'fix'].every((k) => typeof def[k] === 'function')
       ) {
         failures.push(`${code}: no problem/impact/fix text in development (${label})`)
+      } else if (
+        env === 'production' &&
+        ['problem', 'impact', 'fix'].some((k) => typeof def[k] === 'function')
+      ) {
+        // §8.2: production keeps code/level/where only; text comes from `messages` when opted in.
+        failures.push(`${code}: message text shipped in production (${label}); guard it with DEV`)
       } else if (
         env === 'production' &&
         label === MESSAGES &&
