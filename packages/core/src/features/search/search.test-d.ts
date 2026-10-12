@@ -2,6 +2,7 @@ import { describe, expectTypeOf, it } from 'vitest'
 import {
   type ApiOf,
   createTable,
+  type FetchOutcome,
   type SearchOutcome,
   type SearchState,
   type StateOf,
@@ -32,6 +33,22 @@ describe('search() types', () => {
     search({ typing: { strategy: 'throttle', wait: 100, minLength: 2, commitOn: 'enter' } })
     // @ts-expect-error unknown strategy
     search({ typing: { strategy: 'later' } })
+  })
+
+  it('searchFn is typed against the row type; refetch is a core method', () => {
+    search<User>({
+      searchFn: ({ query, rows, signal }) => {
+        expectTypeOf(query).toEqualTypeOf<string>()
+        expectTypeOf(rows).toEqualTypeOf<readonly User[]>()
+        expectTypeOf(signal).toEqualTypeOf<AbortSignal>()
+        return rows.filter((r) => r.age > 1)
+      },
+    })
+    search<User>({ searchFn: async () => ({ keys: [1, 'a'] }) })
+    // @ts-expect-error a result is rows or { keys }
+    search<User>({ searchFn: () => 1 })
+    const t = createTable({ data: users, features: [search()] })
+    expectTypeOf(t.refetch()).toEqualTypeOf<Promise<FetchOutcome>>()
   })
 
   it('search API is absent without the feature', () => {

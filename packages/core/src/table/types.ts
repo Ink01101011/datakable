@@ -8,7 +8,7 @@ import type { StandardSchemaV1 } from '../ingest/standard-schema'
 import type { Interceptor } from '../intercept/define'
 import type { OpName } from '../intercept/operations'
 import type { RowModel } from '../pipeline/types'
-import type { Fetcher } from '../source/fetcher'
+import type { Fetcher, FetchOutcome } from '../source/fetcher'
 
 /** Table state: one entry per slice (feature state is typed by `StateOf`, T08). */
 export type TableState = Record<string, unknown>
@@ -132,6 +132,11 @@ export interface Table<
   getInvalidRows(): readonly InvalidRow[]
   /** Oldest first, at most 100 entries. */
   getDiagnostics(): Diagnostic[]
+  /**
+   * Runs `options.fetcher` again with the current params (§7.1), e.g. a Retry button after
+   * `DK_FETCH_FAILED`. Never rejects. Without a fetcher: `{ status: 'applied' }` at once.
+   */
+  refetch(): Promise<FetchOutcome>
   /** Releases listeners. Later mutating calls are no-ops that report `DK_TABLE_DESTROYED`. */
   destroy(): void
 }

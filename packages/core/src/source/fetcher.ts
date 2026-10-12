@@ -34,6 +34,15 @@ export interface FetchResult<T> {
   rowCount?: number
 }
 
+/**
+ * What `table.refetch()` resolves to; it never rejects. `'applied'`: the rows were loaded;
+ * `'superseded'`: a newer request (or `destroy()`) replaced it; `'error'`: it failed
+ * (`DK_FETCH_FAILED`, `DK_FETCH_BAD_RESPONSE`, `DK_ASYNC_TIMEOUT`) and the previous rows are kept.
+ */
+export interface FetchOutcome {
+  status: 'applied' | 'superseded' | 'error'
+}
+
 /** The server source (§7.1). Runs through `async:request`: latest wins, abort, `timeout`. */
 export type Fetcher<T> = (params: FetchParams) => FetchResult<T> | PromiseLike<FetchResult<T>>
 
