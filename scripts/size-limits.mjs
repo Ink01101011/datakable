@@ -64,6 +64,7 @@ export default [
     pkg: 'datakable',
     import: ['DataTable'],
     ...PRESET,
-    limit: 39 * KB,
+    // R11: 39 → 39.5 KB for T34's per-cell error boundaries + the hook's inline-data loop fix.
+    limit: 39.5 * KB,
   },
 ]
