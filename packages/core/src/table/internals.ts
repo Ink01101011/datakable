@@ -1,3 +1,4 @@
+import type { AnyFeature } from '../feature/types'
 import type { AsyncStatus } from '../source/async-control'
 
 /**
@@ -5,6 +6,11 @@ import type { AsyncStatus } from '../source/async-control'
  * Not exported from the package: `createTable` registers each table here.
  */
 export interface TableInternals {
+  /**
+   * The installed features in pipeline order (`orderFeatures`: by stage, stable). Fixed at
+   * creation; the pipeline runner (T09) runs their `rowModel`s in this order.
+   */
+  readonly features: readonly AnyFeature[]
   /**
    * Runs one `async:request` through the table's interceptor chain (errorBoundary → asyncControl
    * → …), with `previous` as FALLBACK. Resolves with the outcome; apply `value` only when

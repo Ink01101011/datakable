@@ -1,6 +1,7 @@
 import type { ColumnDef, LooseRow, Path } from '../column'
 import type { RedactFn, RedactLevel } from '../diagnostics/redact'
 import type { Diagnostic } from '../diagnostics/types'
+import type { AnyFeature } from '../feature/types'
 import type { Interceptor } from '../intercept/define'
 import type { OpName } from '../intercept/operations'
 
@@ -38,7 +39,12 @@ export interface TableOptions<T, S extends TableState = TableState> {
   columns?: readonly ColumnDef<T>[]
   /** Row identity (§5.2). Read by redaction here; key handling is the ingest's. */
   rowKey?: Path<LooseRow<T>> | ((row: T) => string | number)
-  /** Starting values of owned slices. */
+  /**
+   * Installed features (§3.3), in any order: the pipeline runs them by `stage`. Each adds its state
+   * slice and merges its API onto the table. Read once, at creation (`setOptions` ignores it).
+   */
+  features?: readonly AnyFeature[]
+  /** Starting values of owned slices; a feature slice given here replaces its `initialState()`. */
   initialState?: Partial<S>
   /**
    * Controlled slices (§3.2): every key with a defined value is owned by the caller, who feeds
@@ -71,7 +77,7 @@ export interface Table<T, S extends TableState = TableState> {
   /** Returns the unsubscribe function. One throwing listener never stops the others. */
   subscribe(listener: Listener<S>): () => void
   /** Merges `options` into the current ones (`table:setOptions`). */
-  setOptions(options: Partial<TableOptions<T, S>>): void
+  setOptions(options: Partial<Omit<TableOptions<T, S>, 'features'>>): void
   getOptions(): Readonly<TableOptions<T, S>>
   /** The ingested data (the previous data while an async ingest is pending or failed). */
   getData(): readonly T[]
