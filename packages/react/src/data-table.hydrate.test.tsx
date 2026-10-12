@@ -8,7 +8,6 @@ import { useDataTable } from './use-data-table'
 
 // Hydration across wave 10 (R10): <DataTable />'s deferred Loading (T32 × T33), and time-sliced
 // search (T29) never making the hydrated client differ from the server HTML (T32).
-
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 type User = { id: number; name: string }
@@ -135,7 +134,9 @@ describe('hydration with time-sliced search (T29 × T32)', () => {
   it('a query typed after hydration is sliced on the client: pending, then the results', async () => {
     fastClock()
     const codes: string[] = []
-    let table: { setSearch(q: string): Promise<unknown> } | undefined
+    let table:
+      | { setSearch(q: string): Promise<unknown>; flushSearch(): Promise<unknown> }
+      | undefined
     const el = (
       <Names
         data={users(30)}
@@ -153,9 +154,10 @@ describe('hydration with time-sliced search (T29 × T32)', () => {
     expect(hydrationErrors()).toEqual([])
     expect(codes).not.toContain('DK_HYDRATION_MISMATCH')
 
-    await act(async () => {
-      void (table as { flushSearch?: () => Promise<unknown> }).setSearch('ada')
-      await (table as unknown as { flushSearch(): Promise<unknown> }).flushSearch()
+    let applied: Promise<unknown> | undefined
+    act(() => {
+      void table?.setSearch('ada')
+      applied = table?.flushSearch()
     })
     // The projection builds in slices: 'pending' over the previous rows.
     expect(container.querySelector('ul')?.dataset.status).toBe('pending')
@@ -164,5 +166,6 @@ describe('hydration with time-sliced search (T29 × T32)', () => {
     expect(container.querySelector('ul')?.dataset.status).toBe('idle')
     expect(container.textContent).toContain('Ada 0')
     expect(container.textContent).not.toContain('Bob')
+    await expect(applied).resolves.toEqual({ status: 'applied' })
   })
 })
