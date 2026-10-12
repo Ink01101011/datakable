@@ -33,6 +33,7 @@ export default [
     ...CORE,
     // F3: 23 → 14.5 KB (14,553 B): schema / fetcher opt-in, dev-only option validation, version
     // and data checks, the feature runtime brought by defineFeature (§9.3, 2026-10-13).
+    // RA (F1+F2+F3 merged): 14,759 B, F2's lazy `RowModel.rows`; stays 14.5 KB.
     limit: 14.5 * KB,
   },
   {
@@ -40,7 +41,7 @@ export default [
     pkg: 'core',
     import: ['createTable', 'columnFilters', 'sorting', 'pagination'],
     ...CORE,
-    // F3: 30 → 22 KB (22,198 B).
+    // F3: 30 → 22 KB (22,198 B). RA merged: 22,394 B; stays 22 KB.
     limit: 22 * KB,
   },
   {
@@ -49,7 +50,7 @@ export default [
     import: ['createTable', 'columnFilters', 'sorting', 'pagination', 'search'],
     // §9.3 budgets core *without* search only: recorded and ratcheted, no spec budget.
     spec: 'none (§9.3 budgets core without search)',
-    // F3: 34.5 → 27 KB (27,205 B).
+    // F3: 34.5 → 27 KB (27,205 B). RA merged: 27,465 B; stays 27 KB.
     limit: 27 * KB,
   },
   {
@@ -57,7 +58,7 @@ export default [
     pkg: 'datakable',
     import: ['createTable'],
     ...PRESET,
-    // F3: 34.5 → 27.5 KB (27,697 B).
+    // F3: 34.5 → 27.5 KB (27,697 B). RA merged: 27,966 B; stays 27.5 KB.
     limit: 27.5 * KB,
   },
   {
@@ -65,8 +66,9 @@ export default [
     pkg: 'datakable',
     import: ['useDataTable'],
     ...PRESET,
-    // F3: 36.5 → 29 KB (29,436 B).
-    limit: 29 * KB,
+    // F3: 36.5 → 29 KB (29,436 B). RA merged: 29 → 29.5 KB (29,708 B): F2's lazy `RowModel.rows`
+    // + search without a kept projection (§9.3 memory, every 100k-row scenario ≤ 5 MB): +272 B.
+    limit: 29.5 * KB,
   },
   {
     name: 'datakable: DataTable (default preset + <DataTable />)',
@@ -74,7 +76,8 @@ export default [
     import: ['DataTable'],
     ...PRESET,
     // R11: 39 → 39.5 KB for T34's per-cell error boundaries + the hook's inline-data loop fix.
-    // F3: 39.5 → 32 KB (32,675 B).
-    limit: 32 * KB,
+    // F3: 39.5 → 32 KB (32,675 B). RA merged: 32 → 32.5 KB (32,925 B): F2's lazy `RowModel.rows`
+    // (§9.3 memory): +250 B.
+    limit: 32.5 * KB,
   },
 ]
