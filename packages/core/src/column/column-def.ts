@@ -1,3 +1,4 @@
+import type { RowIssue } from '../pipeline/row'
 import type { IsAny, Path, PathValue, Primitive } from './path'
 
 /** Whole-row `any` is treated as `Record<string, unknown>` (spec §4.2); other rows pass through. */
@@ -41,8 +42,15 @@ type Displayable = Primitive | readonly Primitive[]
 /** Argument of a column's `cell` renderer. */
 export type CellContext<T, V> = { row: T; value: V }
 
-/** Argument of a column's `invalidCell` renderer. Refined with the `invalidRows: 'flag'` work. */
-export type InvalidCellContext = { original: unknown; value: unknown }
+/** Argument of a column's `invalidCell` renderer (a flagged row, `invalidRows: 'flag'`, §5.1). */
+export type InvalidCellContext = {
+  /** The raw, unvalidated row. */
+  original: unknown
+  /** The cell's raw value (the column's key path or accessor over `original`). */
+  value: unknown
+  /** The row's schema issues that touch this cell: `row.getCellIssues(column)`. */
+  issues: readonly RowIssue[]
+}
 
 /** Built-in sort algorithms, or a custom one over row indices (spec §6.4). */
 export type SortAlgorithm =

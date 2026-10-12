@@ -4,7 +4,7 @@ import type { Emit } from '../diagnostics/types'
 import { featureDiagnostics } from '../feature/codes'
 import type { AnyFeature, RowModelContext } from '../feature/types'
 import { type KeyOf, resolveRowKeys } from '../ingest/row-key'
-import { joinIssuePath, pathTouches } from '../ingest/schema'
+import { matchCellIssues } from '../ingest/schema'
 import { CellFailures } from '../intercept/cell-batch'
 import { errorName } from '../intercept/classify'
 import { type ContextBase, createContext } from '../intercept/context'
@@ -47,6 +47,8 @@ export interface PipelineHost {
   status(): RowModelStatus
   /** Schema issues of a flagged row by data index (`invalidRows: 'flag'`); else `undefined`. */
   issues(index: number): readonly RowIssue[] | undefined
+  /** `schema` + `invalidRows: 'flag'` (read once): steps get `RowModelContext.flagged`. */
+  readonly flagMode?: boolean
 }
 
 export interface Pipeline<T> {
@@ -147,20 +149,7 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
       issues: (index) => host.issues(index),
       cellIssues(issues, id) {
         const col = cols.byId.get(id)
-        if (!col?.path) return EMPTY
-        let out: RowIssue[] | undefined
-        for (const issue of issues) {
-          let p: string
-          try {
-            p = joinIssuePath(issue.path)
-          } catch {
-            p = ''
-          }
-          if (!pathTouches(p, col.id)) continue
-          out ??= []
-          out.push(issue)
-        }
-        return out ?? EMPTY
+        return col ? matchCellIssues(issues, col.path) : EMPTY
       },
     }
     sources.set(cols, s)
@@ -240,6 +229,7 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
       name,
       data,
       emit: host.emit,
+      ...(host.flagMode ? { flagged: (i: number) => host.issues(i) } : {}),
       run: host.base().run,
       columns,
       getColumnValues: (id) => {

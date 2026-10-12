@@ -415,6 +415,7 @@ export function createTable<T, S extends TableState>(
     isInitialLoad: () => !loaded,
     status,
     issues: (index) => schemaOutcome?.flagged?.get(index),
+    flagMode: schemaIngest !== undefined && options.invalidRows === 'flag',
   })
 
   /** Status from outside the pipeline (§6.6): a failed ingest, then a running async schema. */
