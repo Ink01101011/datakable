@@ -4,6 +4,7 @@ import type { Diagnostic } from '../diagnostics/types'
 import type { AnyFeature } from '../feature/types'
 import type { Interceptor } from '../intercept/define'
 import type { OpName } from '../intercept/operations'
+import type { RowModel } from '../pipeline/types'
 
 /** Table state: one entry per slice (feature state is typed by `StateOf`, T08). */
 export type TableState = Record<string, unknown>
@@ -81,6 +82,11 @@ export interface Table<T, S extends TableState = TableState> {
   getOptions(): Readonly<TableOptions<T, S>>
   /** The ingested data (the previous data while an async ingest is pending or failed). */
   getData(): readonly T[]
+  /**
+   * The row model (§6.6): the visible rows (`Row` objects for the current page only), the counts
+   * and the status. The same object until data, state or columns change the result.
+   */
+  getRowModel(): RowModel<T>
   /** Oldest first, at most 100 entries. */
   getDiagnostics(): Diagnostic[]
   /** Releases listeners. Later mutating calls are no-ops that report `DK_TABLE_DESTROYED`. */

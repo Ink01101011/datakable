@@ -26,8 +26,8 @@ export function getValue(
       cur = (cur as Record<string, unknown>)[segs[i] as string]
     }
   } catch (error) {
-    // TODO(T06/T09): T06 defines DK_CALLBACK_FAILED; T09's column:batch loop passes onError and
-    // emits it once per column per run with the failing row indices (no per-cell emit).
+    // The column cache (pipeline/column-cache.ts) passes onError and reports DK_CALLBACK_FAILED
+    // once per column batch with the failing row indices (no per-cell emit).
     onError?.(error)
     return undefined
   }

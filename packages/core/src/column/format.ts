@@ -50,8 +50,8 @@ function formatValue(value: unknown): string | undefined {
 }
 
 function unrenderable(value: unknown, onUnrenderable?: (value: unknown) => void): string {
-  // TODO(T09): define DK_UNRENDERABLE_VALUE (warn) and emit it from the column:batch loop, once per
-  // column per run with a column `where`; callers report via onUnrenderable.
+  // The column cache (pipeline/column-cache.ts) counts these via onUnrenderable and emits one
+  // DK_UNRENDERABLE_VALUE per column batch (pipeline/codes.ts).
   onUnrenderable?.(value)
   return ''
 }

@@ -45,7 +45,8 @@ export class CellFailures {
 
   /**
    * Emits one `DK_CALLBACK_FAILED` for this column (if any cell failed), then resets. `where` is the
-   * slot path `columns[<index>].<slot>`.
+   * slot path `columns[<index>].<slot>`; `field` replaces the slot name in that path when the
+   * failing column field differs (`key` for a key column whose getter threw).
    */
   report(
     emit: Emit,
@@ -53,13 +54,14 @@ export class CellFailures {
     columnId: string,
     slot: CellSlot,
     options?: EmitOptions,
+    field: string = slot,
   ): void {
     if (this.count === 0) return
     const name = errorName(this.first)
     emit(
       'DK_CALLBACK_FAILED',
       {
-        slot: `columns[${columnIndex}].${slot}`,
+        slot: `columns[${columnIndex}].${field}`,
         column: columnId,
         rows: Array.from(this.sample()),
         count: this.count,
