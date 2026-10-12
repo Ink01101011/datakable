@@ -31,7 +31,21 @@ export default defineConfig({
           name: 'core',
           environment: 'node',
           include: ['packages/core/**/*.test.ts'],
+          exclude: ['packages/core/**/*.gc.test.ts', '**/node_modules/**'],
           typecheck: { include: ['packages/core/**/*.test-d.ts'] },
+        },
+      },
+      {
+        extends: true,
+        test: {
+          // Memory tests (§9.3): their own forked worker with --expose-gc, so no other file shares
+          // the heap they measure (T37).
+          name: 'core-memory',
+          environment: 'node',
+          include: ['packages/core/**/*.gc.test.ts'],
+          pool: 'forks',
+          execArgv: ['--expose-gc'],
+          typecheck: { enabled: false },
         },
       },
       {

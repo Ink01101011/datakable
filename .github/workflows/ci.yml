@@ -25,3 +25,5 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm check:pkg
+      # §9.3 budgets (T37): size ratchets, memory, batch overhead, 4x-throttled interaction.
+      - run: pnpm check:budgets

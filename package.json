@@ -21,7 +21,10 @@
     "version-packages": "changeset version",
     "release": "pnpm build && changeset publish",
     "check:consumer": "node scripts/check-consumer-types.mjs",
-    "check:styles": "node scripts/check-styles.mjs"
+    "check:styles": "node scripts/check-styles.mjs",
+    "size": "node scripts/size.mjs",
+    "check:size": "node scripts/size.mjs --check",
+    "check:budgets": "pnpm check:size && vitest run --config vitest.budgets.config.ts"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",

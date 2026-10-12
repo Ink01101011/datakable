@@ -3,13 +3,19 @@ import { createTable } from '../table/create-table'
 import { minFilter, numSort, pager } from './test-features'
 
 // Budget §9.3: pipeline memory at 100k rows (excluding source data) ≤ 5 MB.
+// Scenario: filter + sort + PAGINATED (10 rows: Row objects only for the visible page), with the
+// test-only features of pipeline/test-features.ts. The real default preset on dist, plus the
+// search and unpaginated scenarios, are in budgets/memory.budget.test.ts (`pnpm check:budgets`).
+//
+// Runs in its own vitest project (`core-memory`: one forked worker started with --expose-gc), so
+// no other test file shares its heap (T37). `*.gc.test.ts` files go there.
 // No @types/node in core: the Node built-ins are typed by hand.
 type Mem = { heapUsed: number; arrayBuffers: number }
-const { process } = globalThis as unknown as { process: { memoryUsage(): Mem } }
-const v8 = (await import('node:v8' as string)) as { setFlagsFromString(flags: string): void }
-const vm = (await import('node:vm' as string)) as { runInNewContext(code: string): unknown }
-v8.setFlagsFromString('--expose-gc')
-const gc = vm.runInNewContext('gc') as () => void
+const { process, gc } = globalThis as unknown as {
+  process: { memoryUsage(): Mem }
+  gc?: () => void
+}
+if (typeof gc !== 'function') throw new Error('memory.gc.test.ts needs --expose-gc (core-memory)')
 
 /** JS heap + typed-array backing stores (index arrays and Float64Array caches live outside). */
 const used = () => {

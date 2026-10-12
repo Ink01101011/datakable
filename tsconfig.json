@@ -12,5 +12,5 @@
       "datakable/*": ["./packages/datakable/src/*.ts"]
     }
   },
-  "include": ["packages/*/src", "vitest.config.ts"]
+  "include": ["packages/*/src", "vitest.config.ts", "vitest.budgets.config.ts", "budgets"]
 }
