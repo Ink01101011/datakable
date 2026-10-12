@@ -6,6 +6,7 @@ import type { FeatureTypes, RowModelContext } from '../../feature/types'
 import { errorName } from '../../intercept/classify'
 import { type ResolvedColumn, resolveColumns } from '../../pipeline/columns'
 import type { ColumnValues } from '../../pipeline/types'
+import { type DataMode, modeOption } from '../../source/mode'
 import { defaultIndexComparator, type IndexComparator, sortFnIndexComparator } from './compare'
 
 /** One sort key: a column id (a path of the row type) and its direction. */
@@ -38,6 +39,11 @@ export interface SortingTypes extends FeatureTypes {
 export interface SortingOptions {
   /** Locale(s) of the string collator (`Intl.Collator(locale, { numeric: true })`); default: the runtime's. */
   locale?: string | readonly string[]
+  /**
+   * `'server'`: the server sorts (its state goes to `options.fetcher`, or the app fetches); core
+   * skips this step (§7.1). Default `'client'`.
+   */
+  mode?: DataMode
 }
 
 const validLocale = (v: unknown) => {
@@ -55,6 +61,7 @@ const sortingOptions = {
     check: validLocale,
     expected: 'a BCP 47 locale tag or a list of them, e.g. "th" or ["th", "en"]',
   },
+  mode: modeOption,
 } as const
 
 type SortFn = (a: unknown, b: unknown) => number
@@ -159,6 +166,7 @@ export const sorting = (opts: SortingOptions = {}) => {
   return defineFeature<'sorting', SortingTypes>({
     name: 'sorting',
     stage: 'sort',
+    mode: opts.mode ?? 'client',
     options: defineOptions(sortingOptions, opts),
     initialState: () => ({ by: [] }),
     createApi: (ctx) => ({

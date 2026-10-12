@@ -1,6 +1,7 @@
 import { defineOptions } from '../../catalog/options'
 import { defineFeature } from '../../feature/define'
 import type { RowModelContext } from '../../feature/types'
+import { type DataMode, modeOption } from '../../source/mode'
 import {
   buildIndex,
   type Item,
@@ -51,6 +52,11 @@ export interface SearchOptions {
   fuzzyMaxDistance?: number
   /** Default `false`. */
   caseSensitive?: boolean
+  /**
+   * `'server'`: the server matches `query` (its state goes to `options.fetcher`, or the app fetches); core
+   * skips this step (§7.1). Default `'client'`.
+   */
+  mode?: DataMode
   // Seams: `typing` (T17), `searchFn` / `useWorker` (T19), `mode` (T21).
 }
 
@@ -66,6 +72,7 @@ const searchOptions = {
     expected: 'a non-negative integer',
   },
   caseSensitive: { type: 'boolean' },
+  mode: modeOption,
 } as const
 
 const toText = (q: unknown): string => (typeof q === 'string' ? q : q == null ? '' : String(q))
@@ -126,6 +133,7 @@ export const search = (opts: SearchOptions = {}) => {
   return defineFeature({
     name: 'search',
     stage: 'search',
+    mode: opts.mode ?? 'client',
     options: defineOptions(searchOptions, opts),
     initialState: (): SearchState => ({ input: '', query: '', status: 'idle' }),
     createApi: (ctx): SearchApi => {

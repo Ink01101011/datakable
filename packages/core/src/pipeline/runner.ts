@@ -78,7 +78,10 @@ interface Built<T> {
  */
 export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
   const cache = createColumnCache(host)
-  const steps = host.features.filter((f) => f.stage !== 'none' && typeof f.rowModel === 'function')
+  // A server-mode feature (§7.1) only holds state: the server ran its step.
+  const steps = host.features.filter(
+    (f) => f.stage !== 'none' && f.mode !== 'server' && typeof f.rowModel === 'function',
+  )
   const where = new Map(steps.map((f) => [f, `features[${host.listed.indexOf(f)}].rowModel`]))
   const memo = new Map<AnyFeature, StepMemo>()
   const sources = new WeakMap<ResolvedColumns, RowSource>()

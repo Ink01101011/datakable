@@ -98,6 +98,12 @@ export interface Feature<Name extends string = string, F extends FeatureTypes = 
   readonly name: Name
   /** Where `rowModel` runs in the pipeline; `'none'` for state/API-only features. */
   readonly stage: Stage
+  /**
+   * Data mode (§7.1), default `'client'`. A `'server'` feature only holds its state: its `rowModel`
+   * is skipped and its state goes to `options.fetcher`. Server steps must come first
+   * (`DK_MODE_ORDER`).
+   */
+  readonly mode?: 'client' | 'server'
   /** Phantom: carries `F` for {@link StateOf} / {@link ApiOf}. Never set at runtime. */
   readonly _types?: F
   /**

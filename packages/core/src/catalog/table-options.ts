@@ -2,6 +2,14 @@ import { isStandardSchema } from '../ingest/schema'
 import type { TableOptions } from '../table/types'
 import { defineOptions, type OptionRule } from './options'
 
+const hasServerPagination = (features: unknown) =>
+  Array.isArray(features) &&
+  features.some(
+    (f) =>
+      (f as { stage?: unknown })?.stage === 'paginate' &&
+      (f as { mode?: unknown }).mode === 'server',
+  )
+
 const REDACT_LEVELS = ['safe', 'keys', 'full'] as const
 const INVALID_ROWS = ['drop', 'flag', 'throw'] as const
 
@@ -44,6 +52,18 @@ const schema = {
     check: (v: number) => v > 0,
     expected: 'a number of milliseconds > 0, or Infinity to disable the timeout',
     once: true,
+  },
+  fetcher: { type: 'function' },
+  rowCount: {
+    type: 'number',
+    check: (v: number) => Number.isInteger(v) && v >= 0,
+    expected: 'an integer ≥ 0 (the total number of rows on the server)',
+    noEffect: (_v: number, all) =>
+      typeof all.fetcher === 'function'
+        ? 'with a fetcher, the row count comes from the fetcher result (rowCount)'
+        : !hasServerPagination(all.features)
+          ? "only pagination({ mode: 'server' }) reads rowCount"
+          : undefined,
   },
   strict: { type: 'boolean', once: true },
   diagnostics: {

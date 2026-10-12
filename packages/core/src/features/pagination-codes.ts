@@ -11,6 +11,10 @@ declare module '../diagnostics/catalog' {
       /** What was done instead. */
       fallback: string
     }
+    DK_ROW_COUNT_MISSING: {
+      /** `data.length`, used as the total instead. */
+      rows: number
+    }
   }
 }
 
@@ -46,5 +50,21 @@ export const paginationDiagnostics = [
             `pass ${ACCEPTED[d.field]} to ${d.source}()` +
               (d.received.startsWith('string') ? ' (convert input values with Number(...))' : ''),
           ],
+  }),
+  defineDiagnostic({
+    code: 'DK_ROW_COUNT_MISSING',
+    level: 'warn',
+    where: () => ({ kind: 'option', path: 'rowCount' }),
+    problem: () =>
+      'pagination is in server mode, but there is no fetcher and no rowCount option: the ' +
+      'total number of rows is unknown',
+    impact: (d) =>
+      `the page count falls back to data.length (${d.rows}) as the total: one page, ` +
+      'canNextPage() is false',
+    fix: () => [
+      'pass the total from your API: setOptions({ data: page.rows, rowCount: page.total })',
+      "or pass a fetcher that resolves { rows, rowCount }, or use pagination({ mode: 'client' }) " +
+        'with all rows as data',
+    ],
   }),
 ]

@@ -1,8 +1,10 @@
+import { defineOptions } from '../../catalog/options'
 import { defineFeature } from '../../feature/define'
 import type { RowModelContext } from '../../feature/types'
 import { CellFailures } from '../../intercept/cell-batch'
 import { errorName } from '../../intercept/classify'
 import type { ColumnValues } from '../../pipeline/types'
+import { type DataMode, modeOption } from '../../source/mode'
 import { columnFiltersDiagnostics } from './codes'
 import {
   BAD,
@@ -18,6 +20,16 @@ import {
 import type { ColumnFiltersState, ColumnFiltersTypes } from './types'
 
 void columnFiltersDiagnostics
+
+export interface ColumnFiltersOptions {
+  /**
+   * `'server'`: the server filters (the slice goes to `options.fetcher` as `filters`, or the app
+   * fetches); core skips this step (§7.1). Default `'client'`.
+   */
+  mode?: DataMode
+}
+
+const columnFiltersOptions = { mode: modeOption } as const
 
 /** Position of column `id` in `options.columns` (diagnostic `where`); `-1` if absent. */
 function columnIndex(columns: readonly unknown[], id: string): number {
@@ -184,10 +196,12 @@ function filterRows(
  * table.setColumnFilter('name', { type: 'contains', value: 'ada' })
  * ```
  */
-export const columnFilters = () =>
+export const columnFilters = (opts: ColumnFiltersOptions = {}) =>
   defineFeature<'columnFilters', ColumnFiltersTypes>({
     name: 'columnFilters',
     stage: 'filter',
+    mode: opts.mode ?? 'client',
+    options: defineOptions(columnFiltersOptions, opts),
     initialState: () => ({}),
     createApi: (ctx) => ({
       setColumnFilter: (id, filter) =>
