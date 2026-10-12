@@ -4,6 +4,7 @@ import { defineOptions } from '../../catalog/options'
 import { defineFeature } from '../../feature/define'
 import type { RowModelContext } from '../../feature/types'
 import { defineInterceptor } from '../../intercept/define'
+import { type DataMode, modeOption } from '../../source/mode'
 import {
   buildIndex,
   type Item,
@@ -82,7 +83,12 @@ export interface SearchOptions {
   caseSensitive?: boolean
   /** Typing timing: when `query` follows `input`. Default: immediate. */
   typing?: SearchTyping
-  // Seams: `searchFn` / `useWorker` (T19), `mode` (T21; server defaults: debounce, minLength 2).
+  /**
+   * `'server'`: the server matches `query` (its state goes to `options.fetcher`, or the app fetches); core
+   * skips this step (§7.1). Default `'client'`.
+   */
+  mode?: DataMode
+  // Seams: `searchFn` / `useWorker` (T19); `mode: 'server'` typing defaults (debounce, minLength 2).
 }
 
 const DEFAULT_WAIT = 300
@@ -140,6 +146,7 @@ const searchOptions = {
   },
   caseSensitive: { type: 'boolean' },
   typing: { type: 'object', shape: typingOptions },
+  mode: modeOption,
 } as const
 
 const toText = (q: unknown): string => (typeof q === 'string' ? q : q == null ? '' : String(q))
@@ -208,6 +215,7 @@ export const search = (opts: SearchOptions = {}) => {
   return defineFeature({
     name: 'search',
     stage: 'search',
+    mode: opts.mode ?? 'client',
     options: defineOptions(searchOptions, opts),
     initialState: (): SearchState => ({ input: '', query: '', status: 'idle' }),
     interceptors: [

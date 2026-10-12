@@ -1,5 +1,5 @@
 export { columnFiltersDiagnostics } from './codes'
-export { columnFilters } from './column-filters'
+export { type ColumnFiltersOptions, columnFilters } from './column-filters'
 export type {
   ColumnFilter,
   ColumnFiltersApi,

@@ -367,3 +367,52 @@ describe('pagination() — lifecycle', () => {
     expect(b.getState().pagination.pageIndex).toBe(3)
   })
 })
+
+describe('pagination({ mode: "server" }) without a fetcher (§6.5, §7.1)', () => {
+  it('data is the current page; the page count comes from the rowCount option', () => {
+    const t = createTable({
+      data: people(10),
+      rowCount: 95,
+      features: [pagination({ mode: 'server' })],
+    })
+    expect(ids(t)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+    expect(api(t).getPageCount?.()).toBe(10)
+    expect(api(t).canNextPage?.()).toBe(true)
+    api(t).setPageIndex?.(9)
+    expect(t.getState().pagination.pageIndex).toBe(9)
+    // The app fetched page 9 (5 rows): no slicing, no clamping.
+    t.setOptions({ data: people(95).slice(90) })
+    expect(ids(t)).toEqual([90, 91, 92, 93, 94])
+    expect(t.getState().pagination.pageIndex).toBe(9)
+    expect(api(t).canNextPage?.()).toBe(false)
+    expect(codes(t)).not.toContain('DK_ROW_COUNT_MISSING')
+  })
+
+  it('a smaller rowCount clamps pageIndex', () => {
+    const t = createTable({
+      data: people(10),
+      rowCount: 95,
+      features: [pagination({ mode: 'server' })],
+      initialState: { pagination: { pageIndex: 8, pageSize: 10 } },
+    })
+    t.setOptions({ rowCount: 30 })
+    expect(t.getState().pagination.pageIndex).toBe(2)
+  })
+
+  it('without rowCount: DK_ROW_COUNT_MISSING (warn) and data.length as the total', () => {
+    const t = createTable({ data: people(10), features: [pagination({ mode: 'server' })] })
+    expect(api(t).getPageCount?.()).toBe(1)
+    expect(api(t).canNextPage?.()).toBe(false)
+    const d = t.getDiagnostics().filter((x) => x.code === 'DK_ROW_COUNT_MISSING')
+    expect(d).toHaveLength(1)
+    expect(d[0]?.level).toBe('warn')
+    expect(d[0]?.where).toEqual({ kind: 'option', path: 'rowCount' })
+    expect(d[0]?.fix[0]).toContain('rowCount')
+  })
+
+  it('rowCount without server pagination is DK_OPTION_NO_EFFECT; invalid is DK_INVALID_OPTION', () => {
+    const t = createTable({ data: people(3), rowCount: 3, features: [pagination()] })
+    expect(codes(t)).toContain('DK_OPTION_NO_EFFECT')
+    expect(() => createTable({ data: people(3), rowCount: -1 })).toThrow(DatakableError)
+  })
+})

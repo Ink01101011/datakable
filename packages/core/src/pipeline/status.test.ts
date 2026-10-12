@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineFeature } from '../feature/define'
 import type { AnyFeature } from '../feature/types'
+import { pagination } from '../features/pagination'
 import { makeSchema } from '../ingest/test-schemas'
 import { defineInterceptor } from '../intercept/define'
 import { createTable } from '../table/create-table'
@@ -208,5 +209,93 @@ describe("a failed data:ingest sets 'error' and never counts as loaded (§6.6, �
     const m = t.getRowModel()
     expect(m.isInitialLoad).toBe(true)
     expect(m.rows).toHaveLength(0)
+  })
+})
+
+describe("'fetching' is never silent (§6.6, §7.1)", () => {
+  const server = () => pagination({ mode: 'server' })
+  function manual() {
+    const calls: { resolve: (r: unknown) => void; reject: (e: unknown) => void }[] = []
+    const fetcher = () =>
+      new Promise<never>((resolve, reject) => {
+        calls.push({ resolve: resolve as (r: unknown) => void, reject })
+      })
+    return { fetcher, last: () => calls[calls.length - 1] as (typeof calls)[number] }
+  }
+  const tick = () => new Promise((r) => setTimeout(r, 0))
+  const track = (t: {
+    subscribe(l: () => void): () => void
+    getRowModel(): { status: string; isInitialLoad: boolean }
+  }) => {
+    const seen: [string, boolean][] = []
+    t.subscribe(() => {
+      const m = t.getRowModel()
+      seen.push([m.status, m.isInitialLoad])
+    })
+    return seen
+  }
+
+  it('fetch start notifies with a new row model', async () => {
+    const m = manual()
+    const t = createTable({ fetcher: m.fetcher, features: [server()] })
+    m.last().resolve({ rows: people(10), rowCount: 30 })
+    await tick()
+    const idle = t.getRowModel()
+    const seen = track(t)
+    api(t).nextPage?.()
+    expect(seen).toEqual([['fetching', false]])
+    expect(t.getRowModel()).not.toBe(idle)
+  })
+
+  it('fetch end notifies with a new row model', async () => {
+    const m = manual()
+    const t = createTable({ fetcher: m.fetcher, features: [server()] })
+    const fetching = t.getRowModel()
+    expect([fetching.status, fetching.isInitialLoad]).toEqual(['fetching', true])
+    const seen = track(t)
+    m.last().resolve({ rows: people(10), rowCount: 30 })
+    await tick()
+    expect(seen).toEqual([['idle', false]])
+    expect(t.getRowModel()).not.toBe(fetching)
+  })
+
+  it("first-fetch failure: 'error' with isInitialLoad true, notified", async () => {
+    const m = manual()
+    const t = createTable({ fetcher: m.fetcher, features: [server()], onDiagnostic: () => {} })
+    const seen = track(t)
+    m.last().reject(new Error('down'))
+    await tick()
+    expect(seen).toEqual([['error', true]])
+  })
+
+  it("a superseded request keeps 'fetching' without an extra notification", async () => {
+    const m = manual()
+    const t = createTable({ fetcher: m.fetcher, features: [server()] })
+    m.last().resolve({ rows: people(10), rowCount: 30 })
+    await tick()
+    const seen = track(t)
+    api(t).setPageIndex?.(1)
+    api(t).setPageIndex?.(2)
+    await tick()
+    expect(seen).toEqual([
+      ['fetching', false],
+      ['fetching', false],
+    ])
+    m.last().resolve({ rows: people(10), rowCount: 30 })
+    await tick()
+    expect(seen.at(-1)).toEqual(['idle', false])
+    expect(seen).toHaveLength(3)
+  })
+
+  it("precedence: 'fetching' over 'validating' (async schema on fetched rows)", async () => {
+    const schema = makeSchema<P>((v) => ({ value: v as P }), { async: true })
+    const m = manual()
+    const t = createTable({ schema, fetcher: m.fetcher, features: [server()] })
+    const seen = track(t)
+    m.last().resolve({ rows: people(10), rowCount: 30 })
+    await tick()
+    await tick()
+    expect(seen.map((s) => s[0])).toEqual(['validating', 'idle'])
+    expect(t.getRowModel().isInitialLoad).toBe(false)
   })
 })

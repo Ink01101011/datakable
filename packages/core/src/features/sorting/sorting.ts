@@ -11,6 +11,7 @@ import { errorName } from '../../intercept/classify'
 import { type ResolvedColumn, resolveColumns } from '../../pipeline/columns'
 import { allRows } from '../../pipeline/indices'
 import type { ColumnValues } from '../../pipeline/types'
+import { type DataMode, modeOption } from '../../source/mode'
 import { detectCapability } from '../../versioning/capability'
 import { comparatorDiagnostics, sortingDiagnostics } from './codes'
 import {
@@ -74,6 +75,11 @@ export interface SortingOptions {
   algorithm?: SortAlgorithmOption
   /** Reports the algorithm chosen for each sort, why, n and the time taken (`DK_SORT_STRATEGY`). */
   debug?: boolean
+  /**
+   * `'server'`: the server sorts (its state goes to `options.fetcher`, or the app fetches); core
+   * skips this step (§7.1). Default `'client'`.
+   */
+  mode?: DataMode
 }
 
 const validLocale = (v: unknown) => {
@@ -99,6 +105,7 @@ const sortingOptions = {
     expected: `one of ${ALGORITHMS.map((a) => `'${a}'`).join(', ')}, or (indices, compare) => indices`,
   },
   debug: { type: 'boolean' },
+  mode: modeOption,
 } as const
 
 type CustomAlgorithm = Extract<SortAlgorithm, (...args: never[]) => unknown>
@@ -243,6 +250,7 @@ export const sorting = (opts: SortingOptions = {}) => {
   return defineFeature<'sorting', SortingTypes>({
     name: 'sorting',
     stage: 'sort',
+    mode: opts.mode ?? 'client',
     options: defineOptions(sortingOptions, opts),
     initialState: () => ({ by: [] }),
     createApi: (ctx) => ({

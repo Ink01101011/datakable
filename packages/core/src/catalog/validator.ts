@@ -164,6 +164,7 @@ const FEATURE_SHAPE: Readonly<Record<string, OptionRule & { required?: boolean }
     required: true,
   },
   stage: { type: 'string', oneOf: STAGES, required: true },
+  mode: { type: 'string', oneOf: ['client', 'server'] },
   initialState: { type: 'function', required: true },
   createApi: { type: 'function', required: true },
   rowModel: { type: 'function' },

@@ -16,10 +16,26 @@ export interface TableInternals {
    * → …), with `previous` as FALLBACK. Resolves with the outcome; apply `value` only when
    * `status === 'applied'`. Never rejects, except under `strict` (a `DatakableError`).
    */
+  /**
+   * The server row count (§6.5, §7.1): the last applied fetcher result's `rowCount` with a fetcher
+   * (`undefined` until one applied), else `options.rowCount`.
+   */
+  rowCount(): number | undefined
+  /** `options.fetcher` is set. */
+  hasFetcher(): boolean
   request(
     source: 'fetcher' | 'searchFn',
     core: (signal: AbortSignal) => Promise<unknown>,
-    opts?: { previous?: unknown; params?: unknown; signal?: AbortSignal },
+    opts?: {
+      previous?: unknown
+      params?: unknown
+      signal?: AbortSignal
+      /**
+       * Applies the outcome before the in-flight status is cleared, in one batch: the status
+       * change and the applied result are one notification. Called on every outcome.
+       */
+      onSettle?: (value: unknown, status: AsyncStatus) => void
+    },
   ): Promise<{ value: unknown; status: AsyncStatus }>
 }
 

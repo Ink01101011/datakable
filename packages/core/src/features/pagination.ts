@@ -3,6 +3,7 @@ import { describeValue } from '../diagnostics/redact'
 import { defineFeature } from '../feature/define'
 import type { FeatureContext } from '../feature/types'
 import { defineInterceptor } from '../intercept/define'
+import { type DataMode, modeOption } from '../source/mode'
 import { getTableInternals } from '../table/internals'
 import type { Table, TableState } from '../table/types'
 import { paginationDiagnostics } from './pagination-codes'
@@ -34,6 +35,12 @@ export interface PaginationOptions {
   pageSize?: number
   /** Go back to page 0 when search, filters or sort change (default `true`). */
   autoResetPageIndex?: boolean
+  /**
+   * `'server'`: the server pages (its state goes to `options.fetcher`, or the app passes the
+   * current page as `data`); the page count is `ceil(rowCount / pageSize)` with `rowCount` from the
+   * fetcher result or the `rowCount` option (§6.5, §7.1). Default `'client'`.
+   */
+  mode?: DataMode
 }
 
 const DEFAULT_PAGE_SIZE = 10
@@ -46,6 +53,7 @@ const received = (v: unknown) => (typeof v === 'number' ? String(v) : describeVa
 const paginationOptions = {
   pageSize: { type: 'number', check: isSize, expected: 'an integer > 0' },
   autoResetPageIndex: { type: 'boolean' },
+  mode: modeOption,
 } as const
 
 /** Stages whose state changes send the table back to page 0 (`autoResetPageIndex`). */
@@ -91,6 +99,7 @@ interface Host {
 export const pagination = (opts: PaginationOptions = {}) => {
   const initialSize = opts.pageSize ?? DEFAULT_PAGE_SIZE
   const autoReset = opts.autoResetPageIndex !== false
+  const mode = opts.mode ?? 'client'
   // One feature instance may serve several tables: per-table state lives here.
   const hosts = new WeakMap<object, Host>()
 
@@ -110,14 +119,31 @@ export const pagination = (opts: PaginationOptions = {}) => {
   return defineFeature({
     name: NAME,
     stage: 'paginate',
+    mode,
     options: defineOptions(paginationOptions, opts),
     interceptors: [interceptor],
     initialState: (): PaginationState => ({ pageIndex: 0, pageSize: initialSize }),
     createApi: (ctx: FeatureContext<PaginationState>): PaginationApi => {
       const table = ctx.table
 
-      // TODO(T21): server mode reads the `rowCount` option / fetcher result here (§6.5, §7.1).
-      const rowCount = () => table.getRowModel().filteredCount
+      const internals = getTableInternals(table)
+      let missingReported = false
+      /**
+       * Rows to page over. Server mode (§6.5, §7.1): the fetcher result's `rowCount`
+       * (`undefined` until the first one applied), else the `rowCount` option, else
+       * `DK_ROW_COUNT_MISSING` and `data.length` as the total.
+       */
+      const rowCount = (): number | undefined => {
+        if (mode !== 'server') return table.getRowModel().filteredCount
+        const n = internals.rowCount()
+        if (n !== undefined || internals.hasFetcher()) return n
+        const rows = table.getRowModel().totalCount
+        if (!missingReported) {
+          missingReported = true
+          ctx.emit('DK_ROW_COUNT_MISSING', { rows })
+        }
+        return rows
+      }
 
       /** The slice with invalid fields replaced (`prev` = the last valid slice, if any). */
       function sanitize(s: unknown, prev: unknown): PaginationState | undefined {
@@ -150,16 +176,22 @@ export const pagination = (opts: PaginationOptions = {}) => {
         ctx.emit('DK_INVALID_PAGINATION', { source, field, received: received(value), fallback })
       }
 
-      /** The current slice and the page actually shown. */
+      /**
+       * The current slice and the page actually shown. An unknown count (a server count not
+       * fetched yet) clamps nothing.
+       */
       function current() {
         const s = ctx.getState()
         const count = rowCount()
-        return { s, count, index: effectiveIndex(s.pageIndex, s.pageSize, count) }
+        const index =
+          count === undefined ? s.pageIndex : effectiveIndex(s.pageIndex, s.pageSize, count)
+        return { s, count, index }
       }
 
       function goTo(index: number) {
         const { s, count } = current()
-        const target = effectiveIndex(index < 0 ? 0 : index, s.pageSize, count)
+        const target =
+          index < 0 ? 0 : count === undefined ? index : effectiveIndex(index, s.pageSize, count)
         if (target !== s.pageIndex) ctx.setState({ ...s, pageIndex: target })
       }
 
@@ -219,11 +251,11 @@ export const pagination = (opts: PaginationOptions = {}) => {
         },
         getPageCount() {
           const count = rowCount()
-          return count === 0 ? 0 : Math.ceil(count / ctx.getState().pageSize)
+          return !count ? 0 : Math.ceil(count / ctx.getState().pageSize)
         },
         canNextPage() {
           const { s, count, index } = current()
-          return (index + 1) * s.pageSize < count
+          return count !== undefined && (index + 1) * s.pageSize < count
         },
         canPrevPage() {
           return current().index > 0

@@ -8,6 +8,7 @@ import type { StandardSchemaV1 } from '../ingest/standard-schema'
 import type { Interceptor } from '../intercept/define'
 import type { OpName } from '../intercept/operations'
 import type { RowModel } from '../pipeline/types'
+import type { Fetcher } from '../source/fetcher'
 
 /** Table state: one entry per slice (feature state is typed by `StateOf`, T08). */
 export type TableState = Record<string, unknown>
@@ -81,6 +82,20 @@ export interface TableOptions<T, S extends TableState = TableState> {
    * Default 30 000; `Infinity` disables it. Read once, at creation.
    */
   timeout?: number
+  /**
+   * Server source (§7.1): `fetcher({ query, filters, sort, pageIndex, pageSize, signal })` →
+   * `{ rows, rowCount }`. It receives only the state of the server-mode features and runs at
+   * creation and whenever that state changes (`status: 'fetching'`), through `async:request`
+   * (latest wins, abort, `timeout`). Needs at least one feature with `mode: 'server'`
+   * (`DK_FETCHER_WITHOUT_SERVER_MODE`). The returned rows go through `schema` and the data checks.
+   */
+  fetcher?: Fetcher<T>
+  /**
+   * Server mode without a fetcher (§7.1): the total number of rows on the server, while `data` is
+   * only the current page. Server-mode pagination counts pages from it (`DK_ROW_COUNT_MISSING`
+   * when missing).
+   */
+  rowCount?: number
   /** Rethrow error-level diagnostics as `DatakableError`. */
   strict?: boolean
   diagnostics?: TableDiagnosticsOptions
