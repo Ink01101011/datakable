@@ -1,0 +1,12 @@
+{
+  // Root project: editor + vitest typecheck. Maps workspace packages to source
+  // so type tests don't need a build. Package builds use their own tsconfig.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "paths": {
+      "@datakable/core": ["./packages/core/src/index.ts"],
+      "@datakable/react": ["./packages/react/src/index.ts"]
+    }
+  },
+  "include": ["packages/*/src", "vitest.config.ts"]
+}
