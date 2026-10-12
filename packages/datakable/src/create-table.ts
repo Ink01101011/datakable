@@ -7,8 +7,8 @@ import {
   type DefaultFeatures,
   type InvalidRowsMode,
   type SchemaRow,
-  type StandardSchemaV1,
   type Table,
+  type TableSchema,
   type TableState,
   type TableStateFor,
 } from '@datakable/core'
@@ -26,7 +26,7 @@ export function createTable<
   T,
   S extends TableState = never,
   const Fs extends readonly AnyFeature[] = DefaultFeatures,
-  const Sch extends StandardSchemaV1 | undefined = undefined,
+  const Sch extends TableSchema | undefined = undefined,
   const M extends InvalidRowsMode = 'drop',
 >(
   options: CreateTableOptions<T, TableStateFor<S, Fs, SchemaRow<T, Sch>>, Sch, M> & {
@@ -36,7 +36,7 @@ export function createTable<
   SchemaRow<T, Sch>,
   TableStateFor<S, Fs, SchemaRow<T, Sch>>,
   M,
-  [Sch] extends [StandardSchemaV1] ? unknown : T
+  [Sch] extends [TableSchema] ? unknown : T
 > &
   ApiOf<Fs, SchemaRow<T, Sch>>
 export function createTable(options: { features?: readonly AnyFeature[] | undefined }): unknown {

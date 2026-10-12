@@ -11,8 +11,8 @@ import {
   type RowIssue,
   type RowModelStatus,
   type SearchStatus,
-  type StandardSchemaV1,
   slotDiagnostics,
+  type TableSchema,
   type TableState,
 } from '@datakable/core'
 import {
@@ -169,7 +169,7 @@ export type DataTableProps<
  */
 export function DataTable<
   T,
-  const Sch extends StandardSchemaV1 | undefined = undefined,
+  const Sch extends TableSchema | undefined = undefined,
   const M extends InvalidRowsMode = 'drop',
 >(props: DataTableProps<T, Sch, M>): ReactNode
 export function DataTable(

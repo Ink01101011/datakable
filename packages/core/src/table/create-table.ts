@@ -12,7 +12,8 @@ import { orderFeatures } from '../feature/order'
 import type { AnyFeature, ApiOf, SliceUpdater, TableStateFor } from '../feature/types'
 import { createDataChecks } from '../ingest/data-checks'
 import { createDerivedColumns } from '../ingest/derive-columns'
-import { createSchemaIngest, type SchemaOutcome } from '../ingest/schema'
+import type { SchemaOutcome } from '../ingest/schema'
+import { SCHEMA_INGEST, type TableSchema } from '../ingest/schema-brand'
 import type { InvalidRowsMode } from '../ingest/schema-codes'
 import type { StandardSchemaV1 } from '../ingest/standard-schema'
 import { errorBoundary } from '../intercept/boundary'
@@ -62,9 +63,7 @@ const isThenable = (v: unknown): v is PromiseLike<unknown> =>
 const freeze = <S extends object>(s: S): S => (DEV ? Object.freeze(s) : s)
 
 /** The row type: the schema output with a `schema` (§5.1), else `T`. */
-export type SchemaRow<T, Sch> = [Sch] extends [StandardSchemaV1]
-  ? StandardSchemaV1.InferOutput<Sch>
-  : T
+export type SchemaRow<T, Sch> = [Sch] extends [TableSchema] ? StandardSchemaV1.InferOutput<Sch> : T
 
 /**
  * `createTable` options: with a `schema`, the row type is its output and `data` is the raw input
@@ -74,15 +73,15 @@ export type CreateTableOptions<T, S extends TableState, Sch, M extends InvalidRo
   TableOptions<SchemaRow<T, Sch>, S>,
   'data' | 'schema' | 'invalidRows' | 'fetcher' | 'initialData'
 > & {
-  data?: readonly ([Sch] extends [StandardSchemaV1] ? unknown : T)[]
+  data?: readonly ([Sch] extends [TableSchema] ? unknown : T)[]
   /** With a schema, the raw rows (validated like `data`). */
-  initialData?: readonly ([Sch] extends [StandardSchemaV1] ? unknown : T)[]
+  initialData?: readonly ([Sch] extends [TableSchema] ? unknown : T)[]
   /** With a schema, the fetcher returns raw rows (validated like `data`). */
-  fetcher?: Fetcher<[Sch] extends [StandardSchemaV1] ? unknown : T>
+  fetcher?: Fetcher<[Sch] extends [TableSchema] ? unknown : T>
   // Without an inferred schema (explicit type arguments, a `TableOptions<T>` object) these keep
   // their `TableOptions` types.
-  schema?: [Sch] extends [StandardSchemaV1] ? Sch : StandardSchemaV1<unknown, T>
-  invalidRows?: [Sch] extends [StandardSchemaV1] ? M : InvalidRowsMode
+  schema?: [Sch] extends [TableSchema] ? Sch : TableSchema<unknown, T>
+  invalidRows?: [Sch] extends [TableSchema] ? M : InvalidRowsMode
 }
 
 /** Column id: `key` for key columns, `id` for accessor columns. */
@@ -101,7 +100,7 @@ export function createTable<
   T,
   S extends TableState = never,
   const Fs extends readonly AnyFeature[] = [],
-  const Sch extends StandardSchemaV1 | undefined = undefined,
+  const Sch extends TableSchema | undefined = undefined,
   const M extends InvalidRowsMode = 'drop',
 >(
   options: CreateTableOptions<T, TableStateFor<S, Fs, SchemaRow<T, Sch>>, Sch, M> & {
@@ -111,7 +110,7 @@ export function createTable<
   SchemaRow<T, Sch>,
   TableStateFor<S, Fs, SchemaRow<T, Sch>>,
   M,
-  [Sch] extends [StandardSchemaV1] ? unknown : T
+  [Sch] extends [TableSchema] ? unknown : T
 > &
   ApiOf<Fs, SchemaRow<T, Sch>>
 export function createTable<T, S extends TableState>(
@@ -246,10 +245,13 @@ export function createTable<T, S extends TableState>(
   // Ingest data checks (§5.3) and zero-config columns (§4.1): both read only the first rows.
   const dataChecks = createDataChecks(hub.emit)
   const derivedColumns = createDerivedColumns()
-  // Schema ingest (§5.1): `schema` and `invalidRows` are read once (validated above).
-  const schemaIngest = options.schema
-    ? createSchemaIngest(options.schema, options.invalidRows ?? 'drop', () => options.columns)
-    : undefined
+  // Schema ingest (§5.1): `schema` and `invalidRows` are read once (validated above). The step
+  // comes with the schema (`withSchema`, `@datakable/core/schema`): a table without one never
+  // bundles it.
+  const schemaIngest = (options.schema as Partial<TableSchema> | undefined)?.[SCHEMA_INGEST]?.(
+    options.invalidRows ?? 'drop',
+    () => options.columns,
+  )
 
   function sensitiveColumns(): string[] {
     const out: string[] = []

@@ -5,6 +5,7 @@ import { columnFilters } from '../features/column-filters/column-filters'
 import { pagination } from '../features/pagination'
 import { search } from '../features/search/search'
 import { makeSchema } from '../ingest/test-schemas'
+import { withSchema } from '../ingest/with-schema'
 import { defineInterceptor } from '../intercept/define'
 import { createTable } from '../table/create-table'
 import { getTableInternals } from '../table/internals'
@@ -140,14 +141,18 @@ describe("a failed data:ingest sets 'error' and never counts as loaded (§6.6, �
   // Interceptor failures are skipped (§3.4), so a failing ingest is a failing core: here the
   // schema step reading a data Proxy that throws (fault injection).
   type V = { id: string; n: number }
-  const schema = makeSchema<V>((v) =>
-    typeof (v as V).n === 'number'
-      ? { value: v as V }
-      : { issues: [{ message: 'n', path: ['n'] }] },
+  const schema = withSchema(
+    makeSchema<V>((v) =>
+      typeof (v as V).n === 'number'
+        ? { value: v as V }
+        : { issues: [{ message: 'n', path: ['n'] }] },
+    ),
   )
-  const asyncSchema = makeSchema<V>((v) => schema['~standard'].validate(v) as never, {
-    async: true,
-  })
+  const asyncSchema = withSchema(
+    makeSchema<V>((v) => schema['~standard'].validate(v) as never, {
+      async: true,
+    }),
+  )
   /** `rows`, but throws once more than `reads` element reads were made (or on `length`). */
   const unreadable = (rows: unknown[], reads = -1) => {
     let n = 0
@@ -291,7 +296,7 @@ describe("'fetching' is never silent (§6.6, §7.1)", () => {
   })
 
   it("precedence: 'fetching' over 'validating' (async schema on fetched rows)", async () => {
-    const schema = makeSchema<P>((v) => ({ value: v as P }), { async: true })
+    const schema = withSchema(makeSchema<P>((v) => ({ value: v as P }), { async: true }))
     const m = manual()
     const t = createTable({ schema, fetcher: m.fetcher, features: [server()] })
     const seen = track(t)
@@ -315,7 +320,7 @@ describe('overlapping sources compose: error > fetching > searching > validating
     const gate = new Promise<void>((r) => {
       openGate = r
     })
-    const schema = makeSchema<P>((v) => ({ value: v as P }), { async: () => gate })
+    const schema = withSchema(makeSchema<P>((v) => ({ value: v as P }), { async: () => gate }))
     let resolveFetch: (r: unknown) => void = () => {}
     const fetcher = () =>
       new Promise<never>((r) => {

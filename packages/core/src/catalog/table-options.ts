@@ -1,4 +1,5 @@
 import { isStandardSchema } from '../ingest/schema'
+import { SCHEMA_INGEST } from '../ingest/schema-brand'
 import type { TableOptions } from '../table/types'
 import { defineOptions, type OptionRule } from './options'
 
@@ -24,10 +25,13 @@ const schema = {
   schema: {
     // arktype schemas are functions.
     type: ['object', 'function'],
-    check: isStandardSchema,
+    check: (v: object) =>
+      isStandardSchema(v) &&
+      typeof (v as { [SCHEMA_INGEST]?: unknown })[SCHEMA_INGEST] === 'function',
     expected:
-      "a Standard Schema v1 (an object with '~standard': { version: 1, validate }), " +
-      'e.g. a zod, valibot or arktype schema',
+      "a Standard Schema v1 (an object with '~standard': { version: 1, validate }, e.g. a zod, " +
+      "valibot or arktype schema) wrapped with withSchema() from '@datakable/core/schema': " +
+      'schema: withSchema(UserSchema)',
     once: true,
   },
   invalidRows: {

@@ -16,6 +16,7 @@ export default defineConfig({
         replacement: coreSrc('features/$1/index.ts'),
       },
       { find: /^@datakable\/core\/messages$/, replacement: coreSrc('messages/index.ts') },
+      { find: /^@datakable\/core\/schema$/, replacement: coreSrc('ingest/schema-entry.ts') },
       { find: /^@datakable\/core$/, replacement: src('core') },
       { find: /^@datakable\/react$/, replacement: src('react') },
     ],

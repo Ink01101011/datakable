@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Diagnostic } from '../../diagnostics/types'
 import { makeSchema, userSchema } from '../../ingest/test-schemas'
+import { withSchema } from '../../ingest/with-schema'
 import { createTable } from '../../table/create-table'
 import { columnFilters } from '../column-filters'
 import { validity } from './index'
@@ -36,7 +37,7 @@ const ids = (t: { getRowModel(): { rows: readonly { index: number }[] } }) =>
 
 const flagTable = (extra: Record<string, unknown> = {}) =>
   createTable({
-    schema: userSchema,
+    schema: withSchema(userSchema),
     data: raw,
     columns,
     invalidRows: 'flag',
@@ -81,7 +82,7 @@ describe("validity() under invalidRows: 'flag'", () => {
       [validity(), columnFilters()],
     ] as const) {
       const t = createTable({
-        schema: userSchema,
+        schema: withSchema(userSchema),
         data: raw,
         columns,
         invalidRows: 'flag',
@@ -110,12 +111,14 @@ describe("validity() under invalidRows: 'flag'", () => {
 
   it('works with an async schema once validation settles', async () => {
     const t = createTable({
-      schema: makeSchema(
-        (v) =>
-          typeof (v as { ok?: unknown }).ok === 'boolean' && (v as { ok: boolean }).ok
-            ? { value: v }
-            : { issues: [{ message: 'not ok', path: ['ok'] }] },
-        { async: true },
+      schema: withSchema(
+        makeSchema(
+          (v) =>
+            typeof (v as { ok?: unknown }).ok === 'boolean' && (v as { ok: boolean }).ok
+              ? { value: v }
+              : { issues: [{ message: 'not ok', path: ['ok'] }] },
+          { async: true },
+        ),
       ),
       data: [{ ok: true }, { ok: false }, { ok: true }],
       invalidRows: 'flag',
@@ -173,7 +176,7 @@ describe('validity() outside flag mode: a no-op', () => {
 
   it("with invalidRows: 'drop': invalid rows are gone, 'invalid' keeps every remaining row", () => {
     const t = createTable({
-      schema: userSchema,
+      schema: withSchema(userSchema),
       data: raw,
       columns,
       features: [validity()],

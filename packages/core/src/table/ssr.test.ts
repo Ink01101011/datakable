@@ -4,6 +4,7 @@ import { pagination } from '../features/pagination'
 import { search } from '../features/search'
 import { sorting } from '../features/sorting'
 import { makeSchema } from '../ingest/test-schemas'
+import { withSchema } from '../ingest/with-schema'
 import type { FetchParams, FetchResult } from '../source/fetcher'
 import { createTable } from './create-table'
 import { createDeferred, startTable } from './ssr'
@@ -49,10 +50,12 @@ describe('initialData (§7.2)', () => {
     expect(t.getRowModel().isInitialLoad).toBe(false)
     expect(t.getRowModel().status).toBe('idle')
 
-    const schema = makeSchema<P>((v) =>
-      typeof (v as P).n === 'number'
-        ? { value: v as P }
-        : { issues: [{ message: 'n', path: ['n'] }] },
+    const schema = withSchema(
+      makeSchema<P>((v) =>
+        typeof (v as P).n === 'number'
+          ? { value: v as P }
+          : { issues: [{ message: 'n', path: ['n'] }] },
+      ),
     )
     const s = createTable({ initialData: [{ id: 'a', n: 1 }, { id: 'b' }], schema })
     expect(s.getRowModel().rows).toHaveLength(1)

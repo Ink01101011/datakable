@@ -6,6 +6,7 @@ import { search } from './features/search'
 import { sorting } from './features/sorting'
 import { validity } from './features/validity'
 import { makeSchema } from './ingest/test-schemas'
+import { withSchema } from './ingest/with-schema'
 import { defineInterceptor } from './intercept/define'
 import { Row } from './pipeline/row'
 import { createTable } from './table/create-table'
@@ -34,14 +35,16 @@ const rows = (n: number): unknown[] =>
     age: i % 97 === 0 ? `${VALUE}-age` : (i * 37) % 90,
   }))
 
-const schema = makeSchema<U>(
-  (v) => {
-    const r = v as Record<string, unknown>
-    return typeof r.age === 'number'
-      ? { value: v as U }
-      : { issues: [{ message: `Expected number, received ${String(r.age)}`, path: ['age'] }] }
-  },
-  { async: true },
+const schema = withSchema(
+  makeSchema<U>(
+    (v) => {
+      const r = v as Record<string, unknown>
+      return typeof r.age === 'number'
+        ? { value: v as U }
+        : { issues: [{ message: `Expected number, received ${String(r.age)}`, path: ['age'] }] }
+    },
+    { async: true },
+  ),
 )
 
 let seen: Diagnostic[]

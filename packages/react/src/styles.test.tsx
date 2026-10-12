@@ -1,4 +1,5 @@
 import { type FetchResult, pagination, search, sorting } from '@datakable/core'
+import { withSchema } from '@datakable/core/schema'
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest'
 import { makeSchema, userCheck } from '../../core/src/ingest/test-schemas'
@@ -63,7 +64,7 @@ async function renderedHooks(): Promise<Set<string>> {
     <Hooked
       options={{
         data: raw,
-        schema: makeSchema(userCheck),
+        schema: withSchema(makeSchema(userCheck)),
         invalidRows: 'flag',
         features: [
           sorting(),

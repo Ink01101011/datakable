@@ -7,6 +7,7 @@ import {
   search,
   sorting,
 } from '@datakable/core'
+import { withSchema } from '@datakable/core/schema'
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { type ReactNode, useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest'
@@ -328,7 +329,7 @@ describe('<DataTable /> states (status + isInitialLoad, §6.6, USER DECISION)', 
 })
 
 describe('<DataTable /> flagged rows (invalidRows: flag, §5.1)', () => {
-  const schema = makeSchema(userCheck)
+  const schema = withSchema(makeSchema(userCheck))
   const raw = [
     { id: 1, name: 'Mali', age: 31 },
     { id: 2, name: 'Anan', age: 'SECRET-123' },

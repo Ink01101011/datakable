@@ -7,6 +7,7 @@ import { createTable } from '../table/create-table'
 import { DatakableSchemaError } from './schema'
 import type { SchemaIssueColumn } from './schema-codes'
 import { makeSchema, type User, userCheck, userSchema } from './test-schemas'
+import { withSchema } from './with-schema'
 
 let seen: Diagnostic[]
 const onDiagnostic = (d: Diagnostic) => {
@@ -37,7 +38,7 @@ const tick = () => new Promise((r) => setTimeout(r, 0))
 
 describe("schema: invalidRows 'drop' (default)", () => {
   it('removes invalid rows; data holds the validated output values', () => {
-    const t = createTable({ schema: userSchema, data: raw, columns, onDiagnostic })
+    const t = createTable({ schema: withSchema(userSchema), data: raw, columns, onDiagnostic })
     const m = t.getRowModel()
     expect(m.totalCount).toBe(2)
     expect(m.rows.map((r) => r.original)).toEqual([
@@ -49,7 +50,7 @@ describe("schema: invalidRows 'drop' (default)", () => {
   })
 
   it('getInvalidRows() lists { index, raw, issues } with the raw data index', () => {
-    const t = createTable({ schema: userSchema, data: raw, columns, onDiagnostic })
+    const t = createTable({ schema: withSchema(userSchema), data: raw, columns, onDiagnostic })
     expect(t.getInvalidRows()).toEqual([
       {
         index: 1,
@@ -60,7 +61,7 @@ describe("schema: invalidRows 'drop' (default)", () => {
   })
 
   it('reports DK_SCHEMA_INVALID_ROW once, mapping the issue path to the column', () => {
-    const t = createTable({ schema: userSchema, data: raw, columns, onDiagnostic })
+    const t = createTable({ schema: withSchema(userSchema), data: raw, columns, onDiagnostic })
     t.getRowModel()
     expect(codes()).toEqual(['DK_SCHEMA_INVALID_ROW'])
     const d = find('DK_SCHEMA_INVALID_ROW') as Diagnostic
@@ -76,12 +77,14 @@ describe("schema: invalidRows 'drop' (default)", () => {
 
   it('maps issue paths to columns like getCellIssues does (segments, not strings) (R7)', () => {
     // One segment 'address.city' is not the two-segment key address.city; 'tags' is not 'tagsAll'.
-    const schema = makeSchema<unknown>((v) => {
-      const r = v as { id: number }
-      if (r.id === 1) return { issues: [{ message: 'Bad', path: ['address.city'] }] }
-      if (r.id === 2) return { issues: [{ message: 'Bad', path: ['tags', 0] }] }
-      return { issues: [{ message: 'Bad', path: [{ key: 'address' }] }] }
-    })
+    const schema = withSchema(
+      makeSchema<unknown>((v) => {
+        const r = v as { id: number }
+        if (r.id === 1) return { issues: [{ message: 'Bad', path: ['address.city'] }] }
+        if (r.id === 2) return { issues: [{ message: 'Bad', path: ['tags', 0] }] }
+        return { issues: [{ message: 'Bad', path: [{ key: 'address' }] }] }
+      }),
+    )
     const t = createTable({
       schema,
       invalidRows: 'flag',
@@ -109,7 +112,7 @@ describe("schema: invalidRows 'drop' (default)", () => {
 
   it('getInvalidRows() is empty without a schema and after valid data replaces invalid data', () => {
     expect(createTable({ data: [{ a: 1 }] }).getInvalidRows()).toEqual([])
-    const t = createTable({ schema: userSchema, data: raw, onDiagnostic })
+    const t = createTable({ schema: withSchema(userSchema), data: raw, onDiagnostic })
     expect(t.getInvalidRows()).toHaveLength(1)
     t.setOptions({ data: [{ id: 9, name: 'Z', age: 1 }] })
     expect(t.getInvalidRows()).toEqual([])
@@ -118,7 +121,7 @@ describe("schema: invalidRows 'drop' (default)", () => {
 
   it('validation runs once per data reference (memoised)', () => {
     const check = vi.fn(userCheck)
-    const t = createTable({ schema: makeSchema(check), data: raw, onDiagnostic })
+    const t = createTable({ schema: withSchema(makeSchema(check)), data: raw, onDiagnostic })
     expect(check).toHaveBeenCalledTimes(3)
     const other = [{ id: 5, name: 'E', age: 5 }]
     t.setOptions({ data: other })
@@ -131,7 +134,7 @@ describe("schema: invalidRows 'drop' (default)", () => {
 describe("schema: invalidRows 'flag'", () => {
   it('keeps invalid rows with valid / issues / getCellIssues', () => {
     const t = createTable({
-      schema: userSchema,
+      schema: withSchema(userSchema),
       data: raw,
       columns,
       invalidRows: 'flag',
@@ -155,11 +158,13 @@ describe("schema: invalidRows 'flag'", () => {
 
   it('getCellIssues matches nested paths both ways (issue under the column, column under it)', () => {
     type N = { address: { city: string; zip: string } }
-    const schema = makeSchema<N>((v) => {
-      const a = (v as { address?: unknown }).address
-      if (a === null) return { issues: [{ message: 'Required', path: ['address'] }] }
-      return { issues: [{ message: 'Bad city', path: ['address', 'city'] }] }
-    })
+    const schema = withSchema(
+      makeSchema<N>((v) => {
+        const a = (v as { address?: unknown }).address
+        if (a === null) return { issues: [{ message: 'Required', path: ['address'] }] }
+        return { issues: [{ message: 'Bad city', path: ['address', 'city'] }] }
+      }),
+    )
     const t = createTable({
       schema,
       data: [{ address: { city: 1 } }, { address: null }],
@@ -176,7 +181,7 @@ describe("schema: invalidRows 'flag'", () => {
 
   it('accessor columns have no cell issues (no path to match)', () => {
     const t = createTable({
-      schema: userSchema,
+      schema: withSchema(userSchema),
       data: raw,
       columns: [{ id: 'age', accessor: (u: User) => u.age }],
       invalidRows: 'flag',
@@ -190,7 +195,7 @@ describe("schema: invalidRows 'throw'", () => {
   it('createTable throws DatakableSchemaError (a DatakableError) with the diagnostic', () => {
     let error: unknown
     try {
-      createTable({ schema: userSchema, data: raw, invalidRows: 'throw', onDiagnostic })
+      createTable({ schema: withSchema(userSchema), data: raw, invalidRows: 'throw', onDiagnostic })
     } catch (e) {
       error = e
     }
@@ -207,7 +212,12 @@ describe("schema: invalidRows 'throw'", () => {
 
   it('setOptions throws and keeps the previous data', () => {
     const good = [{ id: 1, name: 'A', age: 1 }]
-    const t = createTable({ schema: userSchema, data: good, invalidRows: 'throw', onDiagnostic })
+    const t = createTable({
+      schema: withSchema(userSchema),
+      data: good,
+      invalidRows: 'throw',
+      onDiagnostic,
+    })
     const before = t.getData()
     expect(() => t.setOptions({ data: raw as never })).toThrow(DatakableSchemaError)
     expect(t.getData()).toBe(before)
@@ -216,7 +226,7 @@ describe("schema: invalidRows 'throw'", () => {
 
   it('valid data does not throw', () => {
     const t = createTable({
-      schema: userSchema,
+      schema: withSchema(userSchema),
       data: [{ id: 1, name: 'A', age: 1 }],
       invalidRows: 'throw',
     })
@@ -225,10 +235,12 @@ describe("schema: invalidRows 'throw'", () => {
 })
 
 describe('schema that throws: DK_SCHEMA_CRASHED', () => {
-  const crashing = makeSchema<User>((v) => {
-    if ((v as { id: number }).id === 2) throw new TypeError('validator bug')
-    return userCheck(v)
-  })
+  const crashing = withSchema(
+    makeSchema<User>((v) => {
+      if ((v as { id: number }).id === 2) throw new TypeError('validator bug')
+      return userCheck(v)
+    }),
+  )
 
   it('reports the crash with its cause; the row is treated per invalidRows with a synthetic issue', () => {
     const t = createTable({ schema: crashing, data: raw, onDiagnostic })
@@ -249,8 +261,8 @@ describe('schema that throws: DK_SCHEMA_CRASHED', () => {
   })
 
   it('an async validate that rejects counts as a crash', async () => {
-    const schema = makeSchema<User>(userCheck, { async: true })
-    const rejecting = {
+    const schema = withSchema(makeSchema<User>(userCheck, { async: true }))
+    const rejecting = withSchema({
       '~standard': {
         ...schema['~standard'],
         validate: (v: unknown) =>
@@ -258,7 +270,7 @@ describe('schema that throws: DK_SCHEMA_CRASHED', () => {
             ? Promise.reject(new RangeError('async bug'))
             : schema['~standard'].validate(v),
       },
-    }
+    })
     const t = createTable({ schema: rejecting, data: raw, onDiagnostic })
     await tick()
     expect(find('DK_SCHEMA_CRASHED')?.details).toMatchObject({ rows: [0], errorName: 'RangeError' })
@@ -273,7 +285,7 @@ describe('async schema: status validating (never silent)', () => {
     const gate = new Promise<void>((r) => {
       release = r
     })
-    const schema = makeSchema<User>(userCheck, { async: () => gate })
+    const schema = withSchema(makeSchema<User>(userCheck, { async: () => gate }))
     const t = createTable({ schema, data: raw, onDiagnostic })
     const first = t.getRowModel()
     expect(first.status).toBe('validating')
@@ -294,7 +306,7 @@ describe('async schema: status validating (never silent)', () => {
   })
 
   it("setOptions({ data }) notifies 'validating' at once, then the result", async () => {
-    const schema = makeSchema<User>(userCheck, { async: true })
+    const schema = withSchema(makeSchema<User>(userCheck, { async: true }))
     const t = createTable({ schema, data: [], onDiagnostic })
     await tick()
     const statuses: string[] = []
@@ -310,12 +322,14 @@ describe('async schema: status validating (never silent)', () => {
 
   it('latest wins: an older validation finishing late is discarded', async () => {
     const gates: (() => void)[] = []
-    const schema = makeSchema<User>(userCheck, {
-      async: () =>
-        new Promise<void>((r) => {
-          gates.push(r)
-        }),
-    })
+    const schema = withSchema(
+      makeSchema<User>(userCheck, {
+        async: () =>
+          new Promise<void>((r) => {
+            gates.push(r)
+          }),
+      }),
+    )
     const a = [{ id: 1, name: 'A', age: 1 }]
     const b = [
       { id: 2, name: 'B', age: 2 },
@@ -335,14 +349,14 @@ describe('async schema: status validating (never silent)', () => {
 
   it("a sync throw superseding an async validation does not stay 'validating'", async () => {
     // Async for rows marked slow, sync otherwise.
-    const schema = {
+    const schema = withSchema({
       '~standard': {
         version: 1 as const,
         vendor: 'test',
         validate: (v: unknown) =>
           (v as { slow?: boolean }).slow ? Promise.resolve(userCheck(v)) : userCheck(v),
       },
-    }
+    })
     const t = createTable({
       schema,
       data: [{ id: 1, name: 'A', age: 1, slow: true }],
@@ -359,7 +373,7 @@ describe('async schema: status validating (never silent)', () => {
   })
 
   it("throw mode, async: reports DK_SCHEMA_INVALID_ROW, status 'error', previous data kept", async () => {
-    const schema = makeSchema<User>(userCheck, { async: true })
+    const schema = withSchema(makeSchema<User>(userCheck, { async: true }))
     const good = [{ id: 1, name: 'A', age: 1 }]
     const t = createTable({ schema, data: good, invalidRows: 'throw', onDiagnostic })
     await tick()
@@ -381,7 +395,7 @@ describe('schema issue redaction (§8.2, T26)', () => {
     for (const redact of [undefined, 'safe', 'keys'] as const) {
       seen = []
       createTable({
-        schema: userSchema,
+        schema: withSchema(userSchema),
         data: raw,
         onDiagnostic,
         ...(redact ? { diagnostics: { redact } } : {}),
@@ -391,12 +405,22 @@ describe('schema issue redaction (§8.2, T26)', () => {
       expect(d.details.issues).toEqual([{ path: 'age', message: 'invalid value at age' }])
     }
     seen = []
-    createTable({ schema: userSchema, data: raw, onDiagnostic, diagnostics: { redact: 'full' } })
+    createTable({
+      schema: withSchema(userSchema),
+      data: raw,
+      onDiagnostic,
+      diagnostics: { redact: 'full' },
+    })
     expect(JSON.stringify(find('DK_SCHEMA_INVALID_ROW')?.details)).toContain('SECRET-AGE')
   })
 
   it('the issues on rows and getInvalidRows keep the validator text (developer API)', () => {
-    const t = createTable({ schema: userSchema, data: raw, invalidRows: 'flag', onDiagnostic })
+    const t = createTable({
+      schema: withSchema(userSchema),
+      data: raw,
+      invalidRows: 'flag',
+      onDiagnostic,
+    })
     expect(t.getRowModel().rows[1]?.issues[0]?.message).toContain('SECRET-AGE')
   })
 })
@@ -411,15 +435,29 @@ describe('schema options', () => {
 
   it('a bad invalidRows value or a non-Standard-Schema schema throws DK_INVALID_OPTION', () => {
     expect(() =>
-      createTable({ data: [], schema: userSchema, invalidRows: 'keep' as never }),
+      createTable({ data: [], schema: withSchema(userSchema), invalidRows: 'keep' as never }),
     ).toThrow(DatakableConfigError)
     expect(() => createTable({ data: [], schema: { parse: () => 1 } as never })).toThrow(
       /DK_INVALID_OPTION/,
     )
   })
 
+  it('a Standard Schema not opted in with withSchema() is DK_INVALID_OPTION naming the fix', () => {
+    expect(() => createTable({ data: [], schema: userSchema as never })).toThrow(
+      /DK_INVALID_OPTION[\s\S]*withSchema\(UserSchema\)/,
+    )
+  })
+
+  it('withSchema keeps one identity per schema (an inline call in a render stays stable)', () => {
+    expect(withSchema(userSchema)).toBe(withSchema(userSchema))
+    expect(withSchema(userSchema)['~standard']).toBe(userSchema['~standard'])
+    const t = createTable({ schema: withSchema(userSchema), data: raw, onDiagnostic })
+    t.setOptions({ schema: withSchema(userSchema) })
+    expect(codes()).not.toContain('DK_OPTION_NO_EFFECT')
+  })
+
   it('schema and invalidRows are read once: setOptions reports DK_OPTION_NO_EFFECT', () => {
-    const t = createTable({ schema: userSchema, data: raw, onDiagnostic })
+    const t = createTable({ schema: withSchema(userSchema), data: raw, onDiagnostic })
     t.setOptions({ invalidRows: 'flag' })
     expect(find('DK_OPTION_NO_EFFECT')?.details).toMatchObject({ path: 'invalidRows', once: true })
     expect(t.getRowModel().totalCount).toBe(2)
@@ -436,7 +474,7 @@ describe('schema options', () => {
   })
 
   it('strict: the error-level DK_SCHEMA_INVALID_ROW is rethrown', () => {
-    expect(() => createTable({ schema: userSchema, data: raw, strict: true })).toThrow(
+    expect(() => createTable({ schema: withSchema(userSchema), data: raw, strict: true })).toThrow(
       DatakableError,
     )
   })

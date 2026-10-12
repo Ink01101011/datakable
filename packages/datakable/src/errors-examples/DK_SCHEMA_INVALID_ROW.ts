@@ -1,4 +1,5 @@
 import { createTable, type StandardSchemaV1 } from '@datakable/core'
+import { withSchema } from '@datakable/core/schema'
 
 type User = { id: number; name: string; age: number }
 // Any Standard Schema v1 (zod, valibot, arktype, …); a hand-written one here.
@@ -21,7 +22,7 @@ const json: unknown[] = [
 
 const table = createTable({
   data: json,
-  schema: UserSchema,
+  schema: withSchema(UserSchema),
   columns: [{ key: 'name' }, { key: 'age' }],
 })
 table.getRowModel() // 2 rows: row #1 was dropped (invalidRows: 'drop', the default)

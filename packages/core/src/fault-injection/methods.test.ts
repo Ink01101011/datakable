@@ -11,6 +11,7 @@ import {
   validity,
 } from '../index'
 import { makeSchema } from '../ingest/test-schemas'
+import { withSchema } from '../ingest/with-schema'
 import {
   type AnyTable,
   expectNoRowData,
@@ -246,8 +247,11 @@ const faults: Fault[] = [
     slot: 'state.columnFilters[id].fn',
     options: { initialState: { columnFilters: { n: { type: 'custom', fn: fail } } } },
   },
-  { slot: 'schema (throws)', options: { schema: makeSchema<Person>(fail) } },
-  { slot: 'schema (rejects)', options: { schema: makeSchema<Person>(fail, { async: true }) } },
+  { slot: 'schema (throws)', options: { schema: withSchema(makeSchema<Person>(fail)) } },
+  {
+    slot: 'schema (rejects)',
+    options: { schema: withSchema(makeSchema<Person>(fail, { async: true })) },
+  },
   { slot: 'search({ searchFn }) throws', features: () => preset({ searchFn: fail }) },
   { slot: 'search({ searchFn }) rejects', features: () => preset({ searchFn: reject }) },
   {

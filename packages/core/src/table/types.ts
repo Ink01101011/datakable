@@ -4,8 +4,8 @@ import type { RedactFn, RedactLevel } from '../diagnostics/redact'
 import type { Diagnostic } from '../diagnostics/types'
 import type { AnyFeature } from '../feature/types'
 import type { InvalidRow } from '../ingest/schema'
+import type { TableSchema } from '../ingest/schema-brand'
 import type { InvalidRowsMode } from '../ingest/schema-codes'
-import type { StandardSchemaV1 } from '../ingest/standard-schema'
 import type { Interceptor } from '../intercept/define'
 import type { OpName } from '../intercept/operations'
 import type { RowKey } from '../pipeline/row'
@@ -45,11 +45,11 @@ export interface TableOptions<T, S extends TableState = TableState> {
   data?: readonly T[]
   columns?: readonly ColumnDef<T>[]
   /**
-   * A Standard Schema v1 (zod, valibot, arktype, …) every row is validated with (§5.1); the row
-   * type is its output. An async schema sets `status: 'validating'` while it runs. Read once, at
-   * creation.
+   * A Standard Schema v1 (zod, valibot, arktype, …) every row is validated with (§5.1), opted in
+   * with `withSchema(UserSchema)` from `@datakable/core/schema`; the row type is its output. An
+   * async schema sets `status: 'validating'` while it runs. Read once, at creation.
    */
-  schema?: StandardSchemaV1<unknown, T>
+  schema?: TableSchema<unknown, T>
   /**
    * What happens to rows that fail `schema` (§5.1): `'drop'` (default) removes them, `'flag'` keeps
    * them with `row.valid === false`, `'throw'` throws `DatakableSchemaError`. All three list them in

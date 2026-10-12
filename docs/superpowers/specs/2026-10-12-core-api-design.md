@@ -229,6 +229,7 @@ Measured problem this fixes: with plain `any[]`, `Path<any>` resolves to `string
 ### 5.1 Schema (Standard Schema v1)
 
 - `schema` accepts any Standard Schema implementation (zod, valibot, arktype). The interface is copied into core, so there is no runtime dependency.
+- *(Changed 2026-10-13 for §9.3.)* Validation is an **opt-in import**: `schema: withSchema(UserSchema)` with `withSchema` from `@datakable/core/schema` (also re-exported by `@datakable/core` and `datakable`). The wrapper is the same Standard Schema plus the validation step, memoised per schema (an inline call in a render keeps one identity). A raw schema is a compile error, and `DK_INVALID_OPTION` in development naming the wrapper. Typing is unchanged: `T` from the output, `Row<T>` flag-mode union.
 - `T` is inferred from `InferOutput<schema>`.
 - Validation runs per data reference (memoised). An async schema sets `status: 'validating'`.
 - **`invalidRows`**
@@ -721,7 +722,7 @@ The bundle budgets are estimates from measured dependency sizes plus an assumed 
   - `ex-search` has no per-function subpaths: its exports are only `.`, `./types` and `./react`. Core imports its root, never `./react`.
 - **Standard Schema:** the interface is vendored; no dependency.
 - **Type leak guard:** DataKable's `.d.ts` files must not re-export `ex-search` types, because those reference `ex-flow`. CI compiles a tiny consumer project with `skipLibCheck: false`.
-- **Per-feature entries** (`@datakable/core/search`, …) keep the build tree-shakeable. `datakable` exposes the default preset. `datakable/messages` is the opt-in for full prod messages.
+- **Per-feature entries** (`@datakable/core/search`, …) keep the build tree-shakeable. *(Changed 2026-10-13 for §9.3: `@datakable/core/schema` is the opt-in entry for Standard Schema validation, §5.1.)* `datakable` exposes the default preset. `datakable/messages` is the opt-in for full prod messages.
 - **Existing conventions are kept:** tsup dual ESM/CJS, `exports` with per-condition types, `sideEffects: false` (with an explicit exception for `messages` / `styles.css`), the Changesets fixed group, publint + attw.
 
 ---

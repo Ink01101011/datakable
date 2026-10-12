@@ -6,6 +6,7 @@ import { search } from '../features/search'
 import { sorting } from '../features/sorting'
 import { validity } from '../features/validity'
 import { userSchema } from '../ingest/test-schemas'
+import { withSchema } from '../ingest/with-schema'
 import { createTable } from '../table/create-table'
 import { hashRowKey } from './redact'
 
@@ -81,7 +82,7 @@ describe('explain() (§8.4)', () => {
         { id: 2, name: 'b', age: 'x' },
         { id: 3, name: 'c', age: 3 },
       ],
-      schema: userSchema,
+      schema: withSchema(userSchema),
       rowKey: 'id',
       features: [sorting()],
       onDiagnostic: () => {},
@@ -197,7 +198,7 @@ describe('explainRow(key) pinpoints the removing step (§8.4)', () => {
         { id: 1, name: 'a', age: 1 },
         { id: 2, name: 'b', age: 'x' },
       ],
-      schema: userSchema,
+      schema: withSchema(userSchema),
       invalidRows: 'flag',
       rowKey: 'id',
       features: [validity()],
@@ -217,7 +218,7 @@ describe('explainRow(key) pinpoints the removing step (§8.4)', () => {
         { id: 1, name: 'a', age: 1 },
         { id: 2, name: 'b', age: 'SECRET-123' },
       ],
-      schema: userSchema,
+      schema: withSchema(userSchema),
       rowKey: 'id',
       features: [sorting()],
       onDiagnostic: () => {},

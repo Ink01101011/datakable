@@ -186,11 +186,13 @@ explains the compile errors these rules produce.
 
 ## Schema validation
 
-Pass any [Standard Schema](https://standardschema.dev) (zod, valibot, arktype, …) and the row type
-is its output:
+Pass any [Standard Schema](https://standardschema.dev) (zod, valibot, arktype, …) wrapped with
+`withSchema()` from `@datakable/core/schema`, and the row type is its output. Validation is an
+opt-in import, so a table without a schema does not bundle it:
 
 ```ts
 import { createTable, type StandardSchemaV1 } from '@datakable/core'
+import { withSchema } from '@datakable/core/schema'
 import { validity } from '@datakable/core/validity'
 
 type User = { id: number; name: string }
@@ -200,7 +202,7 @@ declare const json: unknown[] // e.g. await res.json()
 
 const table = createTable({
   data: json, // raw input: every row is validated
-  schema: UserSchema, // the row type is the schema's output
+  schema: withSchema(UserSchema), // opt-in validation; the row type is the schema's output
   invalidRows: 'flag', // 'drop' (default) | 'flag' | 'throw'
   rowKey: 'id',
   features: [validity()], // filters 'all' | 'valid' | 'invalid'

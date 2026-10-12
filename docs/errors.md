@@ -564,6 +564,7 @@ prints (development console):
 
 ```ts
 import { createTable, type StandardSchemaV1 } from '@datakable/core'
+import { withSchema } from '@datakable/core/schema'
 
 type User = { id: number; name: string; age: number }
 // Any Standard Schema v1 (zod, valibot, arktype, …); a hand-written one here.
@@ -586,7 +587,7 @@ const json: unknown[] = [
 
 const table = createTable({
   data: json,
-  schema: UserSchema,
+  schema: withSchema(UserSchema),
   columns: [{ key: 'name' }, { key: 'age' }],
 })
 table.getRowModel() // 2 rows: row #1 was dropped (invalidRows: 'drop', the default)
@@ -625,6 +626,7 @@ prints (development console):
 
 ```ts
 import { createTable, type StandardSchemaV1 } from '@datakable/core'
+import { withSchema } from '@datakable/core/schema'
 
 type User = { id: number; email: string }
 // A custom check that throws instead of returning an issue.
@@ -642,7 +644,7 @@ const UserSchema: StandardSchemaV1<unknown, User> = {
 
 const table = createTable({
   data: [{ id: 1, email: 'ada@example.com' }, { id: 2 }],
-  schema: UserSchema,
+  schema: withSchema(UserSchema),
 })
 table.getRowModel()
 ```
@@ -915,6 +917,7 @@ prints (development console):
 
 ```ts
 import { createTable, type StandardSchemaV1, type ValidityState, validity } from '@datakable/core'
+import { withSchema } from '@datakable/core/schema'
 
 type User = { id: number; email: string }
 // Any Standard Schema v1 (zod, valibot, arktype, …); a hand-written one here.
@@ -931,7 +934,7 @@ const UserSchema: StandardSchemaV1<unknown, User> = {
 
 const table = createTable({
   data: [{ id: 1, email: 'ada@example.com' }, { id: 2 }],
-  schema: UserSchema,
+  schema: withSchema(UserSchema),
   invalidRows: 'flag',
   features: [validity()],
 })

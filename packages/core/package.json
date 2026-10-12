@@ -99,6 +99,16 @@
         "default": "./dist/messages/index.cjs"
       }
     },
+    "./schema": {
+      "import": {
+        "types": "./dist/schema.d.ts",
+        "default": "./dist/ingest/schema-entry.js"
+      },
+      "require": {
+        "types": "./dist/schema.d.cts",
+        "default": "./dist/ingest/schema-entry.cjs"
+      }
+    },
     "./package.json": "./package.json"
   },
   "files": [

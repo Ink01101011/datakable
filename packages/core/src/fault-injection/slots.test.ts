@@ -12,6 +12,7 @@ import {
   sorting,
 } from '../index'
 import { makeSchema } from '../ingest/test-schemas'
+import { withSchema } from '../ingest/with-schema'
 import {
   type AnyTable,
   expectDiagnostic,
@@ -329,7 +330,9 @@ const cases: SlotCase[] = [
     where: 'options.schema',
     status: 'idle',
     run: (onDiagnostic) =>
-      loose(createTable({ data: people(), schema: makeSchema<Person>(fail), onDiagnostic })),
+      loose(
+        createTable({ data: people(), schema: withSchema(makeSchema<Person>(fail)), onDiagnostic }),
+      ),
     // Each row gets a synthetic issue and is handled per invalidRows ('drop').
     fallback: (t) => {
       expect(t.getRowModel().rows).toHaveLength(0)
@@ -346,7 +349,7 @@ const cases: SlotCase[] = [
       const t = loose(
         createTable({
           data: people(),
-          schema: makeSchema<Person>(fail, { async: true }),
+          schema: withSchema(makeSchema<Person>(fail, { async: true })),
           onDiagnostic,
         }),
       )

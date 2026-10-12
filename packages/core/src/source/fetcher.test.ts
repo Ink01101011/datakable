@@ -7,6 +7,7 @@ import { pagination } from '../features/pagination'
 import { search } from '../features/search'
 import { sorting } from '../features/sorting'
 import { makeSchema } from '../ingest/test-schemas'
+import { withSchema } from '../ingest/with-schema'
 import { createTable } from '../table/create-table'
 import { getTableInternals } from '../table/internals'
 import type { FetchParams, FetchResult } from './fetcher'
@@ -388,10 +389,12 @@ describe('fetcher (§7.1)', () => {
   })
 
   it('schema validation and data checks apply to the fetched rows', async () => {
-    const schema = makeSchema<P>((v) =>
-      typeof (v as P).n === 'number'
-        ? { value: v as P }
-        : { issues: [{ message: 'n', path: ['n'] }] },
+    const schema = withSchema(
+      makeSchema<P>((v) =>
+        typeof (v as P).n === 'number'
+          ? { value: v as P }
+          : { issues: [{ message: 'n', path: ['n'] }] },
+      ),
     )
     const m = manual<unknown>()
     const t = createTable({

@@ -1,4 +1,5 @@
 import { createTable, type StandardSchemaV1 } from '@datakable/core'
+import { withSchema } from '@datakable/core/schema'
 
 type User = { id: number; email: string }
 // A custom check that throws instead of returning an issue.
@@ -16,6 +17,6 @@ const UserSchema: StandardSchemaV1<unknown, User> = {
 
 const table = createTable({
   data: [{ id: 1, email: 'ada@example.com' }, { id: 2 }],
-  schema: UserSchema,
+  schema: withSchema(UserSchema),
 })
 table.getRowModel()

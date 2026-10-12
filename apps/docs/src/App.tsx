@@ -8,6 +8,7 @@ import {
   useDataTable,
   type ValidityState,
   VERSION,
+  withSchema,
 } from 'datakable'
 import { type ReactNode, useCallback, useId, useRef, useState } from 'react'
 import { AccountSchema, createFakeServer, rawAccounts, rows } from './data'
@@ -192,7 +193,7 @@ function ServerMode({ onDiagnostic }: { onDiagnostic: OnDiagnostic }) {
 function SchemaFlag({ onDiagnostic }: { onDiagnostic: OnDiagnostic }) {
   const table = useDataTable({
     data: rawAccounts,
-    schema: AccountSchema,
+    schema: withSchema(AccountSchema),
     invalidRows: 'flag',
     rowKey: 'id',
     onDiagnostic,

@@ -6,6 +6,7 @@
     "paths": {
       "@datakable/core": ["./packages/core/src/index.ts"],
       "@datakable/core/messages": ["./packages/core/src/messages/index.ts"],
+      "@datakable/core/schema": ["./packages/core/src/ingest/schema-entry.ts"],
       "@datakable/core/*": ["./packages/core/src/features/*/index.ts"],
       "@datakable/react": ["./packages/react/src/index.ts"],
       "datakable": ["./packages/datakable/src/index.ts"],

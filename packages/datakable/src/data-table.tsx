@@ -1,4 +1,4 @@
-import type { InvalidRowsMode, StandardSchemaV1 } from '@datakable/core'
+import type { InvalidRowsMode, TableSchema } from '@datakable/core'
 import {
   DataTable as BareDataTable,
   type DataTableOwnProps,
@@ -15,7 +15,7 @@ import { useDataTable } from './use-data-table'
  */
 export function DataTable<
   T,
-  const Sch extends StandardSchemaV1 | undefined = undefined,
+  const Sch extends TableSchema | undefined = undefined,
   const M extends InvalidRowsMode = 'drop',
 >(props: DataTableProps<T, Sch, M>): ReactNode
 export function DataTable(
