@@ -42,6 +42,15 @@ function columnIndex(columns: readonly unknown[], id: string): number {
   return -1
 }
 
+function columnIds(columns: readonly unknown[]): string[] {
+  const out: string[] = []
+  for (const c of columns as readonly ({ key?: unknown; id?: unknown } | null)[]) {
+    const id = c && (typeof c.key === 'string' ? c.key : c.id)
+    if (typeof id === 'string') out.push(id)
+  }
+  return out
+}
+
 /** Nullish and `NaN` (nullish in a numeric column cache) match no active filter (§6.1). */
 const absent = (v: unknown) =>
   v === undefined || v === null || (typeof v === 'number' && Number.isNaN(v))
@@ -154,8 +163,17 @@ function filterRows(
     const filter = state[id]
     if (filter === undefined) continue
     const values = ctx.getColumnValues(id)
-    // TODO(T32): DK_STATE_UNKNOWN_KEY for a filter on a column that is not in `columns`.
-    if (!values) continue
+    if (!values) {
+      // Not a column (§7.2): ignored. No columns at all (zero-config, no rows yet) is not reported.
+      if (ctx.columns.length > 0) {
+        ctx.emit('DK_STATE_UNKNOWN_KEY', {
+          slice: 'columnFilters',
+          key: id,
+          known: columnIds(ctx.columns),
+        })
+      }
+      continue
+    }
     const c = compile(filter, values)
     if (c.kind === 'off') continue
     const index = columnIndex(ctx.columns, id)

@@ -3,6 +3,7 @@ import {
   type ApiOf,
   type ColumnDef,
   type CreateTableOptions,
+  createDeferred,
   createTable,
   type Diagnostic,
   emitTableDiagnostic,
@@ -13,6 +14,7 @@ import {
   registerPackage,
   type SchemaRow,
   type StandardSchemaV1,
+  startTable,
   type Table,
   type TableState,
   type TableStateFor,
@@ -21,6 +23,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useInsertionEffect,
   useLayoutEffect,
   useReducer,
   useRef,
@@ -119,6 +122,13 @@ interface Instance {
   /** Notifications seen; part of the view cache key (a notification is never silent, §6.6). */
   version: number
   view: { table: AnyTable; version: number; value: object } | undefined
+  /**
+   * SSR (§7.2): the view of `table` at its creation — initial state, controlled state and data /
+   * initialData, no async result (the table is created deferred). `getServerSnapshot`.
+   */
+  server: { table: AnyTable; value: object } | undefined
+  /** React read `getServerSnapshot` on the client: this render hydrates server HTML. */
+  hydrating: boolean
   // Dev: DK_UNSTABLE_* bookkeeping.
   /** The options of the previous committed render. */
   seen: Options
@@ -141,6 +151,12 @@ let registered = false
  *   reads changes).
  * - `columns`, `data` and a `rowKey` function are compared by reference: memoise them.
  * - Controlled slices (§3.2): pass `state` and `onStateChange`; changes come back through `state`.
+ * - SSR (§7.2): rendering starts no async work. The fetcher's first request and a `searchFn` for an
+ *   initial query start after the commit (`status: 'pending'` until then; `DK_SSR_ASYNC_DEFERRED`
+ *   on the server), unless `initialData` already holds their result. `initialState` (e.g. parsed
+ *   from the URL) applies on the server: client-mode features filter / search / sort the HTML.
+ *   `getServerSnapshot` is the view at creation; a table that changed before the hydration commit
+ *   reports `DK_HYDRATION_MISMATCH`.
  *
  * `@datakable/react` installs no features by default; `datakable`'s `useDataTable` installs the
  * default preset.
@@ -164,8 +180,8 @@ export function useDataTable<
 >
 export function useDataTable(options: Options): unknown {
   const ref = useRef<Instance | null>(null)
-  // Created during the first render (React keeps the ref across the StrictMode double render). A
-  // fetcher's first request starts here, as with createTable (§7.1).
+  // Created during the first render (React keeps the ref across the StrictMode double render),
+  // deferred: its async work (fetcher, searchFn) starts in the mount effect, never on the server.
   if (ref.current === null) ref.current = createInstance(options)
   const inst = ref.current
   const table = inst.table
@@ -184,14 +200,24 @@ export function useDataTable(options: Options): unknown {
     [inst, table],
   )
   const getSnapshot = useCallback(() => snapshot(inst, table), [inst, table])
-  const view = useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
+  const getServerSnapshot = useCallback(() => serverSnapshot(inst, table), [inst, table])
+  const view = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
+
+  // Hydration commit (§7.2): before any layout effect can change the table, the snapshot React
+  // hydrated with must still be the live one, else React replaces the server HTML at once.
+  useInsertionEffect(() => checkHydration(inst), [inst])
 
   useIsomorphicLayoutEffect(() => {
     inst.mounted = true
     // Destroyed while hidden (`<Activity>`): a new table, from the latest options.
     if (inst.destroyed) {
       recreate(inst)
+      startTable(inst.table)
       rerender()
+    } else {
+      // The deferred fetch / searchFn starts now; its status shows before paint.
+      startTable(inst.table)
+      if (snapshot(inst, inst.table) !== view) rerender()
     }
     return () => {
       inst.mounted = false
@@ -244,6 +270,8 @@ function createInstance(options: Options): Instance {
     selfCaused: false,
     version: 0,
     view: undefined,
+    server: undefined,
+    hydrating: false,
     seen: options,
     unstable: new Map(),
     warned: new Set(),
@@ -261,13 +289,16 @@ function build(inst: Instance, options: Options) {
   for (const k of CALLBACKS) if (typeof options[k] === 'function') init[k] = inst.wrappers[k]
   inst.rendering++
   try {
-    inst.table = createTable(init as never) as unknown as AnyTable
+    // Deferred (§7.2): rendering starts no fetch / searchFn (none at all on the server, where
+    // effects never run); the mount effect starts it.
+    inst.table = createDeferred(() => createTable(init as never)) as unknown as AnyTable
   } finally {
     inst.rendering--
   }
   inst.synced = options
   inst.seen = options
   inst.view = undefined
+  inst.server = undefined
 }
 
 function recreate(inst: Instance) {
@@ -292,6 +323,52 @@ function snapshot(inst: Instance, table: AnyTable): object {
     }) as object
     inst.view = { table, version: inst.version, value }
     return value
+  } finally {
+    inst.rendering--
+  }
+}
+
+/**
+ * `getServerSnapshot` (§7.2): the view of the table at its creation. React reads it on the server
+ * and while hydrating, so both render the same snapshot; async work never ran in it.
+ */
+function serverSnapshot(inst: Instance, table: AnyTable): object {
+  if (inst.table !== table) return snapshot(inst, table)
+  // On the client React reads it only to hydrate.
+  if (typeof window !== 'undefined') inst.hydrating = true
+  const s = inst.server
+  if (s && s.table === table) return s.value
+  const value = snapshot(inst, table)
+  inst.server = { table, value }
+  return value
+}
+
+/** `DK_HYDRATION_MISMATCH`: what differs between the hydrated (server) view and the live one. */
+function checkHydration(inst: Instance) {
+  if (!inst.hydrating) return
+  inst.hydrating = false
+  const server = inst.server
+  if (!server || server.table !== inst.table) return
+  const live = snapshot(inst, inst.table) as { state: TableState; rowModel: unknown }
+  const hydrated = server.value as { state: TableState; rowModel: unknown }
+  if (live === hydrated) return
+  const slices: string[] = []
+  for (const k of new Set([...Object.keys(hydrated.state), ...Object.keys(live.state)])) {
+    if (!Object.is(hydrated.state[k], live.state[k])) slices.push(k)
+  }
+  if (slices.length === 0) {
+    if (live.rowModel === hydrated.rowModel) return
+    slices.push('rows')
+  }
+  // Delivered to onDiagnostic by the layout effect (no update during the commit).
+  inst.rendering++
+  try {
+    emitTableDiagnostic(
+      inst.table,
+      'DK_HYDRATION_MISMATCH',
+      { slices },
+      { trigger: 'hydrate', phase: 'hydrate' },
+    )
   } finally {
     inst.rendering--
   }

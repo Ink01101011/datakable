@@ -357,3 +357,27 @@ describe('columnFilters: DK_FILTER_TYPE_MISMATCH', () => {
     expect(JSON.stringify(seen[0]?.toJSON())).not.toMatch(/secret-needle|ADA/)
   })
 })
+
+describe('columnFilters: unknown column ids (DK_STATE_UNKNOWN_KEY, §7.2)', () => {
+  it('a filter on an id that is not a column is ignored and reported once, with did-you-mean', () => {
+    const t = table(rows, { agee: { type: 'range', value: { min: 18 } } })
+    expect(ids(t)).toEqual([0, 1, 2, 3, 4])
+    t.setColumnFilter('on', { type: 'equals', value: true })
+    expect(ids(t)).toEqual([0, 2, 4])
+    const d = seen.filter((x) => x.code === 'DK_STATE_UNKNOWN_KEY')
+    expect(d).toHaveLength(1)
+    expect(d[0]?.level).toBe('warn')
+    expect(d[0]?.where).toEqual({ kind: 'option', path: 'state.columnFilters.agee' })
+    expect(d[0]?.fix.join(' ')).toMatch(/did you mean "age"/)
+  })
+
+  it('no report before any column exists (zero-config, no data yet)', () => {
+    createTable({
+      data: [] as R[],
+      features: [columnFilters()],
+      onDiagnostic,
+      initialState: { columnFilters: { age: { type: 'equals', value: 1 } } },
+    }).getRowModel()
+    expect(codes()).not.toContain('DK_STATE_UNKNOWN_KEY')
+  })
+})

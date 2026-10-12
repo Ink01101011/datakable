@@ -12,6 +12,7 @@ import {
   type TableState,
   type TableStateFor,
 } from '@datakable/core'
+import { registerDatakable } from './register'
 
 /**
  * Creates a table with the default preset (§3.3): `createTable({ data })` alone sorts, filters,
@@ -39,6 +40,7 @@ export function createTable<
 > &
   ApiOf<Fs, SchemaRow<T, Sch>>
 export function createTable(options: { features?: readonly AnyFeature[] | undefined }): unknown {
+  registerDatakable()
   const create = createCoreTable as (o: typeof options) => unknown
   return create(
     options.features === undefined ? { ...options, features: createDefaultFeatures() } : options,

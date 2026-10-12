@@ -59,11 +59,20 @@ const schema = {
     check: (v: number) => Number.isInteger(v) && v >= 0,
     expected: 'an integer ≥ 0 (the total number of rows on the server)',
     noEffect: (_v: number, all) =>
-      typeof all.fetcher === 'function'
+      // With initialData, rowCount is its server total until a fetch applies (§7.2).
+      typeof all.fetcher === 'function' && all.initialData === undefined
         ? 'with a fetcher, the row count comes from the fetcher result (rowCount)'
         : !hasServerPagination(all.features)
           ? "only pagination({ mode: 'server' }) reads rowCount"
           : undefined,
+  },
+  initialData: {
+    type: 'array',
+    once: true,
+    noEffect: (_v: readonly unknown[], all) =>
+      all.data !== undefined
+        ? 'data is given: initialData is used only without data (SSR / server mode, §7.2)'
+        : undefined,
   },
   strict: { type: 'boolean', once: true },
   diagnostics: {

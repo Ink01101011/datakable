@@ -22,6 +22,14 @@ declare module '../../diagnostics/catalog' {
       /** A sample of their row indices (first few, in order). */
       rows: readonly number[]
     }
+    DK_STATE_UNKNOWN_KEY: {
+      /** The state slice holding the key, e.g. `columnFilters`. */
+      slice: string
+      /** The key that names no column. */
+      key: string
+      /** The table's column ids (did-you-mean). */
+      known: readonly string[]
+    }
   }
 }
 
@@ -45,7 +53,24 @@ function convert(expected: string, received: string): string | undefined {
 }
 
 /** Message text (§8.2): development builds, or production via `@datakable/core/messages`. */
-export const columnFiltersMessages: DiagnosticMessages<'DK_FILTER_TYPE_MISMATCH'> = {
+export const columnFiltersMessages: DiagnosticMessages<
+  'DK_FILTER_TYPE_MISMATCH' | 'DK_STATE_UNKNOWN_KEY'
+> = {
+  DK_STATE_UNKNOWN_KEY: {
+    problem: (d) => `state.${d.slice} has an entry for "${d.key}", which is not a column`,
+    impact: () =>
+      'the entry is ignored (the other entries still apply); it may come from an older URL or ' +
+      'saved state, or the column was renamed or removed',
+    fix: (d) => {
+      const near = suggest(d.key, d.known)
+      return [
+        near.length > 0
+          ? `did you mean "${near[0]}"? (state.${d.slice}["${near[0]}"])`
+          : `use one of the column ids: ${d.known.map((k) => `"${k}"`).join(', ')}`,
+        `drop "${d.key}" when parsing initialState / state (e.g. from the URL), or add the column`,
+      ]
+    },
+  },
   DK_FILTER_TYPE_MISMATCH: {
     problem: (d) =>
       d.source === 'filter'
@@ -106,5 +131,13 @@ export const columnFiltersDiagnostics = [
       where: (d) => ({ kind: 'column', index: d.index, id: d.column }),
     },
     DEV && columnFiltersMessages.DK_FILTER_TYPE_MISMATCH,
+  ),
+  defineDiagnostic(
+    {
+      code: 'DK_STATE_UNKNOWN_KEY',
+      level: 'warn',
+      where: (d) => ({ kind: 'option', path: `state.${d.slice}.${d.key}` }),
+    },
+    DEV && columnFiltersMessages.DK_STATE_UNKNOWN_KEY,
   ),
 ]

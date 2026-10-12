@@ -23,6 +23,20 @@ export interface TableInternals {
   /** The table's diagnostics hub emit (`emitTableDiagnostic`). */
   readonly emit: Emit
   /**
+   * SSR (§7.2, `createDeferred`): `true` while the table waits for `startTable`; `source` is then
+   * recorded as deferred work (`status: 'pending'`) and must not start. `false` once started.
+   */
+  defer(source: 'fetcher' | 'searchFn'): boolean
+  /** The sources deferred since creation (`DK_SSR_ASYNC_DEFERRED`). */
+  deferred(): readonly ('fetcher' | 'searchFn')[]
+  /** Starts the deferred work (`startTable`); a no-op when not deferred. */
+  start(): void
+  /**
+   * The ingested `options.initialData` while it is still the table's data (§7.2): the result of
+   * the initial async work. `undefined` without it, or once other data was applied.
+   */
+  initialRows(): readonly unknown[] | undefined
+  /**
    * Runs one `async:request` through the table's interceptor chain (errorBoundary → asyncControl
    * → …), with `previous` as FALLBACK. Resolves with the outcome; apply `value` only when
    * `status === 'applied'`. Never rejects, except under `strict` (a `DatakableError`).
@@ -68,3 +82,9 @@ export function emitTableDiagnostic<C extends DiagnosticCode>(
 ): void {
   getTableInternals(table).emit(code, details, options)
 }
+
+/**
+ * `createDeferred` (ssr.ts) nesting depth: a table created while it is > 0 defers its async work
+ * until `startTable` (§7.2). Kept here so `createTable` does not import the SSR module.
+ */
+export const deferral = { depth: 0 }

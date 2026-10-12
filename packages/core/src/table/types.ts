@@ -98,6 +98,14 @@ export interface TableOptions<T, S extends TableState = TableState> {
    * when missing).
    */
   rowCount?: number
+  /**
+   * SSR (§7.2): the rows the server already produced for the initial state (e.g. its fetcher
+   * result). Ingested at creation like `data` when `data` is not given, and counts as the result of
+   * the initial async work: the fetcher's first request is skipped (a later server-state change
+   * fetches), a `searchFn` is not called for the initial query, and hydration does not re-fetch.
+   * With server pagination, `rowCount` gives its total. Read once, at creation.
+   */
+  initialData?: readonly T[]
   /** Rethrow error-level diagnostics as `DatakableError`. */
   strict?: boolean
   diagnostics?: TableDiagnosticsOptions
