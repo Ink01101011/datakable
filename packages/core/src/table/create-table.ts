@@ -19,6 +19,7 @@ import type { RowModel } from '../pipeline/types'
 import { ASYNC_STATUS, type AsyncStatus, asyncControl } from '../source/async-control'
 import { checkVersions } from '../versioning/registry'
 import { tableDiagnostics } from './codes'
+import { createDataMutationCheck, dataMutationDiagnostics } from './data-mutation'
 import { setTableInternals } from './internals'
 import {
   type ControlledState,
@@ -32,6 +33,7 @@ import {
 
 // Referencing the definitions keeps them in the bundle (`sideEffects: false`).
 void tableDiagnostics
+void dataMutationDiagnostics
 
 const EMPTY: readonly never[] = []
 
@@ -145,6 +147,8 @@ export function createTable<T, S extends TableState>(
   })
   runtime.installBoundary(errorBoundary)
   hub.attach(runtime)
+  // Dev check (§5.3): the same `data` array passed again with changed contents (DK_DATA_MUTATED).
+  const dataCheck = DEV ? createDataMutationCheck(hub.emit) : undefined
   // Feature `requires.core` (throws DK_FEATURE_INCOMPATIBLE), duplicate cores, version mismatch.
   checkVersions(features, hub.emit, hub.table)
 
@@ -385,6 +389,7 @@ export function createTable<T, S extends TableState>(
   function ingest() {
     const seq = ++ingestSeq
     const given = options.data !== undefined
+    dataCheck?.remember(options.data)
     withTrigger('data-change', () => {
       const out = op(
         'data:ingest',
@@ -487,6 +492,7 @@ export function createTable<T, S extends TableState>(
           pending = true
         }
         if (next.data !== previous.data) ingest()
+        else if ('data' in partial) dataCheck?.check(next.data)
       })
       flush()
     })

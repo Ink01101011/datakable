@@ -1,5 +1,7 @@
+import { describeReturn, expectedReturn, formatSlot, slotDiagnostics } from '../catalog/slots'
 import { defaultFormat } from '../column/format'
 import { getValue } from '../column/get-value'
+import { DEV } from '../diagnostics/env'
 import type { Emit } from '../diagnostics/types'
 import { CellFailures, type CellSlot, runCells } from '../intercept/cell-batch'
 import { type ContextBase, createContextPool } from '../intercept/context'
@@ -10,6 +12,7 @@ import { allRows } from './indices'
 import type { ColumnValues } from './types'
 
 void pipelineDiagnostics
+void slotDiagnostics
 
 export interface ColumnCacheHost {
   readonly runtime: InterceptorRuntime
@@ -50,6 +53,8 @@ export function createColumnCache(host: ColumnCacheHost): ColumnCache {
   const pool = createContextPool()
   const failures = new CellFailures()
   const unrenderable = new CellFailures()
+  /** Dev: `format` returns that broke the slot contract (`first` = the first bad value). */
+  const badReturns = new CellFailures()
 
   function entry(data: readonly unknown[], column: ResolvedColumn): Entry {
     let cols = byData.get(data)
@@ -86,6 +91,7 @@ export function createColumnCache(host: ColumnCacheHost): ColumnCache {
         } finally {
           failures.reset()
           unrenderable.reset()
+          badReturns.reset()
         }
       })
     } finally {
@@ -169,18 +175,35 @@ export function createColumnCache(host: ColumnCacheHost): ColumnCache {
     const format = column.format
     batch(column, 'format', 'format', rows, () => {
       if (format) {
-        // TODO(T27): a non-string return is DK_CALLBACK_BAD_RETURN (slotContract); coerced here.
+        let firstBad: unknown
         runCells(
           rows,
           (r) => {
             const s = format(valueAt(r))
-            return typeof s === 'string' ? s : defaultFormat(s)
+            if (typeof s === 'string') return s
+            // Slot contract (dev): counted only on this non-string path; coerced either way.
+            if (DEV) {
+              if (badReturns.count === 0) firstBad = s
+              badReturns.add(r, undefined)
+            }
+            return defaultFormat(s)
           },
           out,
           '',
           failures,
         )
         failures.report(host.emit, column.index, column.id, 'format')
+        if (DEV && badReturns.count > 0) {
+          host.emit('DK_CALLBACK_BAD_RETURN', {
+            slot: `columns[${column.index}].format`,
+            column: column.id,
+            expected: expectedReturn(formatSlot),
+            received: describeReturn(firstBad),
+            count: badReturns.count,
+            rows: Array.from(badReturns.sample()),
+            fallback: formatSlot.fallback,
+          })
+        }
         return
       }
       let cur = 0
