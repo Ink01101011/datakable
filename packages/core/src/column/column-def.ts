@@ -120,9 +120,26 @@ type NeedsFormat<V> = {
   format: (value: V) => string
 }
 
+/**
+ * Sort requirement for value `V` (spec §6.4): an object, function or array-of-objects column has
+ * no default order, so `sortable: true` needs `sortFn` or `sortBy`. Primitives, `Date`, arrays of
+ * primitives, `unknown` and `any` need neither.
+ */
+export type SortReq<T, V> =
+  IsLoose<V> extends true
+    ? unknown
+    : [NonNullable<V>] extends [Displayable]
+      ? unknown
+      : { sortable?: false } | NeedsSortFn<V> | NeedsSortBy<T>
+
+/** `sortable: true` on a column without a default order: compare the values with `sortFn`. */
+type NeedsSortFn<V> = { sortable: true; sortFn: (a: V, b: V) => number }
+/** `sortable: true` on a column without a default order: sort by a primitive key. */
+type NeedsSortBy<T> = { sortable: true; sortBy: (row: T) => Primitive }
+
 /** A column bound to a dot-path of `T`; a distributive union over every path. */
 export type KeyColumn<T, R> = {
-  [P in Path<T>]: { key: P } & RenderReq<T, PathValue<T, P>, R>
+  [P in Path<T>]: { key: P } & RenderReq<T, PathValue<T, P>, R> & SortReq<T, PathValue<T, P>>
 }[Path<T>]
 
 /** A derived column: `accessor` computes the value from the (contextually typed) row. */
