@@ -9,7 +9,7 @@ const users: User[] = [
 ]
 
 export function App() {
-  const { rows } = useDataTable({ data: users })
+  const { rowModel } = useDataTable({ data: users })
 
   return (
     <main style={{ fontFamily: 'system-ui', padding: 24 }}>
@@ -24,8 +24,8 @@ export function App() {
           </tr>
         </thead>
         <tbody>
-          {rows.map((u) => (
-            <tr key={u.id}>
+          {rowModel.rows.map(({ key, original: u }) => (
+            <tr key={key}>
               <td>{u.id}</td>
               <td>{u.name}</td>
               <td>{u.email}</td>
