@@ -20,7 +20,7 @@ export interface FeatureRuntime {
 }
 
 /** Set when `feature/define.ts` is loaded (the same module-scoped registry as the catalogs). */
-export const featureRuntime: { current?: FeatureRuntime } = {}
+export const featureRuntime: { current?: FeatureRuntime | undefined } = {}
 
 /** The runtime for `features`: `undefined` without features; throws when none was loaded. */
 export function runtimeFor(features: readonly unknown[]): FeatureRuntime | undefined {

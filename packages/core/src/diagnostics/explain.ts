@@ -8,12 +8,7 @@ import type { RowModel, RowModelStatus } from '../pipeline/types'
 import { DEV } from './env'
 import type { explainDetail } from './explain-detail'
 import { formatRowExplanation, formatTableExplanation } from './explain-text'
-import {
-  type RedactionOptions,
-  redactDetails,
-  resolveRedaction,
-  scrubSchemaIssue,
-} from './redact'
+import { type RedactionOptions, redactDetails, resolveRedaction, scrubSchemaIssue } from './redact'
 import { readTrace } from './trace-store'
 import type { Diagnostic, Location, Trigger } from './types'
 
