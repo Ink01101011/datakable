@@ -43,7 +43,11 @@ export interface BuiltinOperations {
   /** Hot: intercepted once per column per pipeline run, never per cell. */
   'column:batch': {
     kind: 'sync'
-    input: { column: string; slot: 'accessor' | 'format' | 'filterFn'; rows: Uint32Array }
+    input: {
+      column: string
+      slot: 'accessor' | 'format' | 'filterFn' | 'sortBy'
+      rows: Uint32Array
+    }
     output: undefined
   }
   'async:request': {

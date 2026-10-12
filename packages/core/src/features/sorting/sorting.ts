@@ -1,12 +1,36 @@
 import { defineOptions } from '../../catalog/options'
+import { describeReturn } from '../../catalog/slots'
+import type { SortAlgorithm } from '../../column/column-def'
 import { compilePath, getValue } from '../../column/get-value'
 import type { Path } from '../../column/path'
+import { DEV } from '../../diagnostics/env'
 import { defineFeature } from '../../feature/define'
 import type { FeatureTypes, RowModelContext } from '../../feature/types'
+import { CellFailures } from '../../intercept/cell-batch'
 import { errorName } from '../../intercept/classify'
 import { type ResolvedColumn, resolveColumns } from '../../pipeline/columns'
+import { allRows } from '../../pipeline/indices'
 import type { ColumnValues } from '../../pipeline/types'
-import { defaultIndexComparator, type IndexComparator, sortFnIndexComparator } from './compare'
+import { detectCapability } from '../../versioning/capability'
+import { comparatorDiagnostics, sortingDiagnostics } from './codes'
+import {
+  defaultIndexComparator,
+  type IndexComparator,
+  RANK,
+  sortFnIndexComparator,
+  typeRank,
+} from './compare'
+import {
+  chooseAuto,
+  hasExsorted,
+  intKeys,
+  needsIntKeys,
+  sortIntKeys,
+  sortWithComparator,
+} from './strategy'
+
+void sortingDiagnostics
+void comparatorDiagnostics
 
 /** One sort key: a column id (a path of the row type) and its direction. */
 export type SortEntry<T> = { id: Path<T>; desc: boolean }
@@ -35,9 +59,21 @@ export interface SortingTypes extends FeatureTypes {
   api: SortingApi<this['T']>
 }
 
+/**
+ * How rows are sorted (§6.4): `'auto'` (default) picks per sort from one O(n) scan — exsorted
+ * tim / counting / radix for a single column of safe-integer keys (numbers, `Date`s), native
+ * `Array.prototype.sort` otherwise. A built-in name forces that algorithm (radix / counting only
+ * apply to safe-integer keys); a function sorts the row indices itself.
+ */
+export type SortAlgorithmOption = SortAlgorithm
+
 export interface SortingOptions {
   /** Locale(s) of the string collator (`Intl.Collator(locale, { numeric: true })`); default: the runtime's. */
   locale?: string | readonly string[]
+  /** The sort algorithm (default `'auto'`); a column's `sortAlgorithm` takes precedence. */
+  algorithm?: SortAlgorithmOption
+  /** Reports the algorithm chosen for each sort, why, n and the time taken (`DK_SORT_STRATEGY`). */
+  debug?: boolean
 }
 
 const validLocale = (v: unknown) => {
@@ -49,13 +85,61 @@ const validLocale = (v: unknown) => {
   }
 }
 
+const ALGORITHMS = ['auto', 'tim', 'radix', 'counting', 'merge', 'native'] as const
+
 const sortingOptions = {
   locale: {
     type: ['string', 'array'],
     check: validLocale,
     expected: 'a BCP 47 locale tag or a list of them, e.g. "th" or ["th", "en"]',
   },
+  algorithm: {
+    type: ['string', 'function'],
+    oneOf: ALGORITHMS,
+    expected: `one of ${ALGORITHMS.map((a) => `'${a}'`).join(', ')}, or (indices, compare) => indices`,
+  },
+  debug: { type: 'boolean' },
 } as const
+
+type CustomAlgorithm = Extract<SortAlgorithm, (...args: never[]) => unknown>
+
+const now = () => (typeof performance === 'undefined' ? Date.now() : performance.now())
+
+const missing = (v: unknown) => typeRank(v) === RANK.missing
+
+/**
+ * Dev check of a column's `sortFn` (§8.3 `DK_SORT_COMPARATOR_INVALID`), sampled: up to 8 present
+ * values spread over the input, every pair both ways. A throw gives no verdict (the sort reports
+ * it as `DK_CALLBACK_FAILED`).
+ */
+function checkSortFn(
+  fn: SortFn,
+  values: ColumnValues,
+  indices: Uint32Array,
+): { reason: 'nan' | 'not-number' | 'inconsistent'; received?: string } | undefined {
+  const sample: unknown[] = []
+  const step = Math.max(1, Math.floor(indices.length / 8))
+  for (let i = 0; i < indices.length && sample.length < 8; i += step) {
+    const v = values[indices[i] as number]
+    if (!missing(v)) sample.push(v)
+  }
+  try {
+    for (let i = 0; i < sample.length; i++) {
+      for (let j = i; j < sample.length; j++) {
+        const x = fn(sample[i], sample[j])
+        const y = fn(sample[j], sample[i])
+        for (const r of [x, y]) {
+          if (typeof r !== 'number') return { reason: 'not-number', received: describeReturn(r) }
+          if (Number.isNaN(r)) return { reason: 'nan' }
+        }
+        if (Math.sign(x) !== -Math.sign(y)) return { reason: 'inconsistent' }
+      }
+    }
+  } catch {
+    return undefined
+  }
+  return undefined
+}
 
 type SortFn = (a: unknown, b: unknown) => number
 type SortBy = (row: unknown) => unknown
@@ -79,8 +163,11 @@ class SortFnFailed {
  * directions, mixed types by type rank, strings with one `Intl.Collator(locale, { numeric: true })`
  * — or a column's `sortFn` / `sortBy`. Never touches the data: a copy of the index array is sorted.
  *
- * The sort itself is native `Array.prototype.sort` semantics (stable since ES2019) on a
- * `Uint32Array` copy; the `auto` strategy over exsorted is T15.
+ * `algorithm: 'auto'` (default) picks per sort from one O(n) scan (§6.4): exsorted tim / counting /
+ * radix for a single column of safe-integer keys (numbers, `Date`s), native `Array.prototype.sort`
+ * (stable) for strings, floats, multi-column and `sortFn`. Every choice gives the same stable order.
+ * `sorting({ algorithm })` or a column's `sortAlgorithm` overrides it; `debug: true` reports each
+ * choice (`DK_SORT_STRATEGY`).
  */
 export const sorting = (opts: SortingOptions = {}) => {
   let collator: Intl.Collator | undefined
@@ -97,7 +184,17 @@ export const sorting = (opts: SortingOptions = {}) => {
   // Values that the column cache does not hold, per data reference (released with it).
   const sortByCache = new WeakMap<readonly unknown[], WeakMap<object, unknown[]>>()
   const pathCache = new WeakMap<readonly unknown[], Map<string, unknown[]>>()
+  /** exsorted feature detection (§8.5), once per feature instance, on the first sort needing it. */
+  let exsorted: boolean | undefined
 
+  /** `sortBy` failures (§3.4): numbers only; text is built only when a cell failed. */
+  const sortByFailures = new CellFailures()
+
+  /**
+   * `sortBy` is a cell slot: one `column:batch` per column per data reference, an inline
+   * `try/catch` per row. A failed row (or a batch an interceptor skipped) keys as `undefined`,
+   * which sorts last.
+   */
   function sortByValues(ctx: RowModelContext, col: ResolvedColumn, sortBy: SortBy): unknown[] {
     const data = ctx.data
     let byDef = sortByCache.get(data)
@@ -107,35 +204,22 @@ export const sorting = (opts: SortingOptions = {}) => {
     }
     let out = byDef.get(col.def)
     if (out) return out
-    out = new Array(data.length)
-    let count = 0
-    let first: unknown
-    const rows: number[] = []
-    for (let r = 0; r < data.length; r++) {
-      try {
-        out[r] = sortBy(data[r])
-      } catch (e) {
-        out[r] = undefined
-        if (count === 0) first = e
-        if (rows.length < 5) rows.push(r)
-        count++
+    const values: unknown[] = new Array(data.length).fill(undefined)
+    const rows = allRows(data)
+    sortByFailures.reset()
+    ctx.batch(col.id, 'sortBy', rows, () => {
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i] as number
+        try {
+          values[r] = sortBy(data[r])
+        } catch (e) {
+          sortByFailures.add(r, e)
+        }
       }
-    }
-    if (count > 0) {
-      const name = errorName(first)
-      ctx.emit(
-        'DK_CALLBACK_FAILED',
-        {
-          slot: `columns[${col.index}].sortBy`,
-          column: col.id,
-          rows,
-          count,
-          fallback: 'the failed rows sort as missing values (last)',
-          ...(name === undefined ? {} : { errorName: name }),
-        },
-        { cause: first },
-      )
-    }
+      sortByFailures.report(ctx.emit, col.index, col.id, 'sortBy')
+    })
+    sortByFailures.reset()
+    out = values
     byDef.set(col.def, out)
     return out
   }
@@ -185,6 +269,7 @@ export const sorting = (opts: SortingOptions = {}) => {
     rowModel: (indices, state, ctx) => {
       const by = state?.by
       if (!by || by.length === 0 || indices.length < 2) return indices
+      const t0 = opts.debug ? now() : 0
       const cols = resolveColumns(ctx.columns)
       const entries = by.map((e) => {
         const id = String(e.id)
@@ -197,6 +282,55 @@ export const sorting = (opts: SortingOptions = {}) => {
           col && !sortBy ? (fnField(col.def, 'sortFn') as SortFn | undefined) : undefined
         return { col, desc: e.desc === true, values, sortFn }
       })
+
+      // Dev (§8.3): a sampled sortFn check; an invalid one falls back to the default comparator.
+      if (DEV) {
+        for (const e of entries) {
+          if (!e.sortFn) continue
+          const bad = checkSortFn(e.sortFn, e.values, indices)
+          if (!bad) continue
+          e.sortFn = undefined
+          const col = e.col as ResolvedColumn
+          ctx.emit('DK_SORT_COMPARATOR_INVALID', { column: col.id, index: col.index, ...bad })
+        }
+      }
+
+      // The requested algorithm: the primary column's `sortAlgorithm`, else the table's.
+      const primary = entries[0] as (typeof entries)[number]
+      const colAlgorithm =
+        primary.col && (primary.col.def as { sortAlgorithm?: unknown }).sortAlgorithm
+      const fromColumn = colAlgorithm !== undefined
+      let requested = (fromColumn ? colAlgorithm : (opts.algorithm ?? 'auto')) as SortAlgorithm
+      const noEffect = (reason: string) =>
+        ctx.emit(
+          'DK_OPTION_NO_EFFECT',
+          fromColumn
+            ? { path: `columns[${primary.col?.index}].sortAlgorithm`, reason, once: false }
+            : { path: 'algorithm', feature: 'sorting', reason, once: false },
+        )
+      if (
+        typeof requested !== 'function' &&
+        !(ALGORITHMS as readonly unknown[]).includes(requested)
+      ) {
+        noEffect(
+          `${JSON.stringify(requested)} is not a sort algorithm (accepted: ${ALGORITHMS.join(', ')}, ` +
+            'or a function); auto was used',
+        )
+        requested = 'auto'
+      }
+      if (requested !== 'native' && exsorted === undefined) {
+        exsorted = detectCapability(
+          hasExsorted,
+          {
+            feature: 'sorting',
+            dependency: 'exsorted',
+            capability: 'timSort / mergeSort / radixSort / countingSort',
+            supported: '^1.2.3',
+            fallback: 'Array.prototype.sort (native, stable)',
+          },
+          ctx.emit,
+        )
+      }
 
       const build = (): IndexComparator => {
         const cmps = entries.map((e, k) => {
@@ -221,11 +355,125 @@ export const sorting = (opts: SortingOptions = {}) => {
         }
       }
 
+      let algorithm: string = 'native'
+      let reason = ''
+      /** One attempt; a throwing sortFn propagates as SortFnFailed (the loop below retries). */
+      const sortOnce = (): Uint32Array => {
+        const want = requested
+        if (typeof want === 'function') {
+          const custom = want as CustomAlgorithm
+          let res: unknown
+          try {
+            res = custom(indices.slice(), build())
+          } catch (error) {
+            if (error instanceof SortFnFailed) throw error
+            reportCustom(true, error)
+            return native('the custom algorithm threw')
+          }
+          if (res instanceof Uint32Array && res.length === indices.length) {
+            algorithm = 'custom'
+            reason = fromColumn ? 'column sortAlgorithm' : 'sorting({ algorithm })'
+            return res
+          }
+          reportCustom(false, res)
+          return native('the custom algorithm returned a bad value')
+        }
+        if (exsorted === false) return native('exsorted unavailable')
+        const by = fromColumn ? 'column sortAlgorithm' : 'sorting({ algorithm })'
+        // Integer keys: a single column with the default comparator (§6.4).
+        const single = entries.length === 1 && !primary.sortFn
+        const keys =
+          single && want !== 'native' ? intKeys(primary.values, indices, primary.desc) : undefined
+        if (want !== 'auto' && want !== 'native') {
+          if (keys) {
+            try {
+              const out = sortIntKeys(keys, want)
+              algorithm = want
+              reason = `${by}, safe-integer keys`
+              return out
+            } catch {
+              noEffect(
+                `exsorted ${want}Sort could not sort these keys` +
+                  (want === 'counting' ? ' (key range above 1,000,000)' : '') +
+                  '; auto was used',
+              )
+            }
+          } else if (needsIntKeys(want)) {
+            noEffect(
+              `${want} sorts a single column of safe integer keys (numbers or Dates, no sortFn); ` +
+                'auto was used',
+            )
+          } else {
+            algorithm = want
+            reason = by
+            return sortWithComparator(indices, build(), want as 'tim' | 'merge')
+          }
+        } else if (want === 'native') return native(by)
+        if (!keys) {
+          return native(
+            single
+              ? 'keys are not all safe integers'
+              : entries.length > 1
+                ? 'multi-column'
+                : 'custom sortFn',
+          )
+        }
+        const choice = chooseAuto(keys)
+        algorithm = choice.algorithm
+        reason = `auto: ${choice.reason}`
+        return sortIntKeys(keys, choice.algorithm)
+      }
+      const native = (why: string) => {
+        algorithm = 'native'
+        reason = why
+        return sortWithComparator(indices, build(), 'native')
+      }
+      /** A custom algorithm threw (`threw`, `value` = the error) or returned a bad `value`. */
+      const reportCustom = (threw: boolean, value: unknown) => {
+        const slot = fromColumn
+          ? `columns[${primary.col?.index}].sortAlgorithm`
+          : 'sorting.algorithm'
+        const fallback = 'the rows were sorted with the native algorithm'
+        if (!threw) {
+          // The slot contract check is dev only (§3.4 slotContract); the fallback applies always.
+          if (DEV) {
+            ctx.emit('DK_CALLBACK_BAD_RETURN', {
+              slot,
+              expected: `a Uint32Array of ${indices.length} row indices`,
+              received: describeReturn(value),
+              count: 1,
+              fallback,
+            })
+          }
+          return
+        }
+        const name = errorName(value)
+        ctx.emit(
+          'DK_CALLBACK_FAILED',
+          {
+            slot,
+            count: 1,
+            fallback,
+            ...(name === undefined ? {} : { errorName: name }),
+          },
+          { cause: value },
+        )
+      }
+
       // At most one retry per entry: each failing sortFn falls back to the default comparator.
       for (;;) {
-        const out = indices.slice()
         try {
-          out.sort(build())
+          const out = sortOnce()
+          if (opts.debug) {
+            ctx.emit('DK_SORT_STRATEGY', {
+              algorithm,
+              reason,
+              n: indices.length,
+              ms: now() - t0,
+              by: by.map((e) => `${String(e.id)}:${e.desc ? 'desc' : 'asc'}`),
+              ...(primary.col ? { column: { index: primary.col.index, id: primary.col.id } } : {}),
+            })
+          }
           return out
         } catch (e) {
           if (!(e instanceof SortFnFailed)) throw e

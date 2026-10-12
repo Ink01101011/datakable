@@ -28,6 +28,18 @@ export interface ColumnCache {
   values(data: readonly unknown[], column: ResolvedColumn): ColumnValues
   /** `format` (or the default formatter) applied to {@link values}: what the user sees. */
   formatted(data: readonly unknown[], column: ResolvedColumn): readonly string[]
+  /**
+   * Runs `body` as one `column:batch` over `rows` (pooled ctx, `where` = `columns[i].<field>`):
+   * interceptors see one dispatch per column, never one per cell. `body` loops over the cells
+   * with an inline `try/catch` and reports its own failures.
+   */
+  batch(
+    column: ResolvedColumn,
+    slot: CellSlot,
+    field: string,
+    rows: Uint32Array,
+    body: () => void,
+  ): void
 }
 
 interface Entry {
@@ -240,5 +252,5 @@ export function createColumnCache(host: ColumnCacheHost): ColumnCache {
     return out
   }
 
-  return { values, formatted }
+  return { values, formatted, batch }
 }

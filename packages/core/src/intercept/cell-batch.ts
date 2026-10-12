@@ -2,15 +2,24 @@ import type { Emit, EmitOptions } from '../diagnostics/types'
 import { errorName } from './classify'
 
 /** The cell slots of `column:batch`. */
-export type CellSlot = 'accessor' | 'format' | 'filterFn'
+export type CellSlot = 'accessor' | 'format' | 'filterFn' | 'sortBy'
 
-/** Per failed cell (§3.4): `''` (format) / `undefined` (accessor) / non-matching (filter fn). */
-export const CELL_FALLBACK = { accessor: undefined, format: '', filterFn: false } as const
+/**
+ * Per failed cell (§3.4): `''` (format) / `undefined` (accessor) / non-matching (filter fn) /
+ * `undefined`, sorted last as a missing value (sortBy).
+ */
+export const CELL_FALLBACK = {
+  accessor: undefined,
+  format: '',
+  filterFn: false,
+  sortBy: undefined,
+} as const
 
 const CELL_FALLBACK_TEXT: Record<CellSlot, string> = {
   accessor: 'the failed cells read as undefined',
   format: "the failed cells render ''",
   filterFn: 'the failed rows are treated as non-matching',
+  sortBy: 'the failed rows sort as missing values (last)',
 }
 
 /**

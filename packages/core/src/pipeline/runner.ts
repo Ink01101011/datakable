@@ -250,6 +250,11 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
         const col = cols.byId.get(id)
         return col ? cache.formatted(data, col) : undefined
       },
+      batch: (id, slot, rows, body) => {
+        const col = cols.byId.get(id)
+        if (col) cache.batch(col, slot, slot, rows, body)
+        return col !== undefined
+      },
     })
 
     function step(f: AnyFeature, input: Uint32Array): Uint32Array {
