@@ -5,6 +5,11 @@ declare module '../diagnostics/catalog' {
     DK_CALLBACK_FAILED: {
       /** The callback's option path, e.g. `columns[2].format`, `fetcher`, `searchFn`. */
       slot: string
+      /**
+       * A callback passed to a method rather than set as an option: the method (`table.setState`);
+       * `slot` is then the argument (`updater`).
+       */
+      op?: string
       /** Column id, for cell slots. */
       column?: string
       /** A sample of the failing row indices (first few, in order). */
@@ -36,14 +41,17 @@ export const boundaryDiagnostics = [
   defineDiagnostic({
     code: 'DK_CALLBACK_FAILED',
     level: 'error',
-    where: (d) => ({ kind: 'option', path: d.slot }),
+    where: (d) =>
+      d.op === undefined
+        ? { kind: 'option', path: d.slot }
+        : { kind: 'operation', op: d.op, slot: d.slot },
     problem: (d) =>
-      `${d.slot}${d.column === undefined ? '' : ` (column "${d.column}")`} threw` +
+      `${d.op === undefined ? '' : `${d.op}() `}${d.slot}${d.column === undefined ? '' : ` (column "${d.column}")`} threw` +
       `${d.errorName ? ` ${d.errorName}` : ''} for ` +
       `${d.count === 1 ? '1 row' : `${d.count} rows`}${rowList(d.rows, d.count)}`,
     impact: (d) => `${d.fallback}; the rest of the table is unaffected`,
     fix: (d) => [
-      `make ${d.slot} total: guard null / undefined / unexpected types and return a fallback ` +
+      `make ${d.op === undefined ? d.slot : `the ${d.slot} passed to ${d.op}()`} total: guard null / undefined / unexpected types and return a fallback ` +
         'instead of throwing',
       d.rows && d.rows.length > 0
         ? `reproduce with table.explainRow() on row #${d.rows[0]}; the original error is context.cause`

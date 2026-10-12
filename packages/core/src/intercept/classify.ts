@@ -10,6 +10,11 @@ export class CallbackError extends Error {
     cause: unknown,
     /** Row index the callback ran for, if any. */
     readonly row?: number,
+    /**
+     * The public method the callback was passed to (`table.setState`), when it is a method
+     * argument rather than an option: `where` is then `operation <op> at <slot>`.
+     */
+    readonly op?: string,
   ) {
     super(`${slot} threw`, { cause })
   }
@@ -19,11 +24,17 @@ export class CallbackError extends Error {
  * Calls a user callback on a cold path; a throw becomes a {@link CallbackError} carrying the slot.
  * Hot per-cell loops use `runCells` (cell-batch.ts) instead, which never throws per cell.
  */
-export function callUser<A, R>(slot: string, fn: (arg: A) => R, arg: A, row?: number): R {
+export function callUser<A, R>(
+  slot: string,
+  fn: (arg: A) => R,
+  arg: A,
+  row?: number,
+  op?: string,
+): R {
   try {
     return fn(arg)
   } catch (e) {
-    throw new CallbackError(slot, e, row)
+    throw new CallbackError(slot, e, row, op)
   }
 }
 

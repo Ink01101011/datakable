@@ -308,8 +308,17 @@ export function createTable<T, S extends TableState>(
   }
 
   function dispatch(updater: Updater<S>, slot: string) {
+    // A method argument, not an option: `where` = `operation table.setState at updater`.
     const partial: Partial<S> =
-      typeof updater === 'function' ? callUser(slot, updater, snapshot) : updater
+      typeof updater === 'function'
+        ? callUser(
+            'updater',
+            updater,
+            snapshot,
+            undefined,
+            slot === 'setState' ? 'table.setState' : `${slot}.setState`,
+          )
+        : updater
     if (partial === null || typeof partial !== 'object') return
     let next: TableState | undefined
     let changes: TableState | undefined
