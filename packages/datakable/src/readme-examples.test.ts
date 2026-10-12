@@ -1,5 +1,7 @@
 // @vitest-environment node
+import type { RowModel } from '@datakable/core'
 import { describe, expect, it } from 'vitest'
+import { view } from './readme-examples/status'
 
 /**
  * README examples compile (T40, §12): every ```ts / ```tsx block in the READMEs is one file of
@@ -55,5 +57,20 @@ describe('README examples', () => {
   it('every example file is shown in a README', () => {
     const unused = examples.filter((e) => !blocks.some((b) => b.code === e.code)).map((e) => e.file)
     expect(unused).toEqual([])
+  })
+})
+
+describe('README status example (R10)', () => {
+  const model = (status: RowModel<unknown>['status'], isInitialLoad: boolean, rows = 0) =>
+    ({ status, isInitialLoad, rows: Array.from({ length: rows }) }) as unknown as RowModel<unknown>
+
+  it("matches <DataTable />'s Loading rule: a deferred first load ('pending') is loading", () => {
+    // Nothing shown yet only happens with an async source: <DataTable /> shows Loading for it.
+    expect(view(model('pending', true))).toBe('loading')
+    expect(view(model('fetching', true))).toBe('loading')
+    expect(view(model('error', true))).toBe('error')
+    expect(view(model('idle', false))).toBe('empty')
+    expect(view(model('pending', false, 3))).toBe('rows+pending')
+    expect(view(model('idle', false, 3))).toBe('rows')
   })
 })
