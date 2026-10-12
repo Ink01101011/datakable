@@ -10,7 +10,6 @@ import { defineInterceptor } from '../intercept/define'
 import { requestsOf } from '../source/requests'
 import { withFetcher } from '../source/with-fetcher'
 import { createTable } from '../table/create-table'
-import { getTableInternals } from '../table/internals'
 
 beforeEach(() => {
   vi.spyOn(console, 'warn').mockImplementation(() => {})
