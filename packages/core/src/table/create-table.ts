@@ -466,6 +466,14 @@ export function createTable<T, S extends TableState>(
     status,
     issues: (index) => schemaOutcome?.flagged?.get(index),
     flagMode: schemaIngest !== undefined && options.invalidRows === 'flag',
+    // Time-sliced work ended (§9.1): 'pending' → the finished row model, never silent (§6.6).
+    refresh: (t) => {
+      if (destroyed) return
+      withTrigger(t, () => {
+        touch()
+        if (apiDepth === 0) flush()
+      })
+    },
   })
 
   const explainHost: ExplainHost = {
@@ -729,6 +737,7 @@ export function createTable<T, S extends TableState>(
         destroyed = true
         ingestSeq++
         listeners.clear()
+        runner.dispose()
       }
     })
   }

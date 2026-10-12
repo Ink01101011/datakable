@@ -10,6 +10,7 @@ import { resolveRowKeys } from '../../ingest/row-key'
 import { errorName } from '../../intercept/classify'
 import { defineInterceptor } from '../../intercept/define'
 import type { RowKey } from '../../pipeline/row'
+import { runJob, sliced } from '../../pipeline/slice'
 import type { AsyncStatus } from '../../source/async-control'
 import { type DataMode, modeOption } from '../../source/mode'
 import { getTableInternals } from '../../table/internals'
@@ -19,7 +20,6 @@ import {
   type Item,
   type MatchConfig,
   probeExSearch,
-  rankHits,
   type SearchIndex,
 } from './search-index'
 
@@ -274,8 +274,13 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
     fuzzyMaxDistance: opts.fuzzyMaxDistance ?? 3,
     caseSensitive: opts.caseSensitive ?? false,
   }
-  /** data → columns → index (`null`: nothing searchable). Released with the data. */
-  const indexes = new WeakMap<object, WeakMap<object, SearchIndex | null>>()
+  /**
+   * data → columns → the key of the projection job (`ctx.slice`, §9.1): its result is the index
+   * (`null`: nothing searchable). Released with the data.
+   */
+  const indexes = new WeakMap<object, WeakMap<object, object>>()
+  /** Job key → its finished index, also for runs without slicing (`explainRow` replays). */
+  const built = new WeakMap<object, SearchIndex | null>()
   /** `ex-search` usable (probed once per feature instance, on the first build). */
   let useExSearch: boolean | undefined
   /** Columns references already reported as having no searchable column. */
@@ -285,6 +290,12 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
     | { input: Uint32Array; query: string; index: SearchIndex; output: Uint32Array }
     | undefined
   let subset: { input: Uint32Array; index: SearchIndex; items: readonly Item[] } | undefined
+  /** The key of the latest matching job (one query over one set of items). */
+  let matching: { items: readonly Item[]; query: string; key: object } | undefined
+  /** The step's last output and its input: the stand-in while sliced work runs (§9.1). */
+  let shown: { input: Uint32Array; output: Uint32Array } | undefined
+  /** The last searchFn step: same input and hits → same output (no per-run allocation). */
+  let fnStep: { input: Uint32Array; hits: Uint32Array; output: Uint32Array } | undefined
   const server = opts.mode === 'server'
   // Server defaults (§6.3): debounce, minLength 2. Filled in before the option check, so `wait` /
   // `behavior` alone are not reported as having no effect.
@@ -352,6 +363,7 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
     if (!a) return input
     const rowKey = (active as { getOptions(): { rowKey?: unknown } }).getOptions().rowKey
     const hits = indicesOf(a, ctx.data, rowKey)
+    if (fnStep && fnStep.input === input && fnStep.hits === hits) return fnStep.output
     const take = new Uint8Array(ctx.data.length)
     for (let k = 0; k < input.length; k++) take[input[k] as number] = 1
     const out = new Uint32Array(Math.min(hits.length, input.length))
@@ -363,23 +375,50 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
         out[n++] = i
       }
     }
-    return out.subarray(0, n)
+    const output = out.subarray(0, n)
+    fnStep = { input, hits, output }
+    return output
   }
 
-  function indexFor(ctx: RowModelContext): SearchIndex | null {
+  /** The projection of (data, columns): built by a sliced job; `undefined` while it runs. */
+  function indexFor(ctx: RowModelContext): SearchIndex | null | undefined {
     let byColumns = indexes.get(ctx.data)
     if (!byColumns) {
       byColumns = new WeakMap()
       indexes.set(ctx.data, byColumns)
     }
-    let index = byColumns.get(ctx.columns)
-    if (index === undefined) {
-      useExSearch ??= probeExSearch(ctx.emit)
-      index = buildIndex(ctx, config, useExSearch)
-      byColumns.set(ctx.columns, index)
+    let key = byColumns.get(ctx.columns)
+    if (key === undefined) {
+      key = {}
+      byColumns.set(ctx.columns, key)
     }
+    const done = built.get(key)
+    if (done !== undefined) return done
+    useExSearch ??= probeExSearch(ctx.emit)
+    const exSearch = useExSearch
+    const index = sliced(ctx, key, () => buildIndex(ctx, config, exSearch))
+    if (index !== undefined) built.set(key, index)
     return index
   }
+
+  /** The ranked matches of `query` over `items`: a sliced job; `undefined` while it runs. */
+  function matchFor(
+    ctx: RowModelContext,
+    index: SearchIndex,
+    items: readonly Item[],
+    query: string,
+  ): Uint32Array | undefined {
+    // A replay (`explainRow`) matches its one row at once, leaving the table's job alone.
+    if (!ctx.slice) return runJob(() => index.match(items, query))
+    if (!matching || matching.items !== items || matching.query !== query) {
+      matching = { items, query, key: {} }
+    }
+    return sliced(ctx, matching.key, () => index.match(items, query))
+  }
+
+  /** While sliced work runs: the previous output for the same input, else the input. */
+  const standIn = (indices: Uint32Array) =>
+    shown && shown.input === indices ? shown.output : indices
 
   function itemsFor(input: Uint32Array, index: SearchIndex): readonly Item[] {
     // Search runs after filters: only the input rows are matched (order is re-ranked anyway).
@@ -389,6 +428,38 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
     for (let k = 0; k < input.length; k++) items[k] = index.items[input[k] as number] as Item
     subset = { input, index, items }
     return items
+  }
+
+  /** The client step (§6.3); the rowModel below records its output for {@link standIn}. */
+  function step(indices: Uint32Array, state: SearchState, ctx: RowModelContext): Uint32Array {
+    const query = typeof state?.query === 'string' ? state.query.trim() : ''
+    // ex-search returns [] for a blank query: blank means "no search".
+    if (query === '') return indices
+    if (searchFn) return searchFnStep(indices, ctx)
+    const index = indexFor(ctx)
+    // The projection is still being built (time-sliced, §9.1): the row model is 'pending'.
+    if (index === undefined) return standIn(indices)
+    if (index === null) {
+      if (!reported.has(ctx.columns)) {
+        reported.add(ctx.columns)
+        ctx.emit('DK_OPTION_NO_EFFECT', {
+          path: 'query',
+          feature: 'search',
+          reason:
+            'no column is searchable: pass `columns` (give the columns to search a `search` ' +
+            'weight, or omit it everywhere to search every column)',
+          once: false,
+        })
+      }
+      return indices
+    }
+    if (last && last.input === indices && last.query === query && last.index === index) {
+      return last.output
+    }
+    const output = matchFor(ctx, index, itemsFor(indices, index), query)
+    if (output === undefined) return standIn(indices)
+    last = { input: indices, query, index, output }
+    return output
   }
 
   return defineFeature({
@@ -695,30 +766,8 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
       }
     },
     rowModel: (indices, state, ctx) => {
-      const query = typeof state?.query === 'string' ? state.query.trim() : ''
-      // ex-search returns [] for a blank query: blank means "no search".
-      if (query === '') return indices
-      if (searchFn) return searchFnStep(indices, ctx)
-      const index = indexFor(ctx)
-      if (index === null) {
-        if (!reported.has(ctx.columns)) {
-          reported.add(ctx.columns)
-          ctx.emit('DK_OPTION_NO_EFFECT', {
-            path: 'query',
-            feature: 'search',
-            reason:
-              'no column is searchable: pass `columns` (give the columns to search a `search` ' +
-              'weight, or omit it everywhere to search every column)',
-            once: false,
-          })
-        }
-        return indices
-      }
-      if (last && last.input === indices && last.query === query && last.index === index) {
-        return last.output
-      }
-      const output = rankHits(index.match(itemsFor(indices, index), query))
-      last = { input: indices, query, index, output }
+      const output = step(indices, state, ctx)
+      shown = { input: indices, output }
       return output
     },
   })

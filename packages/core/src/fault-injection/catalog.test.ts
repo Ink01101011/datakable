@@ -10,7 +10,7 @@ import { getDiagnosticDefinition, listDiagnosticCodes } from '../index'
  *
  * §8.3 codes not registered by core yet (no entry needed until they are): DK_UNSTABLE_COLUMNS,
  * DK_RENDER_FAILED (react), DK_STATE_UNKNOWN_KEY, DK_HYDRATION_MISMATCH, DK_SSR_ASYNC_DEFERRED
- * (SSR, T32), DK_ENV_FALLBACK, DK_PERF_HINT (T29).
+ * (SSR, T32).
  */
 const HARNESS = 'fault-injection/slots.test.ts'
 
@@ -27,6 +27,7 @@ const injectedBy: Record<string, string> = {
   DK_DEPRECATED: 'versioning/versioning.test.ts',
   DK_DUPLICATE_CORE: 'versioning/versioning.test.ts',
   DK_DUPLICATE_ROW_KEY: 'ingest/row-key.test.ts',
+  DK_ENV_FALLBACK: 'pipeline/env.test.ts',
   DK_FEATURE_API_CONFLICT: 'feature/feature.test.ts',
   DK_FEATURE_BAD_OUTPUT: HARNESS,
   DK_FEATURE_DUPLICATE: 'feature/feature.test.ts',
@@ -50,6 +51,7 @@ const injectedBy: Record<string, string> = {
   DK_MODE_ORDER: 'source/fetcher.test.ts',
   DK_OPERATION_CONFLICT: 'intercept/boundary.test.ts',
   DK_OPTION_NO_EFFECT: 'catalog/options.test.ts',
+  DK_PERF_HINT: 'pipeline/env.test.ts',
   DK_ROW_COUNT_MISSING: 'features/pagination/pagination.test.ts',
   DK_SCHEMA_CRASHED: HARNESS,
   DK_SCHEMA_INVALID_ROW: 'ingest/schema.test.ts',

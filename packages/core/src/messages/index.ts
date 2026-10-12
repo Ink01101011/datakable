@@ -21,6 +21,7 @@ import { rowKeyMessages } from '../ingest/row-key-codes'
 import { schemaMessages } from '../ingest/schema-codes'
 import { boundaryMessages } from '../intercept/codes'
 import { pipelineMessages } from '../pipeline/codes'
+import { envMessages } from '../pipeline/env-codes'
 import { asyncMessages } from '../source/codes'
 import { fetchMessages } from '../source/fetch-codes'
 import { tableMessages } from '../table/codes'
@@ -46,6 +47,7 @@ export const allMessages: ReadonlyArray<Readonly<Record<string, unknown>>> = [
   searchMessages,
   sortingMessages,
   paginationMessages,
+  envMessages,
 ]
 
 installMessages(...allMessages)

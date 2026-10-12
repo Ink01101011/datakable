@@ -95,6 +95,15 @@ export interface RowModelContext<T = unknown> {
    * Returns `false` (and does not run `body`) when `id` is not a column.
    */
   batch(id: string, slot: CellSlot, rows: Uint32Array, body: () => void): boolean
+  /**
+   * Time-slicing (§9.1) for work that can exceed 50 ms at large N. `job` is a generator that
+   * `yield`s between chunks; it is keyed by `key` (an object the result depends on, e.g. the data),
+   * started on the first call and run for one short slice. Returns its result once it has finished
+   * (at once when it fits in that slice), else `undefined`: the step returns a stand-in (e.g. its
+   * previous output), the row model is `'pending'`, and the pipeline runs again when the job ends.
+   * A job that threw rethrows here. Absent outside a table run: run the job to completion.
+   */
+  slice?<R>(key: object, job: () => Iterator<unknown, R, undefined>): R | undefined
 }
 
 // --- the feature contract ------------------------------------------------------------------------
