@@ -23,8 +23,12 @@ First release of the DataKable core API.
   layout effect, warns about unstable `columns` in development, renders on the server (async work
   starts after hydration) and reports hydration mismatches; `<DataTable />`, a zero-config,
   unstyled table with sort headers (`aria-sort`), search input, pagination, Loading / Error /
-  Empty states and `components` overrides.
+  Empty states and `components` overrides; an error boundary with a per-cell fallback
+  (`DK_RENDER_FAILED`: a throwing cell shows ⚠, the table survives); an optional stylesheet,
+  `@datakable/react/styles.css` (not importing it adds no CSS).
 - `datakable`: `useDataTable`, `createTable` and `<DataTable />` with the default preset,
-  `datakable/core` and `datakable/messages`.
+  `datakable/core`, `datakable/messages` and `datakable/styles.css`.
+
+Every `DK_*` code has a section in `docs/errors.md` (problem, common causes, fix, example).
 
 Core reads `process.env.NODE_ENV`; browser builds need a bundler that replaces it.

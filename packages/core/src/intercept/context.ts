@@ -3,7 +3,7 @@ import type { OpInput, OpName } from './operations'
 
 /** Values that describe the table run rather than the single call; same as diagnostics context (§8.1). */
 export interface ContextBase {
-  /** The table instance. Placeholder until the store lands (T07). */
+  /** The table instance (a `Table`; typed `unknown` so this layer does not import the store). */
   table: unknown
   /** Pipeline run id — joins explain() and diagnostics. */
   run: number
