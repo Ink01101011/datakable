@@ -4,6 +4,7 @@ import type { Diagnostic } from '../../diagnostics/types'
 import { minFilter, numSort } from '../../pipeline/test-features'
 import { createTable } from '../../table/create-table'
 import { search } from './search'
+import { rankHits } from './search-index'
 
 let seen: Diagnostic[]
 const onDiagnostic = (d: Diagnostic) => {
@@ -123,6 +124,16 @@ describe('search(): client matching (§6.3)', () => {
     await t.setSearch('ada')
     // name exact (1.0): 1, 3 · name startsWith (0.8): 0 · city startsWith × 0.5 (0.4): 2
     expect(ids(t)).toEqual([1, 3, 0, 2])
+  })
+
+  it('rankHits breaks ties by row index whatever order the matcher returns them in (R6)', () => {
+    const hits = [
+      { i: 7, score: 0.5 },
+      { i: 5, score: 1 },
+      { i: 2, score: 1 },
+      { i: 3, score: 0.5 },
+    ]
+    expect(Array.from(rankHits(hits))).toEqual([2, 5, 3, 7])
   })
 
   it('relevance order is deterministic across runs and data copies', async () => {
