@@ -28,6 +28,15 @@ function walk(v: unknown, stack: Set<object>, depth: number): unknown {
   const o = v as object
   if (stack.has(o)) return '[Circular]'
   if (depth >= MAX_DEPTH) return '[MaxDepth]'
+  try {
+    return walkObject(o, stack, depth)
+  } catch {
+    // A revoked Proxy or a throwing trap: nothing readable.
+    return '[Unserializable]'
+  }
+}
+
+function walkObject(o: object, stack: Set<object>, depth: number): unknown {
   if (o instanceof Date) return Number.isNaN(o.getTime()) ? 'Invalid Date' : o.toISOString()
   if (ArrayBuffer.isView(o)) {
     const len = (o as { length?: number }).length ?? o.byteLength
@@ -54,7 +63,12 @@ function walk(v: unknown, stack: Set<object>, depth: number): unknown {
     }
     const out: Record<string, unknown> = {}
     for (const key of Object.keys(o)) {
-      const x = (o as Record<string, unknown>)[key]
+      let x: unknown
+      try {
+        x = (o as Record<string, unknown>)[key]
+      } catch {
+        x = '[Unserializable]'
+      }
       if (x !== undefined) out[key] = walk(x, stack, d)
     }
     return out

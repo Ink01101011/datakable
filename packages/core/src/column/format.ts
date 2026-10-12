@@ -27,21 +27,31 @@ function formatScalar(value: unknown): string | undefined {
  * Never throws.
  */
 export function defaultFormat(value: unknown, onUnrenderable?: (value: unknown) => void): string {
-  if (Array.isArray(value)) {
-    let out = ''
-    for (let i = 0; i < value.length; i++) {
-      const s = formatScalar(value[i])
-      if (s === undefined) return unrenderable(value, onUnrenderable)
-      out = i === 0 ? s : `${out}, ${s}`
-    }
-    return out
+  let s: string | undefined
+  try {
+    s = formatValue(value)
+  } catch {
+    // A revoked Proxy, a throwing trap or array getter: unreadable, so unrenderable.
+    s = undefined
   }
-  const s = formatScalar(value)
   return s === undefined ? unrenderable(value, onUnrenderable) : s
 }
 
+/** `undefined` when the value (or any array element) cannot be rendered. */
+function formatValue(value: unknown): string | undefined {
+  if (!Array.isArray(value)) return formatScalar(value)
+  let out = ''
+  for (let i = 0; i < value.length; i++) {
+    const s = formatScalar(value[i])
+    if (s === undefined) return undefined
+    out = i === 0 ? s : `${out}, ${s}`
+  }
+  return out
+}
+
 function unrenderable(value: unknown, onUnrenderable?: (value: unknown) => void): string {
-  // TODO(T06): DK_UNRENDERABLE_VALUE with a column `where`; callers report via onUnrenderable.
+  // TODO(T09): define DK_UNRENDERABLE_VALUE (warn) and emit it from the column:batch loop, once per
+  // column per run with a column `where`; callers report via onUnrenderable.
   onUnrenderable?.(value)
   return ''
 }

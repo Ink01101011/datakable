@@ -79,4 +79,17 @@ describe('toSafeJson', () => {
     }
     expect(JSON.stringify(toSafeJson(root))).toContain('[MaxDepth]')
   })
+
+  it('survives throwing getters and revoked Proxies', () => {
+    const getter = {
+      ok: 1,
+      get bad() {
+        throw new Error('boom')
+      },
+    }
+    expect(toSafeJson(getter)).toEqual({ ok: 1, bad: '[Unserializable]' })
+    const { proxy, revoke } = Proxy.revocable({}, {})
+    revoke()
+    expect(toSafeJson({ p: proxy })).toEqual({ p: '[Unserializable]' })
+  })
 })

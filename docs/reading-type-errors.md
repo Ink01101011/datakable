@@ -157,7 +157,10 @@ every path.
 
 ## Hover help
 
-Hover `cell` or `format` in a column (or pick it from autocomplete) to see when it is required.
+Hover `cell` or `format` in a column, or pick it from autocomplete, to see when it is required.
+On object, function and array-of-objects columns TypeScript shows only the signature on hover
+(the `NeedsCell | NeedsFormat` union has two declarations); use autocomplete there, or read the
+`NeedsFormat` / `NeedsCell` names in the error itself (sections 4 and 5).
 
 ## Getting the most precise errors
 

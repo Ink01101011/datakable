@@ -74,4 +74,31 @@ describe('defaultFormat', () => {
     expect(defaultFormat(nullProto)).toBe('')
     expect(defaultFormat([nullProto])).toBe('')
   })
+
+  it('never throws on values that throw when inspected (revoked Proxy, traps, array getters)', () => {
+    const { proxy, revoke } = Proxy.revocable({}, {})
+    revoke()
+    const trap = new Proxy(
+      {},
+      {
+        getPrototypeOf() {
+          throw new Error('trap')
+        },
+      },
+    )
+    const arr = [1]
+    Object.defineProperty(arr, 0, {
+      get() {
+        throw new Error('getter')
+      },
+    })
+    for (const value of [proxy, trap, arr]) {
+      const onUnrenderable = vi.fn()
+      expect(defaultFormat(value, onUnrenderable)).toBe('')
+      // Identity check: vitest's deep equality would itself throw on a revoked Proxy.
+      expect(
+        onUnrenderable.mock.calls.length === 1 && onUnrenderable.mock.calls[0]?.[0] === value,
+      ).toBe(true)
+    }
+  })
 })
