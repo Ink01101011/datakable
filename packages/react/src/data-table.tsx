@@ -229,6 +229,23 @@ const WARN = '⚠'
 const BUSY: readonly RowModelStatus[] = ['validating', 'pending', 'searching', 'fetching']
 const LOADING: readonly RowModelStatus[] = ['validating', 'searching', 'fetching']
 
+/**
+ * The table loads its rows asynchronously: a `fetcher`, or a feature with a `searchFn` (its
+ * `defineOptions` values). With nothing applied yet, its `'pending'` is a load waiting to start
+ * (deferred until the client, §7.2), so `<DataTable />` shows Loading — also in the server HTML.
+ */
+function hasAsyncSource(table: DataTableSource): boolean {
+  const options = table.getOptions() as { fetcher?: unknown; features?: unknown }
+  if (typeof options.fetcher === 'function') return true
+  if (!Array.isArray(options.features)) return false
+  for (const f of options.features as readonly {
+    options?: { values?: { searchFn?: unknown } }
+  }[]) {
+    if (typeof f?.options?.values?.searchFn === 'function') return true
+  }
+  return false
+}
+
 function resolveColumns(defs: readonly unknown[]): Column[] {
   const out: Column[] = []
   for (let index = 0; index < defs.length; index++) {
@@ -393,7 +410,10 @@ function DataTableView(props: {
   const sortable = typeof view.toggleSort === 'function'
   const searchState = state.search as { input: string; status: SearchStatus } | undefined
   const paged = typeof view.getPageCount === 'function'
-  const loading = isInitialLoad && LOADING.includes(status)
+  // Loading (§6.6, §10): nothing to show yet and rows on their way — in flight, or deferred async
+  // work that has not started (SSR, §7.2: 'pending').
+  const loading =
+    isInitialLoad && (LOADING.includes(status) || (status === 'pending' && hasAsyncSource(view)))
   const failed = isInitialLoad && status === 'error'
   const span = Math.max(columns.length, 1)
   const retryLoad = () => void view.refetch()

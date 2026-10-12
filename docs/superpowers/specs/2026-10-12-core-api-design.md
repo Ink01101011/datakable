@@ -678,7 +678,7 @@ The bundle budgets are estimates from measured dependency sizes plus an assumed 
     - header sort buttons with `aria-sort`;
     - a search input bound to `input`, with a `pending` / `searching` spinner, Enter = `flushSearch`, Esc = `clearSearch`;
     - pagination controls;
-    - empty / loading / error states, driven by `status` + `isInitialLoad` (§6.6): `Loading` when `isInitialLoad` and `fetching`/`searching`/`validating`; a refresh indicator (`data-status`) over stale rows otherwise; `Error` when `status === 'error'` and `isInitialLoad`; `Empty` when loaded with zero rows;
+    - empty / loading / error states, driven by `status` + `isInitialLoad` (§6.6): `Loading` when `isInitialLoad` and `fetching`/`searching`/`validating`, or `pending` while the table has an async source (`fetcher` or `searchFn`) with nothing applied yet (deferred until the client, §7.2 — so the server HTML shows Loading, not Empty); a refresh indicator (`data-status`) over stale rows otherwise; `Error` when `status === 'error'` and `isInitialLoad`; `Empty` when loaded with zero rows;
     - `data-invalid` / `aria-invalid` on flagged rows and cells.
 - **Customisation:** unstyled, with `data-*` hooks only. An optional `datakable/styles.css` is available. `components={{ SearchInput, Pagination, Empty, Loading, Error }}` overrides the defaults.
 - **Errors:** an error boundary around the body (`DK_RENDER_FAILED`), and per-cell `cell` throws render `⚠` (`DK_CALLBACK_FAILED`).
