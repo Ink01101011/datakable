@@ -170,6 +170,8 @@ export function createDiagnostics(options: DiagnosticsOptions = {}): Diagnostics
         out = deliver(d)
       }
     } catch (e) {
+      // strict: an error-level emit nested in the chain (e.g. DK_INTERCEPTOR_FAILED) still throws.
+      if (strict && e instanceof DatakableError) throw e
       fail(e)
       return undefined
     }

@@ -1,4 +1,4 @@
-import { internalError } from '../diagnostics/build'
+import { DatakableError, internalError } from '../diagnostics/build'
 import { HOT_COST } from '../diagnostics/codes'
 import { DEV } from '../diagnostics/env'
 import type { Emit } from '../diagnostics/types'
@@ -144,8 +144,10 @@ export function createInterceptorRuntime(
   const report = (error: unknown, i: Interceptor<OpName>, ctx: AnyCtx) => {
     try {
       onError(error, i, ctx)
-    } catch {
-      // The reporter must never break the operation it reports on.
+    } catch (e) {
+      // The reporter must never break the operation it reports on — except `strict: true`, whose
+      // DatakableError is the requested behaviour.
+      if (e instanceof DatakableError) throw e
     }
   }
 

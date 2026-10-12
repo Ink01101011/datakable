@@ -58,7 +58,7 @@ export function formatWhere(where: Location): string {
     case 'interceptor':
       return `interceptor "${where.name}" on ${where.op}`
     case 'operation':
-      return `operation ${where.op}`
+      return where.slot ? `operation ${where.op} at ${where.slot}` : `operation ${where.op}`
   }
 }
 
