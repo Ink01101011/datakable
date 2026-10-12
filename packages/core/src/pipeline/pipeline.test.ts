@@ -630,3 +630,74 @@ describe('table integration', () => {
     }
   })
 })
+
+describe('getRowModel: rows are built lazily (§9.3 memory)', () => {
+  /** A rowKey function counting its calls: the key scan reads every row once. */
+  const counted = () => {
+    const calls = { n: 0 }
+    const rowKey = (p: P) => {
+      calls.n++
+      return p.id
+    }
+    return { calls, rowKey }
+  }
+
+  it('a Row is built the first time its index is read, then kept (stable identity)', () => {
+    const { calls, rowKey } = counted()
+    const t = createTable({ data: people(1000), rowKey, columns: [{ key: 'age' }] })
+    const m = t.getRowModel()
+    expect(m.rows).toHaveLength(1000)
+    // The scan over all rows (§5.2), and no Row yet.
+    expect(calls.n).toBe(1000)
+    const r = m.rows[5] as Row<P>
+    expect(calls.n).toBe(1001)
+    expect(r).toBeInstanceOf(Row)
+    expect(r.key).toBe('p5')
+    expect(m.rows[5]).toBe(r)
+    expect(calls.n).toBe(1001)
+    expect(m.rows[1000]).toBeUndefined()
+    expect(m.rows[-1]).toBeUndefined()
+    expect(calls.n).toBe(1001)
+  })
+
+  it('behaves as an array: iteration, methods, spread, keys, JSON, in', () => {
+    const data = people(4)
+    const m = createTable({ data, rowKey: 'id', columns: [{ key: 'age' }] }).getRowModel()
+    const rows = m.rows
+    expect(Array.isArray(rows)).toBe(true)
+    expect(rows.map((r) => r.key)).toEqual(['p0', 'p1', 'p2', 'p3'])
+    const seenKeys: unknown[] = []
+    rows.forEach((r) => {
+      seenKeys.push(r.key)
+    })
+    for (const r of rows) seenKeys.push(r.index)
+    expect(seenKeys).toEqual(['p0', 'p1', 'p2', 'p3', 0, 1, 2, 3])
+    expect([...rows].map((r) => r.original)).toEqual(data)
+    expect(rows.slice(1, 3).map((r) => r.key)).toEqual(['p1', 'p2'])
+    expect(rows.indexOf(rows[2] as Row<P>)).toBe(2)
+    expect(rows.find((r) => r.key === 'p3')?.index).toBe(3)
+    expect(Object.keys(rows)).toEqual(['0', '1', '2', '3'])
+    expect(3 in rows).toBe(true)
+    expect(4 in rows).toBe(false)
+    expect(JSON.parse(JSON.stringify(rows))).toHaveLength(4)
+    expect(rows.at(-1)?.key).toBe('p3')
+  })
+
+  it('a rowKey that throws only when a row is built later is reported then (never silent)', () => {
+    let scanned = false
+    const t = createTable({
+      data: people(3),
+      onDiagnostic,
+      rowKey: (p: P) => {
+        if (scanned && p.id === 'p2') throw new Error('late')
+        return p.id
+      },
+    })
+    const m = t.getRowModel()
+    scanned = true
+    expect(codes()).toEqual([])
+    expect(m.rows[2]?.key).toBe('#2')
+    expect(codes()).toEqual(['DK_CALLBACK_FAILED'])
+    expect(seen[0]?.details).toMatchObject({ slot: 'rowKey', count: 1, rows: [2] })
+  })
+})

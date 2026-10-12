@@ -20,7 +20,8 @@ export const NO_ISSUES: readonly RowIssue[] = Object.freeze([])
 
 /**
  * One visible row (§6.6). Created only for the rows `getRowModel()` returns, never for the whole
- * data set (§9.1); the methods live on the prototype, so a row costs its four fields.
+ * data set (§9.1), and only when read ({@link lazyRows}); the methods live on the prototype, so a
+ * row costs its four fields.
  */
 export class Row<T = unknown> {
   /** The row's `rowKey` value (the row index without `rowKey`). */
@@ -77,3 +78,48 @@ export type FlaggedInvalidRow = Row<unknown> & { readonly valid: false }
 
 /** `getRowModel().rows` under `invalidRows: 'flag'` (§5.1): narrow on `row.valid`. */
 export type FlaggedRow<T> = ValidRow<T> | FlaggedInvalidRow
+
+/** `p` as an index below `length` (a canonical array index string), else `-1`. */
+function indexOf(p: string | symbol, length: number): number {
+  if (typeof p !== 'string') return -1
+  const i = Number(p)
+  return Number.isInteger(i) && i >= 0 && i < length && String(i) === p ? i : -1
+}
+
+/**
+ * `RowModel.rows` without a `Row` per visible row up front (§9.3 memory: 90k rows unpaginated): a
+ * real array (`Array.isArray`, `length`, index reads, iteration, every array method) over a sparse
+ * target that builds row `i` with `make(i)` the first time it is read and keeps it, so identity is
+ * stable. `Object.keys` / `ownKeys` build every row first.
+ */
+export function lazyRows<R>(length: number, make: (i: number) => R): R[] {
+  const target: R[] = []
+  target.length = length
+  let complete = length === 0
+  const fill = () => {
+    if (complete) return
+    for (let i = 0; i < length; i++) if (!(i in target)) target[i] = make(i)
+    complete = true
+  }
+  return new Proxy(target, {
+    get(t, p, receiver) {
+      const v = Reflect.get(t, p, receiver)
+      if (v !== undefined || complete) return v
+      const i = indexOf(p, length)
+      if (i < 0 || i in t) return v
+      const row = make(i)
+      t[i] = row
+      return row
+    },
+    has: (t, p) => Reflect.has(t, p) || indexOf(p, length) >= 0,
+    getOwnPropertyDescriptor(t, p) {
+      const i = indexOf(p, length)
+      if (i >= 0 && !(i in t)) t[i] = make(i)
+      return Reflect.getOwnPropertyDescriptor(t, p)
+    },
+    ownKeys(t) {
+      fill()
+      return Reflect.ownKeys(t)
+    },
+  })
+}
