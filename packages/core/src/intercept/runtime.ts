@@ -1,5 +1,4 @@
 import { DatakableError, internalError } from '../diagnostics/build'
-import { HOT_COST } from '../diagnostics/codes'
 import { DEV } from '../diagnostics/env'
 import type { Emit } from '../diagnostics/types'
 import type { InterceptorContext } from './context'
@@ -172,7 +171,11 @@ export function createInterceptorRuntime(
         op,
         message:
           `Interceptor "${i.name}" is attached to hot op "${op}" without hot: true. ` +
-          `It runs once per column per pipeline run; measured cost: ${HOT_COST}. ` +
+          // Measured by intercept/chain.bench.ts (Apple M4 Pro, Node 25.2.1). Inline here, inside
+          // the DEV-only function, so production bundles carry none of it.
+          'It runs once per column per pipeline run; measured cost: ~10 ns per call per ' +
+          'interceptor (+15% on a per-cell format call, spec §9.2) on top of the interceptor ' +
+          'body, which runs columns × pipeline runs times. ' +
           'Never loop per cell inside it. Set hot: true to accept the cost, ' +
           'or attach it to a cold op.',
       })
