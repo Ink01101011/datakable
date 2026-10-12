@@ -417,10 +417,30 @@ export function createTable<T, S extends TableState>(
     issues: (index) => schemaOutcome?.flagged?.get(index),
   })
 
-  /** Status from outside the pipeline (§6.6): a failed ingest, then a running async schema. */
+  /**
+   * Status from outside the pipeline (§6.6): a failed ingest, a running async schema, the search
+   * slice (`pending` / `searching` / `error`). Precedence: error > fetching > searching >
+   * validating > pending > idle.
+   */
   function status(): RowModelStatus {
-    if (ingestFailed) return 'error'
-    return validatingSeq === 0 ? 'idle' : 'validating'
+    const search = searchStatus()
+    if (ingestFailed || search === 'error') return 'error'
+    if (search === 'searching') return 'searching'
+    if (validatingSeq !== 0) return 'validating'
+    return search === 'pending' ? 'pending' : 'idle'
+  }
+
+  /** The `status` of the first search-stage slice that reports one (§6.3). */
+  function searchStatus(): unknown {
+    for (const f of pipeline) {
+      if (f.stage !== 'search') continue
+      const s = (snapshot as Record<string, unknown> | undefined)?.[f.name]
+      if (s !== null && typeof s === 'object' && 'status' in s) {
+        const v = (s as { status: unknown }).status
+        if (v !== 'idle') return v
+      }
+    }
+    return 'idle'
   }
 
   /** A row model change not caused by state: recompute and notify on the next flush. */
