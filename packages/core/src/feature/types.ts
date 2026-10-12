@@ -132,30 +132,41 @@ type UnionToIntersection<U> = (U extends unknown ? (x: U) => void : never) exten
 
 /**
  * `{ [name]: state }` of the installed features, with `T` applied. A slice of a feature that is
- * not installed is absent (accessing it is a compile error). `unknown` for no features.
+ * not installed is absent (accessing it is a compile error). `unknown` for no features, and for a
+ * non-tuple list (`readonly AnyFeature[]`, e.g. options forwarded by a wrapper): nothing is known
+ * about its slices, and `AnyFeature`'s `any` types must not turn the whole table into `any`.
  */
-export type StateOf<Fs extends readonly AnyFeature[], T> = UnionToIntersection<
-  {
-    [I in keyof Fs]: Fs[I] extends Feature<infer N, infer F>
-      ? { [K in N]: Apply<F, T, 'state'> }
-      : never
-  }[number]
->
+export type StateOf<Fs extends readonly AnyFeature[], T> = number extends Fs['length']
+  ? unknown
+  : UnionToIntersection<
+      {
+        [I in keyof Fs]: Fs[I] extends Feature<infer N, infer F>
+          ? { [K in N]: Apply<F, T, 'state'> }
+          : never
+      }[number]
+    >
 
 /**
  * The merged APIs of the installed features, with `T` applied: methods of uninstalled features are
  * absent and parameters are typed against `T` (`toggleSort('nope')` is a compile error).
+ * `unknown` for a non-tuple list, like {@link StateOf}.
  */
-export type ApiOf<Fs extends readonly AnyFeature[], T> = UnionToIntersection<
-  { [I in keyof Fs]: Fs[I] extends Feature<string, infer F> ? Apply<F, T, 'api'> : never }[number]
->
+export type ApiOf<Fs extends readonly AnyFeature[], T> = number extends Fs['length']
+  ? unknown
+  : UnionToIntersection<
+      {
+        [I in keyof Fs]: Fs[I] extends Feature<string, infer F> ? Apply<F, T, 'api'> : never
+      }[number]
+    >
 
 /**
  * The state type of a table: the explicit `S` (if given) plus the installed slices. Without
- * features and without `S` it stays the open `TableState`.
+ * features (or with a non-tuple list) and without `S` it stays the open `TableState`.
  */
 export type TableStateFor<S, Fs extends readonly AnyFeature[], T> = [S] extends [never]
   ? Fs extends readonly []
     ? TableState
-    : StateOf<Fs, T> & {}
+    : number extends Fs['length']
+      ? TableState
+      : StateOf<Fs, T> & {}
   : S & StateOf<Fs, T>
