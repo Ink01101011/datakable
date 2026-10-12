@@ -18,6 +18,12 @@ export interface ColumnCacheHost {
   readonly runtime: InterceptorRuntime
   readonly emit: Emit
   base(): ContextBase
+  /**
+   * The §6.6 status rule's counter (pipeline/status-rule.ts): `emit` increments it for a diagnostic
+   * the rule counts. An entry whose read incremented it is flagged, and every later read of that
+   * entry increments it again (its cells still hold the fallback values).
+   */
+  readonly flags?: { count: number }
 }
 
 export interface ColumnCache {
@@ -47,6 +53,9 @@ interface Entry {
   /** Numeric columns: 1 = `null`, 2 = `undefined` per row. Absent when there are none. */
   nullish?: Uint8Array | undefined
   formatted?: readonly string[]
+  /** Reading `values` / `formatted` reported a diagnostic the status rule counts. */
+  flaggedValues?: boolean
+  flaggedFormatted?: boolean
 }
 
 const NULL = 1
@@ -165,15 +174,27 @@ export function createColumnCache(host: ColumnCacheHost): ColumnCache {
     return out
   }
 
+  const flags = host.flags
+
   function values(data: readonly unknown[], column: ResolvedColumn): ColumnValues {
     const e = entry(data, column)
-    e.values ??= readValues(data, column, e)
+    if (e.values) {
+      if (flags && e.flaggedValues) flags.count++
+      return e.values
+    }
+    const before = flags?.count ?? 0
+    e.values = readValues(data, column, e)
+    if (flags && flags.count > before) e.flaggedValues = true
     return e.values
   }
 
   function formatted(data: readonly unknown[], column: ResolvedColumn): readonly string[] {
     const e = entry(data, column)
-    if (e.formatted) return e.formatted
+    if (e.formatted) {
+      if (flags && e.flaggedFormatted) flags.count++
+      return e.formatted
+    }
+    const before = flags?.count ?? 0
     const vals = values(data, column)
     const kinds = e.nullish
     // The raw value: nullish numbers read back as null / undefined, not NaN.
@@ -249,6 +270,7 @@ export function createColumnCache(host: ColumnCacheHost): ColumnCache {
       }
     })
     e.formatted = out
+    if (flags && flags.count > before) e.flaggedFormatted = true
     return out
   }
 
