@@ -283,7 +283,8 @@ function createInstance(options: Options): Instance {
     unstable: new Map(),
     warned: new Set(),
   }
-  if (!registered) {
+  // The version checks are development-only (§8.5): production bundles no registry.
+  if (process.env.NODE_ENV !== 'production' && !registered) {
     registered = true
     registerPackage('@datakable/react', version)
   }

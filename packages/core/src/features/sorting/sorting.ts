@@ -18,7 +18,7 @@ import { allRows } from '../../pipeline/indices'
 import { sliced } from '../../pipeline/slice'
 import type { ColumnValues } from '../../pipeline/types'
 import { type DataMode, modeOption } from '../../source/mode'
-import { detectCapability } from '../../versioning/capability'
+import { detectCapability, hasCapability } from '../../versioning/capability'
 import { comparatorDiagnostics, sortingDiagnostics } from './codes'
 import {
   defaultIndexComparator,
@@ -115,7 +115,8 @@ const sortingOptions = {
     type: ['string', 'function'],
     oneOf: ALGORITHMS,
     // A literal (not built from ALGORITHMS): a module-level call would keep the schema in production.
-    expected: "one of 'auto', 'tim', 'radix', 'counting', 'native', or (indices, compare) => indices",
+    expected:
+      "one of 'auto', 'tim', 'radix', 'counting', 'native', or (indices, compare) => indices",
   },
   debug: { type: 'boolean' },
   mode: modeOption,
@@ -383,17 +384,20 @@ export const sorting = (opts: SortingOptions = {}) => {
         requested = 'auto'
       }
       if (requested !== 'native' && exsorted === undefined) {
-        exsorted = detectCapability(
-          hasExsorted,
-          {
-            feature: 'sorting',
-            dependency: 'exsorted',
-            capability: 'timSort / radixSort / countingSort',
-            supported: '^1.2.3',
-            fallback: 'Array.prototype.sort (native, stable)',
-          },
-          ctx.emit,
-        )
+        // DK_DEP_INCOMPATIBLE is a development check (§8.5); the fallback is not.
+        exsorted = DEV
+          ? detectCapability(
+              hasExsorted,
+              {
+                feature: 'sorting',
+                dependency: 'exsorted',
+                capability: 'timSort / radixSort / countingSort',
+                supported: '^1.2.3',
+                fallback: 'Array.prototype.sort (native, stable)',
+              },
+              ctx.emit,
+            )
+          : hasCapability(hasExsorted)
       }
 
       // auto at large n (§9.1): string columns sort by collation ranks, computed by a sliced job.
