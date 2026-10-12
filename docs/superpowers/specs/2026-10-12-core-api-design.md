@@ -77,7 +77,7 @@ defineFeature({
   stage: 'filter' | 'search' | 'sort' | 'paginate' | 'none',
   options: defineOptions({...}),           // validated by the generic option validator
   initialState: () => ({...}),
-  createApi: (ctx) => ({...}),             // merged into the table; name clashes → DK_FEATURE_API_CONFLICT
+  createApi: (ctx) => ({...}),             // merged into the table; name clashes → DK_FEATURE_API_CONFLICT (names both, suggests a namespace)
   rowModel?: (indices, state, ctx) => indices,   // pure; operates on Uint32Array of row indices
   interceptors?: Interceptor[],            // features may contribute interceptors
   requires?: { core: '^1.0' },             // DK_FEATURE_INCOMPATIBLE if unmet
@@ -112,7 +112,9 @@ Every unit of work is an **operation** with a declared contract and fallback. Cr
 | `column:batch` | sync | **hot** | per failed cell: `''` (format) / `undefined` (accessor) / row treated as non-matching (filter fn) |
 | `async:request` | async | cold | previous results kept; `status: 'error'` |
 | `diagnostic:emit` | sync | cold | swallowed + one `console.error` (the logger never kills the table) |
-| `render:table`, `render:cell` (react) | sync | per visible cell | `⚠` cell / error state |
+| `render:table`, `render:cell` (react) | sync | per render | `⚠` cell / error state |
+
+The `render:*` ops are registered by `@datakable/react`, not core (core's registry holds only the ops above them). They are React error boundaries (`DK_RENDER_FAILED`, per-cell `⚠` via `DK_CALLBACK_FAILED`), not per-cell interceptor chains. There is no cell-level interceptor: `column:batch` covers every cell-level use case.
 
 **Interceptor contract**
 
@@ -233,13 +235,17 @@ Measured problem this fixes: with plain `any[]`, `Path<any>` resolves to `string
 
 | Mode | Invalid rows | Row type |
 |---|---|---|
-| `'drop'` (default) | removed from the table; available via `getInvalidRows()` → `{ index, raw: unknown, issues }[]` | `Row<T>` |
+| `'drop'` (default) | removed from the table | `Row<T>` |
 | `'flag'` | kept in the table | `Row<T>` becomes a union: `{ valid: true; original: T } \| { valid: false; original: unknown; issues }`. `cell` must narrow on `valid`; `invalidCell` renders broken cells |
 | `'throw'` | throws `DatakableSchemaError` | — |
+
+- `getInvalidRows()` → `{ index, raw: unknown, issues }[]` is available in every `invalidRows` mode.
+- `invalidRows: 'flag'` without `schema` has no effect → `DK_OPTION_NO_EFFECT`.
 
 - **Flag surfacing:**
   - `row.valid`, `row.issues`, and `row.getCellIssues(columnId)` (schema issue paths matched to column keys);
   - `<DataTable />` sets `data-invalid` + `aria-invalid` on rows and cells, puts the redacted issue in `title`, and shows a `⚠` marker;
+  - default `invalidCell`: the raw value through the default formatter, with a `⚠` marker;
   - the `validity` feature filters `'all' | 'valid' | 'invalid'`.
 - A schema that throws (instead of returning issues) emits `DK_SCHEMA_CRASHED`. Rows are then treated per `invalidRows` with a synthetic issue.
 
@@ -292,12 +298,12 @@ Measured problem this fixes: with plain `any[]`, `Path<any>` resolves to `string
 ```ts
 search({
   mode: 'client' | 'server',
-  threshold: 0.3, fuzzyMaxDistance, caseSensitive: false,
+  threshold: 0.3, fuzzyMaxDistance, caseSensitive: false, useWorker: false,
   typing: {
     strategy: 'debounce' | 'throttle' | 'immediate',   // default: client 'immediate', server 'debounce'
-    wait: 300 | { seconds: 1, ms: 500 },               // kk-debounce temporal object
+    wait: 300 | { seconds: 1, ms: 500 },               // kk-debounce temporal object; default (server) 300 ms
     behavior: 'trailing' | 'leading',
-    minLength: 0,                                      // shorter input = empty query
+    minLength: 0 | 2,                                  // default: client 0, server 2; shorter input = empty query
     commitOn: 'type' | 'enter',                        // 'enter' → only flushSearch() commits
   },
   searchFn?: (ctx: { query, rows, columns, signal }) => Result | Promise<Result>,
@@ -310,7 +316,12 @@ search({
   - `query` is the applied value.
   - `pending` means a debounce is waiting; `searching` means a promise is in flight.
 - **Typing timing** uses `kk-debounce` `debouncedSignal` (`value` ↔ `input`, `isPending` ↔ `pending`, `flush()` ↔ Enter, `cancel()` ↔ clear/destroy) and `throttle`. Imports go through the `kk-debounce/debounceSignal` and `kk-debounce/throttle` subpaths only.
-- **Abort is owned by DataKable** (via the `asyncControl` interceptor). kk-debounce `autoAbort` is not used: it does not abort in-flight work and never passes a signal to the callback. Verified by probe, reported as [kk-debounce#28](https://github.com/Ink01101011/kk-debounce/issues/28).
+- **Abort is owned by DataKable** (via the `asyncControl` interceptor, T18). kk-debounce 1.1.0 fixed [kk-debounce#28](https://github.com/Ink01101011/kk-debounce/issues/28): `autoAbort` + `withSignal: true` now pass a signal to the callback and abort it. DataKable still owns async control because:
+  - the debounced function returns `void`, so no result reaches the caller;
+  - a callback that ignores the signal still runs to completion;
+  - a throwing async callback causes an unhandled rejection;
+  - there is no timeout;
+  - non-debounced requests (the fetcher on page / sort change) are outside kk-debounce.
 - **Client matching** (`ex-search`):
   - Searchable columns are those with `search: weight` (zero-config: every displayable column, weight 1).
   - Matching runs on the **formatted** value (what the user sees; arrays joined).
@@ -341,6 +352,7 @@ search({
 | single column, all keys safe integers (incl. `Date.getTime()`), nearly sorted (few descents) | `exsorted` `timSort` |
 | … key range ≤ ~4n | `exsorted` `countingSort` |
 | … n ≥ 10k | `exsorted` `radixSort` (desc via negated key, still stable) |
+| … otherwise (not nearly sorted, wide range, n < 10k) | `exsorted` `timSort` |
 | strings, floats, multi-column, custom `sortFn` | native `Array.prototype.sort` (stable since ES2019) |
 
 - Sorting operates on index arrays through a key selector over the column cache. exsorted's in-place algorithms get a copy (timSort mutates its input — verified).
@@ -366,10 +378,23 @@ search({
 - `autoResetPageIndex: true` resets to page 0 when search, filters or sort change.
 - `pageIndex` is clamped when the row count shrinks.
 - Omitting the feature means no pagination.
+- **Server mode:** the page count is `ceil(rowCount / pageSize)`. `rowCount` comes from the fetcher result, or from the `rowCount` option when there is no fetcher (§7.1). Server-mode pagination with neither emits `DK_ROW_COUNT_MISSING` (warn); the page count falls back to `data.length` treated as the total (one page, `canNextPage()` false).
 
 ### 6.6 Row model output
 
 `getRowModel()` returns `{ rows: Row<T>[] /* visible page only */, filteredCount, totalCount, status }`.
+
+`status: 'idle' | 'validating' | 'pending' | 'searching' | 'error'`
+
+| Status | Meaning |
+|---|---|
+| `'idle'` | the row model is current |
+| `'validating'` | an async schema is running (§5.1) |
+| `'pending'` | a search debounce is waiting, or time-sliced work is in progress (§9.1) |
+| `'searching'` | an async request (`searchFn`, fetcher) is in flight |
+| `'error'` | a diagnostic affected the row model; the last good row model is shown |
+
+**Rule:** any diagnostic that affects the row model sets `status: 'error'`.
 
 `Row<T>` is a class instance with its methods on the prototype: `key`, `index`, `original`, `valid`, `issues`, `getValue(id)`, `getCellIssues(id)`.
 
@@ -387,14 +412,15 @@ Every pipeline feature takes `mode: 'client' | 'server'`.
   - Response shape is validated (`DK_FETCH_BAD_RESPONSE`, e.g. a missing `rows`, or `rowCount < rows.length`).
   - The fetcher runs through `async:request`: latest-wins, AbortController, a `timeout` (default 30 s → `DK_ASYNC_TIMEOUT`), and failures emit `DK_FETCH_FAILED` while keeping the previous rows.
   - Schema validation and data checks still apply to the returned rows.
-- A `fetcher` without any server-mode feature → `DK_OPTION_NO_EFFECT`.
+- **Server mode without a fetcher** (v1): with `mode: 'server'` and no `fetcher`, core only holds the state of the server-mode steps (their `rowModel` is skipped). The app fetches data itself and passes the current page as `data` plus the total as the `rowCount` option. Server-mode pagination uses `rowCount` for the page count; without it → `DK_ROW_COUNT_MISSING` (§6.5).
+- A `fetcher` without any server-mode feature throws `DatakableConfigError` (`DK_FETCHER_WITHOUT_SERVER_MODE`) at creation, naming the fix: set `mode: 'server'` on the features the server handles, or remove `fetcher`.
 
 ### 7.2 SSR
 
 - `initialState` (e.g. parsed from the URL) and `initialData` (server mode) are supported.
 - Client-mode features run during server render: `?q=ada` produces pre-filtered HTML.
 - `getServerSnapshot` derives from `initialState`. Hydration does not re-fetch when `initialData` is present.
-- An async `searchFn` does not run on the server: the table starts in `status: 'pending'` and searches after hydration (`DK_SSR_ASYNC_DEFERRED`, info).
+- An async `searchFn` does not run on the server: the table uses `initialData`, or starts in `status: 'pending'` and searches after hydration (`DK_SSR_ASYNC_DEFERRED`, info).
 - Server snapshot ≠ hydration snapshot → `DK_HYDRATION_MISMATCH`, naming the differing slice.
 - `initialState` keys that no longer exist are dropped with `DK_STATE_UNKNOWN_KEY`.
 
@@ -474,10 +500,13 @@ interface DiagnosticContext {
   - Schema messages are replaced by the issue path plus DataKable's own text under `'safe'` / `'keys'`, because validators embed received values.
   - Fetcher errors are printed as `error.name` + code only. The full error goes to `onDiagnostic` as `cause`.
 - **Production stripping:** `problem` / `fix` text builders, `devChecks`, deprecation texts and the tracer are behind `process.env.NODE_ENV !== 'production'`. Prod diagnostics keep `code`, `where`, `context` and a docs URL with parameters. `import 'datakable/messages'` opts back into full text.
+- **Language:** all messages are English-only in v1. The stable `code` is the reference; localisation is v2+ (§2).
 
 ### 8.3 Diagnostic catalog
 
 Every code requires: a `defineDiagnostic` entry, an anchor in `docs/errors.md`, and at least one fault-injection test. CI fails otherwise.
+
+Each code's section in `docs/errors.md` has: problem / common causes / fix / example.
 
 | Group | Code | Level | Trigger | Fallback / fix highlights |
 |---|---|---|---|---|
@@ -488,7 +517,7 @@ Every code requires: a `defineDiagnostic` entry, an anchor in `docs/errors.md`, 
 | | `DK_INCONSISTENT_ROW_SHAPE` | info | zero-config key sets differ | lists the differing keys |
 | | `DK_UNRENDERABLE_VALUE` | warn | object/function value without cell/format | renders `''` |
 | | `DK_DATA_MUTATED` | warn | same data reference, mutated (dev) | tells the developer to pass a new array |
-| Schema | `DK_SCHEMA_INVALID_ROW` | error | validation issues | per `invalidRows` |
+| Schema | `DK_SCHEMA_INVALID_ROW` | error | validation issues | per `invalidRows`; `fix` maps the schema issue path to the affected column, gives the row count, and says whether the rows were dropped or flagged |
 | | `DK_SCHEMA_CRASHED` | error | the schema threw | synthetic issue; per `invalidRows` |
 | Features | `DK_FILTER_TYPE_MISMATCH` | warn | filter kind vs value type | non-match; suggests coercion or another kind |
 | | `DK_SORT_COMPARATOR_INVALID` | warn | `sortFn` returns NaN or is inconsistent (dev, sampled) | falls back to the default comparator |
@@ -498,6 +527,7 @@ Every code requires: a `defineDiagnostic` entry, an anchor in `docs/errors.md`, 
 | | `DK_FETCH_ABORTED` | info | superseded request (debug) | — |
 | | `DK_FETCH_BAD_RESPONSE` | error | malformed fetcher result | previous rows kept |
 | | `DK_ASYNC_TIMEOUT` | error | async op exceeded `timeout` | aborts; previous results kept |
+| | `DK_ROW_COUNT_MISSING` | warn | server-mode pagination with no fetcher and no `rowCount` option | page count from `data.length` (one page); pass `rowCount` |
 | Callbacks & plugins | `DK_CALLBACK_FAILED` | error | any user callback threw (`where` = slot + row) | slot fallback |
 | | `DK_CALLBACK_BAD_RETURN` | warn | slot contract violated (e.g. `format` returned a non-string, `cell` returned a Promise) | coerced / fallback |
 | | `DK_FEATURE_FAILED` | error | a feature `rowModel` / `createApi` threw | step passes through |
@@ -507,10 +537,11 @@ Every code requires: a `defineDiagnostic` entry, an anchor in `docs/errors.md`, 
 | | `DK_LISTENER_FAILED` | error | a subscribe listener threw | other listeners still run |
 | Options & config | `DK_UNKNOWN_OPTION` | warn | unknown option key | did-you-mean |
 | | `DK_INVALID_OPTION` | error (config) | wrong runtime type or range | names the accepted values |
-| | `DK_OPTION_NO_EFFECT` | warn | the option is ignored in this configuration | explains why |
+| | `DK_OPTION_NO_EFFECT` | warn | the option is ignored in this configuration (e.g. `invalidRows: 'flag'` without `schema`; `validity` outside flag mode) | explains why |
 | | `DK_MODE_ORDER` | error (config) | client step before a server step | two valid fixes |
+| | `DK_FETCHER_WITHOUT_SERVER_MODE` | error (config) | `fetcher` given but no feature is in server mode | set `mode: 'server'` on the server-handled features, or remove `fetcher` |
 | | `DK_FEATURE_DUPLICATE` | error (config) | two features with the same `name` | — |
-| | `DK_FEATURE_API_CONFLICT` | error (config) | two features expose the same method | names both |
+| | `DK_FEATURE_API_CONFLICT` | error (config) | two features expose the same method | names both features; suggests a namespace |
 | | `DK_FEATURE_INCOMPATIBLE` | error (config) | `requires.core` unmet | required version |
 | | `DK_CONTROLLED_WITHOUT_HANDLER` | warn | `state` slice passed without `onStateChange` | interactions are frozen; how to fix |
 | | `DK_UNSTABLE_COLUMNS` | warn | new `columns` reference every render with the same shape (react, dev) | `useMemo` / hoist |
@@ -566,7 +597,8 @@ table.explainRow(42)
 
 ### 8.6 Error handling guarantees
 
-- **Config errors** (deterministic programmer errors) throw `DatakableConfigError` at creation.
+- **Config errors** (deterministic programmer errors, the `error (config)` codes in §8.3) throw `DatakableConfigError` at creation.
+- Any diagnostic that affects the row model sets `status: 'error'` (§6.6) and keeps the last good row model.
 - **Data and runtime problems never throw**, except under `strict: true` or `invalidRows: 'throw'`.
 - Every user callback is invoked inside an `errorBoundary` scope with a slot `where`. Every public method and pipeline step is guarded. Unknown errors are classified as `DK_INTERNAL` (stack in DataKable code) or `DK_UNKNOWN`.
 - Every promise DataKable creates is handled. There are no unhandled rejections.
@@ -591,7 +623,7 @@ table.explainRow(42)
 - **Everything is bounded:** the diagnostic ring buffer (100), the dedupe map, a trace of the last run only (counts, not rows), and `getInvalidRows` stores indices + issues rather than copies.
 - **Bundle:**
   - one entry per feature;
-  - dependency imports through subpaths only (never the `exsorted` root, which is 4.6 KB gzip for all 20 algorithms);
+  - dependency imports through subpaths where the package has them (never the `exsorted` root, which is 4.6 KB gzip for all 20 algorithms; `ex-search` has none, §12);
   - dev machinery stripped in prod.
 
 ### 9.2 Evidence (Node 25.2.1)
@@ -659,7 +691,8 @@ The bundle budgets are estimates from measured dependency sizes plus an assumed 
 | Fault injection | for every public method and every callback slot, inject a throw → assert a diagnostic with the right code + `where`, a usable row model, and no unhandled rejection |
 | Async | fake timers + AbortController: a superseded request has `signal.aborted === true` and its result is never applied, even when the callback ignores the signal; timeouts |
 | Redaction | sentinel `"SECRET-123"` in data and errors → absent from every serialized diagnostic and from `explain` output under `'safe'` |
-| Catalog | every code has a catalog entry, a `docs/errors.md` anchor and ≥ 1 fault-injection test |
+| Catalog | every code has a catalog entry, a `docs/errors.md` anchor, ≥ 1 fault-injection test, a non-empty `where` and a non-empty `fix` |
+| Diagnostic context | every diagnostic carries `context.table`, `context.trigger` and `context.run` |
 | Versions | loading two core copies triggers `DK_DUPLICATE_CORE` |
 | React (testing-library + happy-dom) | header sort + `aria-sort`; search typing with debounce; server-mode abort; cell throw → fallback; SSR `renderToString` with `initialState`, then hydrate without re-fetch |
 | Bench / budgets | `vitest bench` + size-limit + memory test + throttled interaction test against §9.3 |
@@ -669,7 +702,9 @@ The bundle budgets are estimates from measured dependency sizes plus an assumed 
 
 ## 12. Packaging
 
-- **`@datakable/core` dependencies:** `exsorted`, `ex-search`, `kk-debounce`, imported through subpaths only.
+- **`@datakable/core` dependencies:** `exsorted`, `ex-search`, `kk-debounce` (1.1.0).
+  - `exsorted` and `kk-debounce` are imported through per-function subpaths only.
+  - `ex-search` has no per-function subpaths: its exports are only `.`, `./types` and `./react`. Core imports its root, never `./react`.
 - **Standard Schema:** the interface is vendored; no dependency.
 - **Type leak guard:** DataKable's `.d.ts` files must not re-export `ex-search` types, because those reference `ex-flow`. CI compiles a tiny consumer project with `skipLibCheck: false`.
 - **Per-feature entries** (`@datakable/core/search`, …) keep the build tree-shakeable. `datakable` exposes the default preset. `datakable/messages` is the opt-in for full prod messages.
@@ -684,4 +719,4 @@ The bundle budgets are estimates from measured dependency sizes plus an assumed 
 3. exsorted: stability, in-place mutation, signatures, radix/counting edge cases.
 4. tsc prototypes: column types (`proto.ts`), loose types (`anyp.ts`), HKT features (`feat.ts`), custom type-error attempts (`msg.ts`, `vA.ts`, `vB.ts`), interceptor typing (`icpt.ts`).
 5. Benchmarks: sorting (`bench.mjs`), interceptor overhead (`icpt.ts`), pipeline shape and batch granularity (`opt.mjs`), dependency bundle sizes (esbuild).
-6. kk-debounce `autoAbort` probe (`kkprobe.mjs`) → [kk-debounce#28](https://github.com/Ink01101011/kk-debounce/issues/28).
+6. kk-debounce `autoAbort` probe (`kkprobe.mjs`) → [kk-debounce#28](https://github.com/Ink01101011/kk-debounce/issues/28), fixed in kk-debounce 1.1.0 (§6.3).

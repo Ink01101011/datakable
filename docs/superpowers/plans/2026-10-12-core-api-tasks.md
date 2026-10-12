@@ -17,7 +17,7 @@
 | T02 | P0 | Column types: `Path`, `PathValue`, `FilterFor`, `RenderReq`, `ColumnDef<T,R>`, derived columns, `IsAny` handling | §4.1, §4.2 | — | all prototype type cases pass as `*.test-d.ts` (positive + `@ts-expect-error`) |
 | T03 | P0 | `getValue(row, path)` safe walk + default formatter | §4.3 | T02 | unit tests: nulls mid-path, arrays, Date, objects, throwing getters |
 | T04 | P0 | Interceptor core: operation registry, `defineInterceptor`, chain compiler, ctx pool, sync/async typing | §3.4 | — | type tests (sync op + Promise = error); compile-once verified; overhead bench recorded |
-| T05 | P0 | Diagnostic model + `defineDiagnostic` catalog + `diagnostic:emit` chain (enrich, dedupe/rate-limit, sinks, ring buffer, safe serializer, fingerprint) | §8.1, §8.2, §3.5 | T04 | bigint/cycle-safe `toJSON`; dedupe aggregates; buffer bounded at 100 |
+| T05 | P0 | Diagnostic model + `defineDiagnostic` catalog + `diagnostic:emit` chain (enrich, dedupe/rate-limit, sinks, ring buffer, safe serializer, fingerprint) | §8.1, §8.2, §3.5 | T04 | bigint/cycle-safe `toJSON`; dedupe aggregates; buffer bounded at 100; every diagnostic carries `context.table`, `trigger` and `run` (test) |
 | T06 | P0 | `errorBoundary` + fallback registry + `column:batch` boundary + `DK_CALLBACK_FAILED` / `DK_INTERNAL` / `DK_UNKNOWN` / `DK_INTERCEPTOR_FAILED` | §3.4, §8.6 | T04, T05 | throw in any op → correct code + `where` + registry fallback |
 | T07 | P0 | Store: `createTable`, get/set/subscribe, controlled state per slice, listener isolation, update-loop guard, `destroy` | §3.2 | T04, T06 | `DK_LISTENER_FAILED`, `DK_UPDATE_LOOP`, `DK_TABLE_DESTROYED`, `DK_CONTROLLED_WITHOUT_HANDLER` tested |
 | T08 | P0 | Feature contract: `defineFeature`, HKT types (`StateOf` / `ApiOf`), stage ordering, duplicate/API-conflict detection | §3.3 | T07 | prototype feature type tests pass; `DK_FEATURE_DUPLICATE` / `DK_FEATURE_API_CONFLICT` thrown |
@@ -33,7 +33,7 @@
 | T18 | P1 | `asyncControl` interceptor: AbortController per request, latest-wins, `timeout`, superseded | §3.4, §7.1 | T04, T06 | superseded result never applied even if the callback ignores the signal; `DK_ASYNC_TIMEOUT` |
 | T19 | P1 | Async `searchFn` + promise API (`setSearch` / `flushSearch` → `applied` / `superseded` / `error`, never reject) + `DK_SEARCH_FAILED` | §6.3 | T17, T18 | stale-while-error; no unhandled rejections |
 | T20 | P1 | Feature `pagination` (page-size anchor, auto-reset, clamp) | §6.5 | T09 | anchor + clamp tests |
-| T21 | P1 | Data modes: per-feature `mode`, `DK_MODE_ORDER`, server source `fetcher`, response validation (`DK_FETCH_*`) | §7.1 | T10, T13, T14, T16, T18, T20 | property test over 4 steps × 2 modes; bad response handled |
+| T21 | P1 | Data modes: per-feature `mode`, `DK_MODE_ORDER`, server source `fetcher`, response validation (`DK_FETCH_*`), `DK_FETCHER_WITHOUT_SERVER_MODE`; server mode without a fetcher (`data` + `rowCount` option, `DK_ROW_COUNT_MISSING`) | §7.1, §6.5 | T10, T13, T14, T16, T18, T20 | property test over 4 steps × 2 modes; bad response handled; fetcher without server mode throws; page count from `rowCount` without a fetcher |
 | T22 | P1 | Standard Schema ingest: infer `T`, validate, `invalidRows` drop / flag / throw, async schema, `DK_SCHEMA_*` | §5.1 | T09, T18 | `Row<T>` union type test for flag; `getInvalidRows` |
 | T23 | P1 | Feature `validity` + `row.issues` / `getCellIssues` path matching | §6.2, §5.1 | T13, T22 | issue→column mapping tests; no-op outside flag mode |
 | T24 | P1 | Default preset + zero-config `createTable({ data })` | §3.3 | T12, T13, T14, T16, T20, T23 | `createTable({ data })` works end-to-end with no other options |
@@ -50,9 +50,10 @@
 | T35 | P2 | Optional `datakable/styles.css` | §10 | T33 | importing it styles the table; not importing it adds no CSS |
 | T36 | P2 | Packaging: per-feature entries, prod stripping (`NODE_ENV`), `datakable/messages`, type-leak consumer check | §12, §8.2 | T24 | publint + attw pass; consumer with `skipLibCheck: false` compiles |
 | T37 | P2 | Budgets in CI: size-limit, batch-overhead bench, memory test, 4x-throttled interaction test | §9.3 | T15, T29, T36 | all §9.3 budgets enforced; exceeding one is raised with the user |
-| T38 | P2 | `docs/errors.md` (one section per code) + catalog CI test (entry + anchor + fault test per code) | §8.3 | T10, T11, T12, T15, T19, T21, T22, T26, T27, T28, T29, T30, T32, T34 | CI fails on any code missing docs or a test |
+| T38 | P2 | `docs/errors.md` (one section per code: problem / common causes / fix / example) + catalog CI test (entry + anchor + fault test + non-empty `where` and `fix` per code) | §8.3, §11 | T10, T11, T12, T15, T19, T21, T22, T26, T27, T28, T29, T30, T32, T34 | CI fails on any code missing docs or a test |
 | T39 | P2 | Update `apps/docs` playground to the real API | — | T33 | playground uses `<DataTable />` and `useDataTable` |
 | T40 | P2 | READMEs + first changeset | §12 | T36 | READMEs describe the real API; changeset added |
+| T41 | P2 | Type-error readability: JSDoc on `cell` / `format`, "Reading type errors" docs section covering the six common errors, type tests pinning the key error messages | §4.3, §11 | T02 | JSDoc shows on hover; docs section covers all six; pinned-message type tests pass |
 
 ## Order (dependency waves)
 
@@ -61,7 +62,7 @@ Tasks within a wave do not depend on each other and can run in parallel.
 | Wave | Tasks |
 |---|---|
 | 0 | T01, T02, T04 |
-| 1 | T03, T05 |
+| 1 | T03, T05, T41 |
 | 2 | T06, T26 |
 | 3 | T07, T18 |
 | 4 | T08 |
@@ -79,4 +80,4 @@ Tasks within a wave do not depend on each other and can run in parallel.
 ## Follow-ups outside this breakdown
 
 - **Spec 2 — Selection** (row/cell, Ctrl/Cmd+click, Shift+click range): brainstorm after T24 lands, because it builds on the feature contract and the interceptors.
-- **kk-debounce#28** (`autoAbort` no-op): fix in the kk-debounce repo. DataKable does not depend on it (T18 owns abort).
+- **kk-debounce 1.1.0** (released 2026-10-12) fixed kk-debounce#28 (`autoAbort` + `withSignal: true` now pass and abort the signal). Bump the `kk-debounce` dependency to 1.1.0. T18 still owns async control (no result to the caller, no timeout, signal-ignoring callbacks, unhandled rejections, non-debounced fetcher requests; §6.3).
