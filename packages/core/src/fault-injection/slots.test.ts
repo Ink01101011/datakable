@@ -71,7 +71,7 @@ const failing = (hook: 'initialState' | 'createApi' | 'rowModel' | 'badOutput'):
           : (indices: Uint32Array) => indices,
   })
 
-const sortedBy = (id: string) => ({ sorting: { by: [{ id, desc: false }] } })
+const sortedBy = (id: string) => ({ sorting: { by: [{ id, desc: false }] } }) as never
 
 const cases: SlotCase[] = [
   // --- rows and columns -------------------------------------------------------------------------

@@ -62,7 +62,33 @@ export type AnyTable = {
   getDiagnostics(): Diagnostic[]
   refetch(): Promise<{ status: string }>
   destroy(): void
-} & Record<string, (...args: never[]) => unknown>
+} & { [M in FeatureMethod]: Method }
+
+// biome-ignore lint/suspicious/noExplicitAny: the suites call feature APIs with loose arguments
+type Method = (...args: any[]) => any
+
+/** The API methods of the built-in features, plus the test features' (`probe*`). */
+type FeatureMethod =
+  | 'setColumnFilter'
+  | 'resetColumnFilters'
+  | 'setValidity'
+  | 'setSearch'
+  | 'flushSearch'
+  | 'cancelSearch'
+  | 'clearSearch'
+  | 'toggleSort'
+  | 'setSorting'
+  | 'clearSorting'
+  | 'getSortDirection'
+  | 'setPageIndex'
+  | 'setPageSize'
+  | 'nextPage'
+  | 'prevPage'
+  | 'getPageCount'
+  | 'canNextPage'
+  | 'canPrevPage'
+  | 'probeOn'
+  | 'probeSet'
 
 export const loose = (t: unknown) => t as AnyTable
 
@@ -150,12 +176,22 @@ export function expectUsable(table: AnyTable) {
  * Mutes the console sinks and records unhandled rejections for the current test (§8.6: every
  * promise DataKable creates is handled). Call once per suite file.
  */
+/** Node's `process` (the core tsconfig has no Node types). */
+const nodeProcess = (
+  globalThis as unknown as {
+    process: {
+      on(event: 'unhandledRejection', fn: (reason: unknown) => void): void
+      off(event: 'unhandledRejection', fn: (reason: unknown) => void): void
+    }
+  }
+).process
+
 export function useHarness() {
   const rejections: unknown[] = []
   const onRejection = (reason: unknown) => void rejections.push(reason)
   beforeEach(() => {
     rejections.length = 0
-    process.on('unhandledRejection', onRejection)
+    nodeProcess.on('unhandledRejection', onRejection)
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.spyOn(console, 'info').mockImplementation(() => {})
@@ -165,7 +201,7 @@ export function useHarness() {
   })
   afterEach(async () => {
     await settle()
-    process.off('unhandledRejection', onRejection)
+    nodeProcess.off('unhandledRejection', onRejection)
     vi.restoreAllMocks()
     expect(rejections, 'unhandled rejections').toEqual([])
   })
