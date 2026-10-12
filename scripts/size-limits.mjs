@@ -4,8 +4,8 @@
 // re-export of the named symbols from the BUILT dist; size = gzip -9 of the output. 1 KB = 1024 B.
 //
 // Each entry carries two numbers:
-// - `budget`: the §9.3 spec budget. Not met today for any entry that has one: it is printed as
-//   UNMET and raised with the user — it is never raised here silently (§9.3).
+// - `budget`: the §9.3 spec budget. An entry over it is printed as UNMET and raised with the user —
+//   it is never raised here silently (§9.3; the core budget was changed by the user, 2026-10-13).
 // - `limit`: the RATCHET that CI enforces = the size measured when it was set, rounded up to the
 //   next 0.5 KB. Any growth past it fails `pnpm check:size`. Lower it when the bundle shrinks;
 //   raising it needs a reason in the commit message.
@@ -16,8 +16,11 @@
 
 const KB = 1024
 
-/** §9.3 "`@datakable/core` without search (gzip) ≤ 8 KB". */
-const CORE = { budget: 8 * KB, spec: '§9.3 @datakable/core without search ≤ 8 KB' }
+/**
+ * §9.3 "`@datakable/core` without search (gzip) ≤ 15 KB" (changed 2026-10-13, user decision; was
+ * 8 KB: F3 measured 14.5 KB, the remainder is spec-required production behaviour).
+ */
+const CORE = { budget: 15 * KB, spec: '§9.3 @datakable/core without search ≤ 15 KB' }
 /** §9.3 "`datakable` default preset + react (gzip) ≤ 20 KB" (react itself is external). */
 const PRESET = { budget: 20 * KB, spec: '§9.3 datakable default preset + react ≤ 20 KB' }
 

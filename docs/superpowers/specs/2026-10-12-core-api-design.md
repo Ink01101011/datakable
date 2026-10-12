@@ -675,7 +675,7 @@ table.explainRow(42)
 
 | Budget | Target |
 |---|---|
-| `@datakable/core` without search (gzip) | ≤ 8 KB |
+| `@datakable/core` without search (gzip) | ≤ 15 KB *(changed 2026-10-13, user decision; was 8 KB)* |
 | `datakable` default preset + react (gzip) | ≤ 20 KB |
 | Boundary overhead per column batch vs raw loop | ≤ +10% |
 | Pipeline memory at 100k rows (excluding source data) | ≤ 5 MB |
@@ -685,9 +685,11 @@ table.explainRow(42)
 
 The bundle budgets are estimates from measured dependency sizes plus an assumed DataKable code size. The first implementation measures a baseline. If it exceeds a budget, the budget is **discussed with the user** — it is never raised silently.
 
-**Decided 2026-10-13 (user):** the memory budget applies to **every** scenario — paginated, unpaginated and client search at 100k rows — not only the paginated one. The size budgets stay as written (core ≤ 8 KB, `datakable` default preset + react ≤ 20 KB); they are met by shrinking the code, never by raising the budget.
+**Decided 2026-10-13 (user):** the memory budget applies to **every** scenario — paginated, unpaginated and client search at 100k rows — not only the paginated one. The `datakable` default preset + react size budget stays as written (≤ 20 KB); size budgets are met by shrinking the code, never by raising them silently.
 
-*Measured 2026-10-13 after the approved §9.3 changes (opt-in `withSchema` / `withFetcher`, development-only option validation, version and data checks, no `merge` sort, the feature runtime brought by `defineFeature`), with the committed method (`pnpm size`): core `createTable` 23,535 → 14,553 B gzip; with filters + sorting + pagination 30,703 → 22,198 B; the `datakable` preset 35,318 → 27,697 B. The 8 KB core budget is still unmet: the remaining bare table is the store, the index pipeline and `Row`s, row keys, the diagnostics pipeline (build, redaction, safe JSON, hub, console sink), the interceptor runtime with the error boundary, and `explain` — all production behaviour this spec requires. The budgets are unchanged and the gap is raised with the user.*
+**Changed 2026-10-13 (user decision; F3 measured 14.5 KB, remaining is spec-required prod behaviour):** the `@datakable/core` without search budget is ≤ 15 KB gzip (was ≤ 8 KB). Decisions log #13.
+
+*Measured 2026-10-13 after the approved §9.3 changes (opt-in `withSchema` / `withFetcher`, development-only option validation, version and data checks, no `merge` sort, the feature runtime brought by `defineFeature`), with the committed method (`pnpm size`): core `createTable` 23,535 → 14,553 B gzip; with filters + sorting + pagination 30,703 → 22,198 B; the `datakable` preset 35,318 → 27,697 B. The original 8 KB core budget was not reached: the remaining bare table is the store, the index pipeline and `Row`s, row keys, the diagnostics pipeline (build, redaction, safe JSON, hub, console sink), the interceptor runtime with the error boundary, and `explain` — all production behaviour this spec requires. The gap was raised with the user, who set the core budget to 15 KB (decisions log #13).*
 
 ---
 
@@ -773,4 +775,5 @@ The open questions of the draft, resolved by the user on 2026-10-13 ("use all de
 | 9 | 2026-10-13 | React peer range `>=18` (matches `package.json`) | §10 |
 | 10 | 2026-10-13 | `"use client"` on every `@datakable/react` module, none in `datakable` (server-usable `createTable`); Next.js app router imports `<DataTable />` / `useDataTable` from a client component or `@datakable/react` | §10, READMEs |
 | 11 | 2026-10-13 | (user) The §9.3 memory budget applies to every scenario: paginated, unpaginated, client search | §9.3 |
-| 12 | 2026-10-13 | (user) The §9.3 size budgets stay as written: core ≤ 8 KB, `datakable` preset + react ≤ 20 KB | §9.3 |
+| 12 | 2026-10-13 | (user) The §9.3 size budgets stay as written: core ≤ 8 KB, `datakable` preset + react ≤ 20 KB (core budget superseded by #13) | §9.3 |
+| 13 | 2026-10-13 | (user) Changed: `@datakable/core` without search ≤ 15 KB gzip (was 8 KB); F3 measured 14.5 KB, the remainder is spec-required production behaviour. The preset + react budget stays ≤ 20 KB | §9.3, `scripts/size-limits.mjs` |
