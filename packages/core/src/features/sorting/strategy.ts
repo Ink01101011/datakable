@@ -1,12 +1,11 @@
 import { countingSort } from 'exsorted/counting'
-import { mergeSort } from 'exsorted/merge'
 import { radixSort } from 'exsorted/radix'
 import { timSort } from 'exsorted/tim'
 import type { ColumnValues } from '../../pipeline/types'
 import type { IndexComparator } from './compare'
 
 /** The built-in algorithms of `sorting({ algorithm })` / a column's `sortAlgorithm` (§6.4). */
-export type BuiltinAlgorithm = 'tim' | 'radix' | 'counting' | 'merge' | 'native'
+export type BuiltinAlgorithm = 'tim' | 'radix' | 'counting' | 'native'
 
 /** Algorithms that need safe-integer keys (they ignore comparators). */
 export const needsIntKeys = (a: string) => a === 'radix' || a === 'counting'
@@ -125,31 +124,27 @@ export function sortIntKeys(k: IntKeys, algorithm: BuiltinAlgorithm): Uint32Arra
       ? radixSort(pos, key)
       : algorithm === 'counting'
         ? countingSort(pos, key)
-        : algorithm === 'merge'
-          ? mergeSort(pos, cmp)
-          : algorithm === 'tim'
-            ? timSort(pos, cmp)
-            : pos.sort(cmp)
+        : algorithm === 'tim'
+          ? timSort(pos, cmp)
+          : pos.sort(cmp)
   const out = new Uint32Array(n)
   for (let j = 0; j < present; j++) out[j] = rows[order[j] as number] as number
   for (let j = present, b = n - 1; j < n; j++, b--) out[j] = rows[b] as number
   return out
 }
 
-/** Sorts a copy of `indices` with a comparator: native, or exsorted tim / merge (stable). */
+/** Sorts a copy of `indices` with a comparator: native, or exsorted tim (stable). */
 export function sortWithComparator(
   indices: Uint32Array,
   cmp: IndexComparator,
-  algorithm: 'tim' | 'merge' | 'native',
+  algorithm: 'tim' | 'native',
 ): Uint32Array {
   if (algorithm === 'native') return indices.slice().sort(cmp)
-  const a = Array.from(indices)
-  return Uint32Array.from(algorithm === 'tim' ? timSort(a, cmp) : mergeSort(a, cmp))
+  return Uint32Array.from(timSort(Array.from(indices), cmp))
 }
 
 /** exsorted's algorithms are usable (§8.5): checked once per feature instance. */
 export const hasExsorted = () =>
   typeof timSort === 'function' &&
-  typeof mergeSort === 'function' &&
   typeof radixSort === 'function' &&
   typeof countingSort === 'function'

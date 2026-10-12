@@ -18,7 +18,7 @@ export const FIXTURES: Record<string, Fixture> = {
     details: {
       feature: 'sorting',
       dependency: 'exsorted',
-      capability: 'timSort / mergeSort / radixSort / countingSort',
+      capability: 'timSort / radixSort / countingSort',
       supported: '^1.2.3',
       fallback: 'Array.prototype.sort (native, stable)',
     },

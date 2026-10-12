@@ -41,6 +41,7 @@ import { checkVersions } from '../versioning/registry'
 import { tableDiagnostics } from './codes'
 import { createDataMutationCheck, dataMutationDiagnostics } from './data-mutation'
 import { deferral, setTableInternals } from './internals'
+import { keepReadOnce } from './read-once'
 import {
   type ControlledState,
   type Listener,
@@ -207,9 +208,9 @@ export function createTable<T, S extends TableState>(
     getDataRef: () => data,
     redaction,
   })
-  // Option validator (§3.4, `table:init`): before anything reads the options. Invalid values throw
-  // DK_INVALID_OPTION; unknown / no-effect options are reported on the hub.
-  validateOptions(options, { table: hub.table, emit: hub.emit })
+  // Option validator (§3.4, `table:init`), development only: before anything reads the options.
+  // Invalid values throw DK_INVALID_OPTION; unknown / no-effect options are reported on the hub.
+  if (DEV) validateOptions(options, { table: hub.table, emit: hub.emit })
   // Features (§3.3) are read once, at creation. `features` is the listed order (API install, conflict
   // reports); `pipeline` is stage order for the runner. Duplicates throw here (config error).
   const features: readonly AnyFeature[] = options.features ?? EMPTY
@@ -715,9 +716,11 @@ export function createTable<T, S extends TableState>(
     withTrigger('setOptions', () => {
       const previous = options
       const next = { ...options, ...partial }
-      // Option validator (§3.4, `table:setOptions`): an invalid value throws before anything
-      // changes; read-once options (`features`, `timeout`, `diagnostics`, …) keep their value.
-      validateOptionChange(partial, next, previous, { table: hub.table, emit: hub.emit })
+      // Option validator (§3.4, `table:setOptions`, development): an invalid value throws before
+      // anything changes. Read-once options (`features`, `timeout`, `diagnostics`, …) keep their
+      // value in every build.
+      if (DEV) validateOptionChange(partial, next, previous, { table: hub.table, emit: hub.emit })
+      else keepReadOnce(partial, next, previous)
       if ('fetcher' in partial) checkModes(pipeline, next.fetcher, hub.table, 'setOptions')
       void op('table:setOptions', { options: next, previous }, 'options', (): undefined => {
         options = next

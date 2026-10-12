@@ -58,7 +58,6 @@ export type SortAlgorithm =
   | 'tim'
   | 'radix'
   | 'counting'
-  | 'merge'
   | 'native'
   | ((indices: Uint32Array, compare: (a: number, b: number) => number) => Uint32Array)
 

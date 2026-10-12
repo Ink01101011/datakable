@@ -767,7 +767,7 @@ prints (development console):
 
 `info` · fault test: [strategy.test.ts](../packages/core/src/features/sorting/strategy.test.ts)
 
-**Problem.** Information, reported only with `sorting({ debug: true })`: which algorithm sorted the rows (`tim`, `radix`, `counting`, `merge`, `native` or `custom`), why it was chosen, and how long it took.
+**Problem.** Information, reported only with `sorting({ debug: true })`: which algorithm sorted the rows (`tim`, `radix`, `counting`, `native` or `custom`), why it was chosen, and how long it took.
 
 **Common causes.**
 
@@ -796,7 +796,7 @@ prints (development console):
 ℹ [DataKable table#1] DK_SORT_STRATEGY: sorted 1000 rows by age:asc with counting in 0.55 ms (auto: safe integers, key range 90 ≤ 4n)
   where   columns[1] (id "age")
   impact  none; reported because sorting({ debug: true }) is set
-  fix     1. to force an algorithm: sorting({ algorithm: 'tim' | 'radix' | 'counting' | 'merge' | 'native' }) or a column's sortAlgorithm
+  fix     1. to force an algorithm: sorting({ algorithm: 'tim' | 'radix' | 'counting' | 'native' }) or a column's sortAlgorithm
           2. remove debug: true from sorting() to stop these reports
   docs    https://github.com/Ink01101011/datakable/blob/main/docs/errors.md#dk_sort_strategy
   context trigger=api:toggleSort run=1 phase=client
@@ -2432,7 +2432,7 @@ Needs two installed versions of the release group. Built from its details:
 Needs the dependency overridden at install time. Built from its details:
 
 ```text
-⚠ [DataKable table#1] DK_DEP_INCOMPATIBLE: exsorted has no usable timSort / mergeSort / radixSort / countingSort; it was probably overridden to a version outside ^1.2.3
+⚠ [DataKable table#1] DK_DEP_INCOMPATIBLE: exsorted has no usable timSort / radixSort / countingSort; it was probably overridden to a version outside ^1.2.3
   where   feature "sorting"
   impact  feature "sorting" uses Array.prototype.sort (native, stable) instead; results stay correct
   fix     1. install a supported version: pnpm add exsorted@"^1.2.3" (check pnpm why exsorted)

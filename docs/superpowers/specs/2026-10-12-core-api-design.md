@@ -356,7 +356,7 @@ search({
 | strings, floats, multi-column, custom `sortFn` | native `Array.prototype.sort` (stable since ES2019) |
 
 - Sorting operates on index arrays through a key selector over the column cache. exsorted's in-place algorithms get a copy (timSort mutates its input — verified).
-- **Overrides:** table-level `sorting({ algorithm: 'tim' | 'radix' | 'counting' | 'merge' | 'native' | (indices, cmp) => indices })`, or column-level `sortAlgorithm`.
+- **Overrides:** table-level `sorting({ algorithm: 'tim' | 'radix' | 'counting' | 'native' | (indices, cmp) => indices })`, or column-level `sortAlgorithm`. *(Changed 2026-10-13 for §9.3: the `merge` algorithm was dropped; `tim` covers the stable comparator case.)*
 - `DK_SORT_STRATEGY` (info, debug only) reports the algorithm chosen, the reason, n and the time taken.
 - **Benchmark evidence** (Node 25.2.1, median ms; every algorithm passed the stability and correctness check):
 
