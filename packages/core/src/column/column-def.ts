@@ -9,16 +9,25 @@ type IsLoose<V> = IsAny<V> extends true ? true : unknown extends V ? true : fals
 /** Type-agnostic filter kinds, the only ones allowed for `any` / `unknown` values. */
 type LooseFilter = { type: 'equals' } | { type: 'contains' }
 
+// The filter sets are named so a wrong kind reads "not assignable to type 'StringFilter'" instead
+// of an inlined union (docs/reading-type-errors.md, E3).
+/** Filter kinds for number, bigint and `Date` values. */
+type NumberFilter = { type: 'range' } | { type: 'equals' } | { type: 'in' }
+/** Filter kinds for string values. `range` is not one of them. */
+type StringFilter = { type: 'equals' } | { type: 'in' } | { type: 'contains' }
+/** Filter kinds for boolean values. */
+type BooleanFilter = { type: 'equals' }
+
 /** Filter kinds allowed for a column whose value type is `V` (spec §4.1, §6.1). */
 export type FilterFor<V> =
   IsLoose<V> extends true
     ? LooseFilter
     : NonNullable<V> extends number | bigint | Date
-      ? { type: 'range' } | { type: 'equals' } | { type: 'in' }
+      ? NumberFilter
       : NonNullable<V> extends string
-        ? { type: 'equals' } | { type: 'in' } | { type: 'contains' }
+        ? StringFilter
         : NonNullable<V> extends boolean
-          ? { type: 'equals' }
+          ? BooleanFilter
           : never
 
 /** Values the default formatter can render: primitives, `Date`, arrays of those. */
@@ -55,12 +64,15 @@ type BaseColumn<T, V, R> = {
   invalidCell?: (ctx: InvalidCellContext) => R
   /**
    * Renders the cell. Required (or `format`) when the value is an object, a function or an
-   * array of objects — the default formatter cannot display those.
+   * array of objects — the default formatter cannot display those. Primitives, `Date`, arrays of
+   * primitives, `unknown` and `any` need neither. Returns `R` (`ReactNode` in
+   * `@datakable/react`).
    */
   cell?: (ctx: CellContext<T, V>) => R
   /**
    * Formats the value to a string. Required (or `cell`) when the value is an object, a function
-   * or an array of objects — the default formatter cannot display those.
+   * or an array of objects — the default formatter cannot display those. Primitives, `Date`,
+   * arrays of primitives, `unknown` and `any` need neither.
    */
   format?: (value: V) => string
 }
@@ -74,8 +86,34 @@ export type RenderReq<T, V, R> =
     ? BaseColumn<T, V, R>
     : [NonNullable<V>] extends [Displayable]
       ? BaseColumn<T, V, R>
-      : BaseColumn<T, V, R> &
-          ({ cell: (ctx: CellContext<T, V>) => R } | { format: (value: V) => string })
+      : BaseColumn<T, V, R> & (NeedsCell<T, V, R> | NeedsFormat<V>)
+
+// The two ways to satisfy the rendering requirement are named so that a column missing both reads
+// "Property 'format' is missing ... required in type 'NeedsFormat<V>'", with `NeedsCell<T, V, R>`
+// listed as the alternative (docs/reading-type-errors.md, E4 / E5). The JSDoc repeats BaseColumn's
+// word for word: autocomplete on a required `cell` / `format` shows it once only while the copies
+// are identical (pinned in type-errors.test.ts).
+
+/** Value `V` cannot be shown by the default formatter: the column needs `cell` (or `format`). */
+type NeedsCell<T, V, R> = {
+  /**
+   * Renders the cell. Required (or `format`) when the value is an object, a function or an
+   * array of objects — the default formatter cannot display those. Primitives, `Date`, arrays of
+   * primitives, `unknown` and `any` need neither. Returns `R` (`ReactNode` in
+   * `@datakable/react`).
+   */
+  cell: (ctx: CellContext<T, V>) => R
+}
+
+/** Value `V` cannot be shown by the default formatter: the column needs `format` (or `cell`). */
+type NeedsFormat<V> = {
+  /**
+   * Formats the value to a string. Required (or `cell`) when the value is an object, a function
+   * or an array of objects — the default formatter cannot display those. Primitives, `Date`,
+   * arrays of primitives, `unknown` and `any` need neither.
+   */
+  format: (value: V) => string
+}
 
 /** A column bound to a dot-path of `T`; a distributive union over every path. */
 export type KeyColumn<T, R> = {
