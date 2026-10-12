@@ -1,4 +1,10 @@
-import type { ColumnDef, Diagnostic, DiagnosticCode } from '@datakable/core'
+import {
+  type ColumnDef,
+  type Diagnostic,
+  type DiagnosticCode,
+  getOperation,
+  sorting,
+} from '@datakable/core'
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -17,8 +23,8 @@ import { useDataTable } from './use-data-table'
 
 /**
  * The React render slots × injection (§11 fault injection, §8.6, T30 carry-over): `cell`,
- * `invalidCell` and `format` rendered by `<DataTable />`, and a component inside `cell` (the body
- * error boundary). Each case checks the code at the exact `where`, the `⚠` fallback, no row data in
+ * `invalidCell` and `format` rendered by `<DataTable />`, a component inside `cell` / `invalidCell`
+ * (the per-cell boundaries) and one outside the cells (the body boundary). Each case checks the code at the exact `where`, the `⚠` fallback, no row data in
  * any diagnostic, and that the rest of the table keeps working.
  */
 installHarness()
@@ -131,21 +137,97 @@ describe('React render slots × injection (§11)', () => {
     expectNoRowData(seen)
   })
 
-  it('a component inside cell throws: DK_RENDER_FAILED, the body shows Error, the table survives', async () => {
+  it('a component inside cell throws: ⚠ in that cell only, DK_RENDER_FAILED, the table survives', async () => {
     const { seen, onDiagnostic } = sink()
     let broken = true
+    function Boom({ id, name }: { id: string; name: string }): ReactNode {
+      if (broken && id === 'p0') throw new InjectedError()
+      return name
+    }
+    let api: { setOptions(o: object): void; toggleSort(id: string): void } | undefined
+    const data = people()
+    function Table() {
+      const t = useDataTable({
+        data,
+        columns: [
+          { key: 'id' },
+          { key: 'name', cell: ({ row }) => <Boom id={row.id} name={row.name} /> },
+        ] as readonly Col[],
+        onDiagnostic,
+        features: [sorting()],
+      })
+      api = t as never
+      return <DataTable table={t} />
+    }
+    render(<Table />)
+    await act(async () => {})
+    // Only the broken cell falls back; every other cell and row renders.
+    expect(cellsOf(0)).toEqual(['p0', '⚠'])
+    expect(cellsOf(1)).toEqual(['p1', 'Ada'])
+    expect(cellsOf(2)).toEqual(['p2', 'Bob'])
+    expect(screen.queryByRole('alert')).toBeNull()
+    const d = expectDiagnostic(seen, 'DK_RENDER_FAILED', 'operation render:cell at columns[1].cell')
+    expect(d.level).toBe('error')
+    expect(d.details).toMatchObject({ column: 'name', row: 0, errorName: 'InjectedError' })
+    expect(d.context.cause).toBeInstanceOf(InjectedError)
+    expect(seen.filter((x) => x.code === 'DK_RENDER_FAILED')).toHaveLength(1)
+    expectNoRowData(seen)
+    // The table API keeps working: sort by name (Ada, Bob, Cleo) keeps the ⚠ on its row.
+    await act(async () => api?.toggleSort('name'))
+    expect(cellsOf(0)).toEqual(['p1', 'Ada'])
+    expect(cellsOf(2)).toEqual(['p0', '⚠'])
+    // Fixed + new data: the cell renders again.
+    broken = false
+    await act(async () => api?.setOptions({ data: people() }))
+    expect(cellsOf(2)).toEqual(['p0', 'Cleo'])
+  })
+
+  it('a component inside invalidCell throws: ⚠ in that cell, DK_RENDER_FAILED at invalidCell', async () => {
+    const { seen, onDiagnostic } = sink()
     function Boom(): ReactNode {
+      throw new InjectedError()
+    }
+    const schema = makeSchema((v) =>
+      (v as Person).id === 'p1'
+        ? { issues: [{ message: `bad ${SECRET}`, path: ['n'] }] }
+        : { value: v },
+    )
+    render(
+      <DataTable
+        data={people()}
+        schema={schema}
+        invalidRows="flag"
+        onDiagnostic={onDiagnostic}
+        columns={[{ key: 'name' }, { key: 'n', invalidCell: () => <Boom /> }] as never}
+      />,
+    )
+    await act(async () => {})
+    expect(cellsOf(0)).toEqual(['Cleo', '3'])
+    expect(cellsOf(1)).toEqual(['Ada', '⚠'])
+    const d = expectDiagnostic(
+      seen,
+      'DK_RENDER_FAILED',
+      'operation render:cell at columns[1].invalidCell',
+    )
+    expect(d.details).toMatchObject({ column: 'n', row: 1 })
+    expectNoRowData(seen)
+  })
+
+  it('a component outside the cells throws (components.Empty): DK_RENDER_FAILED render:table, the body shows Error, the table survives', async () => {
+    const { seen, onDiagnostic } = sink()
+    let broken = true
+    function BoomEmpty(): ReactNode {
       if (broken) throw new InjectedError()
-      return 'ok'
+      return 'nothing here'
     }
     function Table() {
       const t = useDataTable({
-        data: people(),
-        columns: [{ key: 'id' }, { key: 'name', cell: () => <Boom /> }] as readonly Col[],
+        data: [] as Person[],
+        columns: [{ key: 'id' }, { key: 'name' }] as readonly Col[],
         onDiagnostic,
         features: [],
       })
-      return <DataTable table={t} />
+      return <DataTable table={t} components={{ Empty: BoomEmpty }} />
     }
     render(<Table />)
     await act(async () => {})
@@ -160,6 +242,12 @@ describe('React render slots × injection (§11)', () => {
     await act(async () => {
       fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }))
     })
-    expect(cellsOf(0)).toEqual(['p0', 'ok'])
+    expect(screen.getByText('nothing here')).toBeTruthy()
+  })
+
+  it('registers the render:* operations (§3.4) on the first render: sync, not hot', () => {
+    render(<DataTable data={people()} />)
+    expect(getOperation('render:table')).toEqual({ kind: 'sync', hot: false })
+    expect(getOperation('render:cell')).toEqual({ kind: 'sync', hot: false })
   })
 })

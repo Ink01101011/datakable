@@ -222,8 +222,9 @@ renders what the installed features provide: without `search()` there is no sear
 the first load failed (with a retry), Empty once loaded with zero rows, and a refresh indicator
 over stale rows otherwise. Rows flagged by a schema (`invalidRows: 'flag'`) get
 `data-invalid` / `aria-invalid`. A `cell` / `format` that throws renders `⚠` in that cell
-(`DK_CALLBACK_FAILED`); a component that throws while rendering the body shows the Error state
-with a retry (`DK_RENDER_FAILED`) instead of unmounting the page.
+(`DK_CALLBACK_FAILED`), and so does a component returned by `cell` that throws while rendering
+(`DK_RENDER_FAILED`, per-cell error boundary; the other cells keep rendering). A component that
+throws elsewhere in the body shows the Error state with a retry instead of unmounting the page.
 
 For a default look, import `datakable/styles.css` once (e.g. `import 'datakable/styles.css'` in
 your app entry). It styles only those hooks, every rule has zero specificity (`:where()`), so
