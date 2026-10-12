@@ -144,8 +144,8 @@ defineInterceptor({
 | `slotContract` | `column:batch` | checks callback return values against `defineSlot` (`DK_CALLBACK_BAD_RETURN`) |
 | `asyncControl` | `async:request` | AbortController per request, latest-wins, timeout, superseded handling |
 | `tracer` | `pipeline:*`, `state:dispatch` | timings and per-step counts for `explain()`; off in prod unless `trace: true` |
-| `optionValidator` | `table:init`, `table:setOptions` | reads `defineOptions`: unknown / invalid / no-effect options, mode ordering, version and feature compatibility |
-| `deprecation` | `table:*`, `state:dispatch` | reads `defineDeprecation` |
+| `optionValidator` | `table:init`, `table:setOptions` (called directly, before the chain runs) | reads `defineOptions`: unknown / invalid / no-effect options, mode ordering, version and feature compatibility. Not installed as a chain interceptor: it must run before the runtime is built from unchecked options, and a config error must throw to the caller instead of being caught by `errorBoundary` (decided at R5, 2026-10-12) |
+| `deprecation` | `table:*`, `state:dispatch` (called directly via `warnDeprecated`) | reads `defineDeprecation`; same reasoning as `optionValidator` |
 | `devChecks` (dev only) | `data:ingest`, `pipeline:step` | data mutation, comparator sanity, feature output and mutation checks |
 | `enrich → redact → dedupe/rateLimit → sinks` | `diagnostic:emit` | the log pipeline |
 
