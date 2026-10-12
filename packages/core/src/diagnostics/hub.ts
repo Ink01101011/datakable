@@ -176,7 +176,9 @@ export function createDiagnostics(options: DiagnosticsOptions = {}): Diagnostics
       // diagnostic:emit) skip the chain, so a broken logger cannot recurse.
       if (runtime && depth === 0) {
         const c = d.context
-        const ctx = createContext('diagnostic:emit', { diagnostic: d }, formatWhere(d.where), {
+        // ctx.where reaches slots, fingerprints and issue links unredacted: never the row key.
+        const at = d.where.kind === 'row' ? { kind: 'row' as const, index: d.where.index } : d.where
+        const ctx = createContext('diagnostic:emit', { diagnostic: d }, formatWhere(at), {
           table: options.table,
           run: c.run,
           trigger: c.trigger,

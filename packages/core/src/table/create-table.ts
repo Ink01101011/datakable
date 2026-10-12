@@ -14,6 +14,7 @@ import { FALLBACK } from '../intercept/fallbacks'
 import type { OpInput, OpName, OpResult } from '../intercept/operations'
 import { type Core, createInterceptorRuntime } from '../intercept/runtime'
 import { ASYNC_STATUS, type AsyncStatus, asyncControl } from '../source/async-control'
+import { checkVersions } from '../versioning/registry'
 import { tableDiagnostics } from './codes'
 import { setTableInternals } from './internals'
 import {
@@ -132,6 +133,8 @@ export function createTable<T, S extends TableState>(
   })
   runtime.installBoundary(errorBoundary)
   hub.attach(runtime)
+  // Feature `requires.core` (throws DK_FEATURE_INCOMPATIBLE), duplicate cores, version mismatch.
+  checkVersions(features, hub.emit, hub.table)
 
   function sensitiveColumns(): string[] {
     const out: string[] = []
