@@ -2,6 +2,7 @@ import type { OptionsDefinition } from '../catalog/options'
 import type { Emit } from '../diagnostics/types'
 import type { Interceptor } from '../intercept/define'
 import type { OpName } from '../intercept/operations'
+import type { RowIssue } from '../pipeline/row'
 import type { Table, TableState } from '../table/types'
 
 // --- HKT-lite (ported from the brainstorm prototype `typeproto/feat.ts`) --------------------------
@@ -80,6 +81,11 @@ export interface RowModelContext<T = unknown> {
   getColumnValues(id: string): Float64Array | readonly unknown[] | undefined
   /** The formatted values of column `id` (its `format`, else the default formatter). */
   getFormattedValues(id: string): readonly string[] | undefined
+  /**
+   * Under `schema` + `invalidRows: 'flag'` (§5.1): the schema issues of row `index` of `data`,
+   * `undefined` for a valid row. Absent in every other mode (no row is flagged there).
+   */
+  readonly flagged?: (index: number) => readonly RowIssue[] | undefined
 }
 
 // --- the feature contract ------------------------------------------------------------------------

@@ -12,11 +12,11 @@ export interface RowSource {
   value(index: number, original: unknown, id: string): unknown
   /** Schema issues of a flagged row (`invalidRows: 'flag'`); `undefined` for a valid row. */
   issues(index: number): readonly RowIssue[] | undefined
-  /** The issues of a flagged row whose path points into column `id` (a key column). */
+  /** The issues of a flagged row that touch column `id` (`matchCellIssues`). */
   cellIssues(issues: readonly RowIssue[], id: string): readonly RowIssue[]
 }
 
-const NO_ISSUES: readonly RowIssue[] = Object.freeze([])
+export const NO_ISSUES: readonly RowIssue[] = Object.freeze([])
 
 /**
  * One visible row (§6.6). Created only for the rows `getRowModel()` returns, never for the whole
@@ -58,9 +58,10 @@ export class Row<T = unknown> {
   }
 
   /**
-   * The schema issues whose path points into column `id`: the issue path equals the column key, or
-   * one contains the other (`address` ↔ `address.city`); row-level issues (no path) count for every
-   * cell. Accessor columns have no path, so no cell issues.
+   * The schema issues whose path points into column `id`, matched segment by segment: the issue
+   * path equals the column key, or one contains the other (`address` ↔ `address.city`, never
+   * `addressLine`). Row-level issues (no path) count for every cell; accessor columns have no key,
+   * so they get only those. Empty for a valid row or an unknown column.
    */
   getCellIssues(id: string): readonly RowIssue[] {
     const issues = this.#source.issues(this.index)
