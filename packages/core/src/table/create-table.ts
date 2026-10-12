@@ -7,6 +7,8 @@ import type { Trigger } from '../diagnostics/types'
 import { initialSlices, installApis } from '../feature/install'
 import { orderFeatures } from '../feature/order'
 import type { AnyFeature, ApiOf, SliceUpdater, TableStateFor } from '../feature/types'
+import { createDataChecks } from '../ingest/data-checks'
+import { createDerivedColumns } from '../ingest/derive-columns'
 import { errorBoundary } from '../intercept/boundary'
 import { callUser, errorName } from '../intercept/classify'
 import { type ContextBase, createContext } from '../intercept/context'
@@ -147,6 +149,9 @@ export function createTable<T, S extends TableState>(
   hub.attach(runtime)
   // Feature `requires.core` (throws DK_FEATURE_INCOMPATIBLE), duplicate cores, version mismatch.
   checkVersions(features, hub.emit, hub.table)
+  // Ingest data checks (§5.3) and zero-config columns (§4.1): both read only the first rows.
+  const dataChecks = createDataChecks(hub.emit)
+  const derivedColumns = createDerivedColumns()
 
   function sensitiveColumns(): string[] {
     const out: string[] = []
@@ -339,6 +344,8 @@ export function createTable<T, S extends TableState>(
     if (next === data) return
     data = next
     pending = true
+    // After `data` is set: diagnostics dedupe per data reference.
+    dataChecks.check(data, options.columns)
     // The pipeline runs before the next notification (or on getRowModel), as `pipeline:run` with
     // ctx.meta[FALLBACK] = the last good row model (pipeline/runner.ts).
     rowModelDirty = true
@@ -355,7 +362,7 @@ export function createTable<T, S extends TableState>(
     nextRun: () => ++run,
     getData: () => data,
     getState: () => snapshot,
-    getColumns: () => options.columns,
+    getColumns: () => options.columns ?? derivedColumns(data),
     getRowKey: () => options.rowKey,
     isInitialLoad: () => !loaded,
   })
@@ -486,7 +493,9 @@ export function createTable<T, S extends TableState>(
           rowModelDirty = true
           pending = true
         }
+        // New data is checked when applied (setData); same data with new columns is checked here.
         if (next.data !== previous.data) ingest()
+        else if (next.columns !== previous.columns) dataChecks.check(data, next.columns)
       })
       flush()
     })
