@@ -34,12 +34,10 @@ import { type UseDataTableOptions, useDataTable } from './use-data-table'
 // The codes this module emits (bundlers keep the definitions; see core's `keepDiagnostics`).
 keepDiagnostics(renderDiagnostics, boundaryDiagnostics, slotDiagnostics)
 
-/**
- * The ops its boundaries stand for (§3.4: `render:table`, `render:cell`), registered on the first
- * render rather than at import: the dist is one file, so a top-level call would also ship in
- * hook-only bundles (`useDataTable` without `<DataTable />`).
- */
-let opsRegistered = false
+// The ops its boundaries stand for (§3.4: `render:table`, `render:cell`). Registered at import:
+// the dist is one file per module (T37), so hook-only bundles (`useDataTable` without
+// `<DataTable />`) never include this module, and this call ships only with `<DataTable />`.
+registerRenderOperations()
 
 // No @types/node here: declare just what is read.
 declare const process: { env: { NODE_ENV?: string } }
@@ -177,10 +175,6 @@ export function DataTable<
 export function DataTable(
   props: DataTableOwnProps & { table?: DataTableSource | undefined },
 ): ReactNode {
-  if (!opsRegistered) {
-    opsRegistered = true
-    registerRenderOperations()
-  }
   if (props.table !== undefined) {
     return (
       <DataTableView table={props.table} components={props.components} caption={props.caption} />
