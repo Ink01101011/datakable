@@ -14,8 +14,9 @@ npm install @datakable/core
 **Bundler requirement:** core reads `process.env.NODE_ENV` directly so bundlers can fold it to a
 constant and remove development-only checks, tracing and message text from production builds.
 Vite, webpack, Next.js, Rollup (`@rollup/plugin-replace`) and esbuild
-(`--define:process.env.NODE_ENV='"production"'`) all replace it. Without a replacement, `process`
-is undefined in the browser. Node needs nothing.
+(`--define:process.env.NODE_ENV='"production"'`) all replace it. Without a replacement, unbundled
+browser code throws `ReferenceError: process is not defined`, as React and Redux do. Node needs
+nothing.
 
 ## Contents
 
@@ -317,7 +318,10 @@ rows after ingest.
 | `'error'` | a diagnostic affected the row model; the last good row model is shown |
 
 When activities overlap, the most specific one wins: `error` > `fetching` > `searching` >
-`validating` > `pending` > `idle`.
+`validating` > `pending` > `idle`. So a `refetch()` after a failed fetch keeps `status: 'error'`
+until a request applies; await the promise `refetch()` returns to follow the retry. A cell-level
+problem handled inside a step (a throwing `format`, `DK_FILTER_TYPE_MISMATCH`) is reported as a
+diagnostic and leaves the status as it was.
 
 `isInitialLoad` is `true` until the table has had rows to show for the first time (data given at
 creation, or the first fetcher / `searchFn` result applied). It never goes back to `true`, and an

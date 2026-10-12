@@ -11,8 +11,9 @@ preset; this package installs **no** features unless you pass them.
 npm install @datakable/react @datakable/core react
 ```
 
-React `>=18`. The bundle carries a `"use client"` directive. Like core, it needs a bundler that
-replaces `process.env.NODE_ENV` (see [core](https://github.com/Ink01101011/datakable/tree/main/packages/core)).
+React `>=18`. Every module of the bundle carries a `"use client"` directive, so the Next.js app
+router treats `<DataTable />` and `useDataTable` imported from here as client code. Like core,
+it needs a bundler that replaces `process.env.NODE_ENV` (see [core](https://github.com/Ink01101011/datakable/tree/main/packages/core)).
 
 ## useDataTable
 

@@ -8,11 +8,10 @@ import type { DiagnosticCode } from '../diagnostics/catalog'
  * cache count through it (flagged steps are not memoised, flagged cache entries re-flag on every
  * read), so changing it is the whole change.
  *
- * OPEN USER QUESTION (R6 → T30): in-step diagnostics such as `DK_FILTER_TYPE_MISMATCH`, a
- * throwing custom filter `fn`, `sortBy`, `sortFn`, `format` or a throwing accessor currently leave
- * the status as it was. Default until the user answers (orchestrator): a handled cell-level problem
- * is a diagnostic only, so `false` for every code. The other answer is `return true`, or a
- * narrower rule by level (`getDiagnosticDefinition(code)?.level !== 'info'`) or by a list of codes.
+ * Decided 2026-10-13 (spec §6.6, decisions log §14 #1): in-step diagnostics such as
+ * `DK_FILTER_TYPE_MISMATCH`, a throwing custom filter `fn`, `sortBy`, `sortFn`, `format` or a
+ * throwing accessor leave the status as it was: a handled cell-level problem is a diagnostic only,
+ * so `false` for every code.
  *
  * Not decided here (always `'error'`): a step that throws or returns a bad output, a failed
  * `data:ingest`, a failed fetcher request, a failed `searchFn`. Not counted: diagnostics outside a
