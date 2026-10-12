@@ -21,7 +21,9 @@
     "headless"
   ],
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "./dist/styles.css"
+  ],
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -36,6 +38,7 @@
         "default": "./dist/index.cjs"
       }
     },
+    "./styles.css": "./dist/styles.css",
     "./package.json": "./package.json"
   },
   "files": [
@@ -45,7 +48,7 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "typecheck": "tsc -p tsconfig.json",
-    "check:pkg": "publint --strict && attw --pack . --profile node16"
+    "check:pkg": "publint --strict && attw --pack . --profile node16 --exclude-entrypoints styles.css"
   },
   "dependencies": {
     "@datakable/core": "workspace:^"
