@@ -13,6 +13,8 @@ import type { Interceptor } from '../intercept/define'
 import { FALLBACK } from '../intercept/fallbacks'
 import type { OpInput, OpName, OpResult } from '../intercept/operations'
 import { type Core, createInterceptorRuntime } from '../intercept/runtime'
+import { createPipeline } from '../pipeline/runner'
+import type { RowModel } from '../pipeline/types'
 import { ASYNC_STATUS, type AsyncStatus, asyncControl } from '../source/async-control'
 import { tableDiagnostics } from './codes'
 import { setTableInternals } from './internals'
@@ -61,8 +63,8 @@ export function createTable<T, S extends TableState>(
   let options: TableOptions<T, S> = { ...initialOptions }
   let destroyed = false
   let trigger: Trigger = 'init'
-  /** Pipeline run id; the pipeline (T09) increments it. */
-  const run = 0
+  /** Pipeline run id; each `pipeline:run` increments it. */
+  let run = 0
   let data: readonly T[] = EMPTY
   let ingestSeq = 0
 
@@ -80,6 +82,8 @@ export function createTable<T, S extends TableState>(
   const listeners = new Map<number, Listener<S>>()
   /** Depth of feature API calls in progress: listeners are notified when the outermost returns. */
   let apiDepth = 0
+  /** Data, state or columns changed since the row model was computed. */
+  let rowModelDirty = true
 
   const table: Table<T, S> = {
     getState: () => snapshot,
@@ -88,6 +92,8 @@ export function createTable<T, S extends TableState>(
     setOptions,
     getOptions: () => options,
     getData: () => data,
+    // Core method: on the literal before installApis, so no feature can take the name.
+    getRowModel,
     getDiagnostics: () => hub.getDiagnostics(),
     destroy,
   }
@@ -194,6 +200,7 @@ export function createTable<T, S extends TableState>(
   function commit(next: S) {
     snapshot = next
     pending = true
+    rowModelDirty = true
   }
 
   function warnControlled(dropped: string[] | undefined) {
@@ -256,6 +263,8 @@ export function createTable<T, S extends TableState>(
         const prev = notified
         const state = snapshot
         notified = state
+        // Listeners read the row model of the state they are notified with.
+        ensureRowModel()
         for (const [id, listener] of [...listeners]) {
           // A listener may destroy the table: the rest of the round is not notified.
           if (destroyed) break
@@ -314,7 +323,37 @@ export function createTable<T, S extends TableState>(
     if (next === data) return
     data = next
     pending = true
-    // T09 seam: run `pipeline:run` here with ctx.meta[FALLBACK] = the last good row model.
+    // The pipeline runs before the next notification (or on getRowModel), as `pipeline:run` with
+    // ctx.meta[FALLBACK] = the last good row model (pipeline/runner.ts).
+    rowModelDirty = true
+  }
+
+  // --- row model ---------------------------------------------------------------------------------
+
+  const runner = createPipeline<T>({
+    runtime,
+    emit: hub.emit,
+    features: pipeline,
+    listed: features,
+    base,
+    nextRun: () => ++run,
+    getData: () => data,
+    getState: () => snapshot,
+    getColumns: () => options.columns,
+    getRowKey: () => options.rowKey,
+  })
+
+  /** Recomputes the row model if data, state or columns changed (never after destroy). */
+  function ensureRowModel() {
+    if (!rowModelDirty || destroyed) return
+    rowModelDirty = false
+    runner.run()
+  }
+
+  function getRowModel(): RowModel<T> {
+    ensureRowModel()
+    // Only empty when destroyed before the first run.
+    return runner.current() ?? { rows: EMPTY, filteredCount: 0, totalCount: 0, status: 'idle' }
   }
 
   /** `data:ingest` with the previous data as fallback; an async result is applied if still latest. */
@@ -419,6 +458,10 @@ export function createTable<T, S extends TableState>(
           runtime.setInterceptors(withControl(next.interceptors))
         }
         if ('state' in partial || 'onStateChange' in partial) syncControlled()
+        if (next.columns !== previous.columns || next.rowKey !== previous.rowKey) {
+          rowModelDirty = true
+          pending = true
+        }
         if (next.data !== previous.data) ingest()
       })
       flush()

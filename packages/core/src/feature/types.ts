@@ -59,7 +59,8 @@ export interface FeatureContext<S = unknown> {
 }
 
 /**
- * The third argument of `rowModel`. The pipeline runner (T09) fills it and may add members.
+ * The third argument of `rowModel`, filled by the pipeline runner. Column values come from the
+ * lazy column cache (§9.1): read once per data reference and column, in one `column:batch`.
  */
 export interface RowModelContext<T = unknown> {
   /** The feature's `name`. */
@@ -67,6 +68,17 @@ export interface RowModelContext<T = unknown> {
   /** The ingested rows; `indices` point into this array. */
   readonly data: readonly T[]
   readonly emit: Emit
+  /** Pipeline run id (the `run` of diagnostics emitted during this run). */
+  readonly run: number
+  /** `options.columns` (empty when not given). */
+  readonly columns: readonly unknown[]
+  /**
+   * The values of column `id` for every row of `data` (index = row index), or `undefined` for an
+   * unknown column. An all-number column is a `Float64Array` (`NaN` for `null` / `undefined`).
+   */
+  getColumnValues(id: string): Float64Array | readonly unknown[] | undefined
+  /** The formatted values of column `id` (its `format`, else the default formatter). */
+  getFormattedValues(id: string): readonly string[] | undefined
 }
 
 // --- the feature contract ------------------------------------------------------------------------
