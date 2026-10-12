@@ -3,6 +3,9 @@ import { DEV } from '../diagnostics/env'
 import { createDiagnostics } from '../diagnostics/hub'
 import type { RedactionOptions } from '../diagnostics/redact'
 import type { Trigger } from '../diagnostics/types'
+import { initialSlices, installApis } from '../feature/install'
+import { orderFeatures } from '../feature/order'
+import type { AnyFeature, ApiOf, SliceUpdater, TableStateFor } from '../feature/types'
 import { errorBoundary } from '../intercept/boundary'
 import { callUser, errorName } from '../intercept/classify'
 import { type ContextBase, createContext } from '../intercept/context'
@@ -45,7 +48,14 @@ const columnId = (c: { key?: unknown; id?: unknown }): unknown => c.key ?? c.id
  * `setState`, `destroy`): it reaches fingerprints, docs URLs and issue links unredacted, so it must
  * never carry row keys or cell values.
  */
-export function createTable<T, S extends TableState = TableState>(
+export function createTable<
+  T,
+  S extends TableState = never,
+  const Fs extends readonly AnyFeature[] = [],
+>(
+  options: TableOptions<T, TableStateFor<S, Fs, T>> & { features?: Fs },
+): Table<T, TableStateFor<S, Fs, T>> & ApiOf<Fs, T>
+export function createTable<T, S extends TableState>(
   initialOptions: TableOptions<T, S>,
 ): Table<T, S> {
   let options: TableOptions<T, S> = { ...initialOptions }
@@ -68,6 +78,8 @@ export function createTable<T, S extends TableState = TableState>(
   let current: number | undefined
   let listenerSeq = 0
   const listeners = new Map<number, Listener<S>>()
+  /** Depth of feature API calls in progress: listeners are notified when the outermost returns. */
+  let apiDepth = 0
 
   const table: Table<T, S> = {
     getState: () => snapshot,
@@ -100,12 +112,18 @@ export function createTable<T, S extends TableState = TableState>(
     getDataRef: () => data,
     redaction,
   })
+  // Features (§3.3) are read once, at creation. `features` is the listed order (API install, conflict
+  // reports); `pipeline` is stage order for the runner. Duplicates throw here (config error).
+  const features: readonly AnyFeature[] = options.features ?? EMPTY
+  const pipeline = orderFeatures(features, hub.table)
   // One asyncControl per table (it holds this table's in-flight requests), first in the list so
   // user / feature interceptors and the core see its signal; the boundary stays outermost.
-  // `timeout` is read once, at creation.
+  // Feature interceptors (pipeline order) come next, then the user's. `timeout` is read once.
   const control = asyncControl(options.timeout === undefined ? {} : { timeout: options.timeout })
+  const featureInterceptors = pipeline.flatMap((f) => f.interceptors ?? EMPTY)
   const withControl = (list: readonly Interceptor<OpName>[] | undefined) => [
     control as Interceptor<OpName>,
+    ...featureInterceptors,
     ...(list ?? EMPTY),
   ]
   const runtime = createInterceptorRuntime({
@@ -191,9 +209,9 @@ export function createTable<T, S extends TableState = TableState>(
     warnControlled(undefined)
   }
 
-  function dispatch(updater: Updater<S>) {
+  function dispatch(updater: Updater<S>, slot: string) {
     const partial: Partial<S> =
-      typeof updater === 'function' ? callUser('setState', updater, snapshot) : updater
+      typeof updater === 'function' ? callUser(slot, updater, snapshot) : updater
     if (partial === null || typeof partial !== 'object') return
     let next: TableState | undefined
     let changes: TableState | undefined
@@ -331,14 +349,44 @@ export function createTable<T, S extends TableState = TableState>(
 
   // --- API ---------------------------------------------------------------------------------------
 
+  /** `state:dispatch` (where = `slot`, a constant method / feature name); notifies unless batched. */
+  function update(updater: Updater<S>, slot: string) {
+    void op('state:dispatch', { updater }, slot, (): undefined => {
+      dispatch(updater, slot)
+    })
+    if (apiDepth === 0) flush()
+  }
+
   function setState(updater: Updater<S>) {
     if (destroyed) return destroyedCall('setState')
     if (!admit(typeof updater === 'function' ? [] : Object.keys(updater ?? {}))) return
-    withTrigger('api:setState', () => {
-      void op('state:dispatch', { updater }, 'setState', (): undefined => {
-        dispatch(updater)
-      })
-      flush()
+    withTrigger('api:setState', () => update(updater, 'setState'))
+  }
+
+  // --- features ----------------------------------------------------------------------------------
+
+  /** A feature's `ctx.setState`: replaces its own slice (trigger: the API call's, if any). */
+  function setSlice(name: string, updater: SliceUpdater<unknown>) {
+    if (destroyed) return destroyedCall(`${name}.setState`)
+    if (!admit([name])) return
+    const slice: Updater<S> =
+      typeof updater === 'function'
+        ? (prev) => ({ [name]: (updater as (p: unknown) => unknown)(prev[name]) }) as Partial<S>
+        : ({ [name]: updater } as Partial<S>)
+    update(slice, name)
+  }
+
+  /** Runs a feature API method (wrapped once by `installApis`). */
+  function callApi(method: string, fn: () => unknown): unknown {
+    if (destroyed) return destroyedCall(method)
+    return withTrigger(`api:${method}`, () => {
+      apiDepth++
+      try {
+        return fn()
+      } finally {
+        apiDepth--
+        if (apiDepth === 0) flush()
+      }
     })
   }
 
@@ -359,7 +407,12 @@ export function createTable<T, S extends TableState = TableState>(
     if (!admit(Object.keys(partial.state ?? {}))) return
     withTrigger('setOptions', () => {
       const previous = options
+      // `features` is read once, at creation: a new value is ignored.
       const next = { ...options, ...partial }
+      if ('features' in next && next.features !== previous.features) {
+        if (previous.features === undefined) delete next.features
+        else next.features = previous.features
+      }
       void op('table:setOptions', { options: next, previous }, 'options', (): undefined => {
         options = next
         if (next.interceptors !== previous.interceptors) {
@@ -405,14 +458,23 @@ export function createTable<T, S extends TableState = TableState>(
     const value = await runtime.run('async:request', ctx, (c) => core(c.signal as AbortSignal))
     return { value, status: (ctx.meta.get(ASYNC_STATUS) as AsyncStatus | undefined) ?? 'error' }
   }
-  setTableInternals(table, { request })
+  setTableInternals(table, { request, features: pipeline })
 
   // --- init --------------------------------------------------------------------------------------
 
   controlled = controlledKeys(options.state)
-  // T08 seam: feature `initialState()` slices go under `options.initialState`.
-  snapshot = overlay(freeze({ ...options.initialState } as S))
+  // Feature `initialState()` slices, with `options.initialState` on top per slice.
+  snapshot = overlay(freeze(initialSlices(features, options.initialState, hub.emit) as S))
   notified = snapshot
+  // Merges the feature APIs onto the table; a name clash throws DK_FEATURE_API_CONFLICT.
+  installApis(features, {
+    table: table as unknown as Table<unknown, TableState>,
+    tableName: hub.table,
+    emit: hub.emit,
+    getSlice: (name) => snapshot[name],
+    setSlice,
+    call: callApi,
+  })
   withTrigger('init', () => {
     // `void`: sync ops never return a promise (op kinds, §3.4).
     void op('table:init', { options }, 'options', (): undefined => {

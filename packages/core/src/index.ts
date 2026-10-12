@@ -15,6 +15,7 @@ export type {
 } from './column'
 export { type CompiledPath, compilePath, defaultFormat, getValue } from './column'
 export * from './diagnostics'
+export * from './feature'
 export * from './intercept'
 export * from './source'
 export * from './table'
