@@ -311,7 +311,7 @@ rows after ingest.
 | --- | --- |
 | `'idle'` | the row model is current |
 | `'validating'` | an async schema is running |
-| `'pending'` | a search debounce is waiting |
+| `'pending'` | a search debounce is waiting, time-sliced work (search index, string sort over large data) is running, or async work waits for the client after SSR (`createDeferred`) |
 | `'searching'` | an async `searchFn` request is in flight |
 | `'fetching'` | a `fetcher` request is in flight (initial load, or a page / sort / filter / query change in server mode) |
 | `'error'` | a diagnostic affected the row model; the last good row model is shown |

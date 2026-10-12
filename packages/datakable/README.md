@@ -159,7 +159,7 @@ unless you pass them (see [Features](https://github.com/Ink01101011/datakable/tr
 | --- | --- |
 | `'idle'` | the row model is current |
 | `'validating'` | an async schema is running |
-| `'pending'` | a search debounce is waiting |
+| `'pending'` | a search debounce is waiting, time-sliced work (search index, string sort over large data) is running, or async work waits for the client after SSR |
 | `'searching'` | an async `searchFn` is in flight |
 | `'fetching'` | a `fetcher` request is in flight |
 | `'error'` | something affected the row model; the last good rows are still shown |
@@ -184,17 +184,114 @@ import 'datakable/messages'
 Redaction, `onDiagnostic` (e.g. Sentry), `strict` and `explain()`:
 [`@datakable/core` diagnostics](https://github.com/Ink01101011/datakable/tree/main/packages/core#diagnostics).
 
-## Coming next
+## `<DataTable />`
 
-These are specified but not released yet:
+```tsx
+import { DataTable, type DataTableComponents, useDataTable } from 'datakable'
 
-- **`<DataTable />`** — `<DataTable data={rows} />` (zero-config) or
-  `<DataTable table={useDataTable(…)} />`: sort headers with `aria-sort`, a search input
-  (Enter commits, Esc clears), pagination, Loading / Empty / Error states driven by `status` +
-  `isInitialLoad`, `data-invalid` on flagged rows, `components` overrides, unstyled with `data-*`
-  hooks.
-- **SSR** — `initialState` (e.g. from the URL) and `initialData`, pre-filtered server HTML, and
-  hydration without a re-fetch.
+type User = { id: number; name: string; age: number }
+
+// Zero-config: columns come from the data; sort headers (with aria-sort), a search input
+// (Enter commits, Esc clears), pagination, and Loading / Empty / Error states. Unstyled: style
+// the data-* hooks (data-status, data-initial-load, data-sort, data-invalid, …).
+export function AllUsers({ users }: { users: User[] }) {
+  return <DataTable data={users} rowKey="id" caption="Users" />
+}
+
+// Replace any part; the others stay built in.
+const components: DataTableComponents = {
+  Empty: ({ filtered }) => <p>{filtered ? 'No user matches.' : 'No users yet.'}</p>,
+  Loading: () => <p role="status">Loading users…</p>,
+}
+
+// Or render a table you set up yourself (features, controlled state, a fetcher, …).
+export function Oldest({ users }: { users: User[] }) {
+  const table = useDataTable({
+    data: users,
+    rowKey: 'id',
+    initialState: { sorting: { by: [{ id: 'age', desc: true }] } },
+  })
+  return <DataTable table={table} components={components} />
+}
+```
+
+`<DataTable />` takes `useDataTable`'s options (or `table`), plus `components` and `caption`. It
+renders what the installed features provide: without `search()` there is no search input, without
+`pagination()` no pager. Loading shows while the first rows are on their way (`isInitialLoad` with
+`fetching` / `searching` / `validating`, or `pending` for async work deferred by SSR), Error when
+the first load failed (with a retry), Empty once loaded with zero rows, and a refresh indicator
+over stale rows otherwise. Rows flagged by a schema (`invalidRows: 'flag'`) get
+`data-invalid` / `aria-invalid`. A `cell` / `format` that throws renders `⚠` in that cell
+(`DK_CALLBACK_FAILED`); a component that throws while rendering the body shows the Error state
+with a retry (`DK_RENDER_FAILED`) instead of unmounting the page.
+
+## SSR
+
+```tsx
+import { DataTable, type FetchParams, type FetchResult, pagination, sorting } from 'datakable'
+
+type User = { id: number; name: string }
+
+async function fetchUsers({ sort, pageIndex, pageSize, signal }: FetchParams) {
+  const order = (sort ?? []).map((s) => `${s.desc ? '-' : ''}${s.id}`).join(',')
+  const res = await fetch(`/api/users?sort=${order}&page=${pageIndex}&size=${pageSize}`, { signal })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return (await res.json()) as FetchResult<User> // { rows, rowCount }
+}
+
+// Read once, at creation: define features outside the component.
+const features = [sorting({ mode: 'server' }), pagination({ mode: 'server', pageSize: 20 })]
+
+// Rendered on the server, then hydrated. `firstPage` / `rowCount` were fetched on the server
+// for the same initial state (e.g. parsed from the URL and passed as `initialState`).
+export function Users({ firstPage, rowCount }: { firstPage: User[]; rowCount: number }) {
+  return (
+    <DataTable
+      rowKey="id"
+      features={features}
+      fetcher={fetchUsers}
+      // The server HTML shows these rows and hydration does not fetch them again. Without
+      // initialData nothing is fetched on the server: the HTML shows Loading (status 'pending',
+      // DK_SSR_ASYNC_DEFERRED) and the browser fetches right after hydrating.
+      initialData={firstPage}
+      rowCount={rowCount}
+    />
+  )
+}
+```
+
+- Rendering starts no async work: the fetcher's first request and a `searchFn` for an initial
+  query run after hydration, unless `initialData` already holds their result.
+- `initialState` (e.g. `?q=ada&sort=-age` parsed from the URL) applies on the server: client-mode
+  features filter, search and sort the HTML.
+- The hydrated client renders the same snapshot as the server; a table that changed before the
+  hydration commit reports `DK_HYDRATION_MISMATCH`, naming the slices. Time-sliced work never runs
+  on the server or for the first row model, so it cannot cause a mismatch.
+
+Without React, `createDeferred` / `startTable` give your own bindings the same behaviour:
+
+```ts
+import { createDeferred, createTable, type FetchResult, sorting, startTable } from 'datakable'
+
+type User = { id: number; name: string }
+
+// For your own bindings (useDataTable does this for you): a table created inside
+// createDeferred starts no async work — no fetcher request, no searchFn call, no timer.
+const table = createDeferred(() =>
+  createTable({
+    rowKey: 'id',
+    features: [sorting({ mode: 'server' })],
+    fetcher: async ({ signal }) =>
+      (await (await fetch('/api/users', { signal })).json()) as FetchResult<User>,
+  }),
+)
+
+// On the server: render from the row model as it is (status 'pending', no rows yet).
+console.log(table.getRowModel().status) // 'pending'
+
+// In the browser, once the server HTML is hydrated: the deferred request starts.
+startTable(table)
+```
 
 ## Entry points
 

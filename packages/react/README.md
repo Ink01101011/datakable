@@ -72,12 +72,44 @@ and the same object otherwise, so it works as a `useMemo` dependency.
 - Status-driven UI: render from `table.rowModel.status` and `isInitialLoad` (the
   [status model](https://github.com/Ink01101011/datakable/tree/main/packages/core#status-model)).
 
-## Coming next
+## DataTable
 
-`<DataTable />` (zero-config rendering, sort headers with `aria-sort`, search input, pagination,
-Loading / Empty / Error states, `components` overrides), an error boundary for `cell` renders, and
-SSR (`initialState` / `initialData`, hydration without a re-fetch) are specified and land in this
-package in a later release.
+```tsx
+import { type ColumnDef, pagination, search, sorting } from '@datakable/core'
+import { DataTable } from '@datakable/react'
+import type { ReactNode } from 'react'
+
+type User = { id: number; name: string; age: number }
+
+const columns: ColumnDef<User, ReactNode>[] = [
+  { key: 'name', header: 'Name' },
+  { key: 'age', header: 'Age', sortable: false },
+]
+// @datakable/react's DataTable renders what the installed features provide (none by default).
+const features = [search(), sorting(), pagination({ pageSize: 20 })]
+
+export function Users({ users }: { users: User[] }) {
+  return <DataTable data={users} rowKey="id" columns={columns} features={features} />
+}
+```
+
+`<DataTable />` renders sort headers with `aria-sort`, a search input (Enter = `flushSearch`, Esc =
+`clearSearch`), pagination, and Loading / Error / Empty states from `status` + `isInitialLoad`,
+for the features installed (this package installs none by default). Pass `table={useDataTable(…)}`
+to render a table you set up yourself, `components` to replace the search input, pager or states,
+and style it through the `data-*` hooks (`data-status`, `data-initial-load`, `data-sort`,
+`data-invalid`). A `cell` that throws renders `⚠` in that cell (`DK_CALLBACK_FAILED`); a component
+that throws inside the body shows the Error state with a retry (`DK_RENDER_FAILED`).
+
+## SSR
+
+`useDataTable` and `<DataTable />` render on the server: `initialState` applies there (client-mode
+features filter, search and sort the HTML), and no async work starts. The fetcher's first request
+and a `searchFn` for an initial query run after hydration (`status: 'pending'` until then, shown
+as Loading by `<DataTable />`), unless `initialData` holds their result, in which case hydration
+does not fetch again. A table that changed before the hydration commit reports
+`DK_HYDRATION_MISMATCH`. Example:
+[`datakable` SSR](https://github.com/Ink01101011/datakable/tree/main/packages/datakable#ssr).
 
 ## License
 
