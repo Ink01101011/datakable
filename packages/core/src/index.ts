@@ -17,6 +17,7 @@ export type {
 export { type CompiledPath, compilePath, defaultFormat, getValue } from './column'
 export * from './diagnostics'
 export * from './feature'
+export { rowKeyDiagnostics } from './ingest/row-key-codes'
 export * from './intercept'
 export * from './pipeline'
 export * from './source'
