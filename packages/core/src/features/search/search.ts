@@ -1,6 +1,9 @@
+import { debouncedSignal } from 'kk-debounce/debounceSignal'
+import { throttle } from 'kk-debounce/throttle'
 import { defineOptions } from '../../catalog/options'
 import { defineFeature } from '../../feature/define'
 import type { RowModelContext } from '../../feature/types'
+import { defineInterceptor } from '../../intercept/define'
 import {
   buildIndex,
   type Item,
@@ -43,6 +46,32 @@ export interface SearchApi {
   clearSearch(): void
 }
 
+/** A duration: milliseconds, or a kk-debounce temporal object (`{ seconds: 1, ms: 500 }`). */
+export type SearchWait =
+  | number
+  | { hours?: number; minutes?: number; seconds?: number; ms?: number }
+
+/** When `query` follows `input` (§6.3). */
+export interface SearchTyping {
+  /**
+   * `'immediate'` (default): every keystroke is applied. `'debounce'`: applied after `wait` of
+   * quiet (kk-debounce `debouncedSignal`). `'throttle'`: at most once per `wait` (the first
+   * keystroke at once, the latest one at the end of the window).
+   */
+  strategy?: 'immediate' | 'debounce' | 'throttle'
+  /** Default 300 ms. Used by `'debounce'` and `'throttle'`. */
+  wait?: SearchWait
+  /**
+   * Debounce only. `'trailing'` (default): apply after the burst. `'leading'`: apply the first
+   * keystroke at once and drop the rest of the burst (`flushSearch()` applies them).
+   */
+  behavior?: 'trailing' | 'leading'
+  /** A trimmed input shorter than this is applied as an empty query (all rows). Default 0. */
+  minLength?: number
+  /** `'type'` (default): typing commits. `'enter'`: only `flushSearch()` commits. */
+  commitOn?: 'type' | 'enter'
+}
+
 /** Client matching options (§6.3). */
 export interface SearchOptions {
   /** Minimum relevance (0–1, weight applied) to keep a row. Default `0.3`. */
@@ -51,8 +80,52 @@ export interface SearchOptions {
   fuzzyMaxDistance?: number
   /** Default `false`. */
   caseSensitive?: boolean
-  // Seams: `typing` (T17), `searchFn` / `useWorker` (T19), `mode` (T21).
+  /** Typing timing: when `query` follows `input`. Default: immediate. */
+  typing?: SearchTyping
+  // Seams: `searchFn` / `useWorker` (T19), `mode` (T21; server defaults: debounce, minLength 2).
 }
+
+const DEFAULT_WAIT = 300
+
+const isDuration = (v: unknown): boolean => {
+  if (typeof v === 'number') return Number.isFinite(v) && v >= 0
+  for (const k of ['hours', 'minutes', 'seconds', 'ms'] as const) {
+    const n = (v as Record<string, unknown>)[k]
+    if (n !== undefined && !(typeof n === 'number' && Number.isFinite(n) && n >= 0)) return false
+  }
+  return true
+}
+
+const typingOptions = {
+  strategy: { type: 'string', oneOf: ['immediate', 'debounce', 'throttle'] },
+  wait: {
+    type: ['number', 'object'],
+    check: isDuration,
+    expected: 'milliseconds >= 0 or { hours?, minutes?, seconds?, ms? } with values >= 0',
+    noEffect: (_: unknown, o: Readonly<Record<string, unknown>>) =>
+      o.commitOn === 'enter'
+        ? "commitOn is 'enter': only flushSearch() commits"
+        : o.strategy !== 'debounce' && o.strategy !== 'throttle'
+          ? "only the 'debounce' and 'throttle' strategies wait"
+          : undefined,
+  },
+  behavior: {
+    type: 'string',
+    oneOf: ['trailing', 'leading'],
+    noEffect: (_: unknown, o: Readonly<Record<string, unknown>>) =>
+      o.commitOn === 'enter'
+        ? "commitOn is 'enter': only flushSearch() commits"
+        : o.strategy !== 'debounce'
+          ? "behavior applies to the 'debounce' strategy only"
+          : undefined,
+  },
+  minLength: {
+    type: 'number',
+    check: (v: number) => Number.isInteger(v) && v >= 0,
+    expected: 'a non-negative integer',
+  },
+  commitOn: { type: 'string', oneOf: ['type', 'enter'] },
+} as const
 
 const searchOptions = {
   threshold: {
@@ -66,6 +139,7 @@ const searchOptions = {
     expected: 'a non-negative integer',
   },
   caseSensitive: { type: 'boolean' },
+  typing: { type: 'object', shape: typingOptions },
 } as const
 
 const toText = (q: unknown): string => (typeof q === 'string' ? q : q == null ? '' : String(q))
@@ -97,6 +171,14 @@ export const search = (opts: SearchOptions = {}) => {
     | { input: Uint32Array; query: string; index: SearchIndex; output: Uint32Array }
     | undefined
   let subset: { input: Uint32Array; index: SearchIndex; items: readonly Item[] } | undefined
+  const typing = opts.typing ?? {}
+  const strategy = typing.commitOn === 'enter' ? 'enter' : (typing.strategy ?? 'immediate')
+  const wait = typing.wait ?? DEFAULT_WAIT
+  const minLength = typing.minLength ?? 0
+  /** The query an input applies (a shorter trimmed input is no search). */
+  const target = (input: string) => (input.trim().length < minLength ? '' : input)
+  /** Per table: the scheduled commit (debounce / throttle), cancelled on `table:destroy`. */
+  const timers = new WeakMap<object, { cancel(): void }>()
 
   function indexFor(ctx: RowModelContext): SearchIndex | null {
     let byColumns = indexes.get(ctx.data)
@@ -128,31 +210,86 @@ export const search = (opts: SearchOptions = {}) => {
     stage: 'search',
     options: defineOptions(searchOptions, opts),
     initialState: (): SearchState => ({ input: '', query: '', status: 'idle' }),
+    interceptors: [
+      defineInterceptor({
+        name: 'search',
+        on: ['table:destroy'],
+        intercept(ctx, next) {
+          timers.get(ctx.table as object)?.cancel()
+          return next()
+        },
+      }),
+    ],
     createApi: (ctx): SearchApi => {
       const outcome = (): Promise<SearchOutcome> => Promise.resolve({ status: 'applied' })
-      /** Immediate strategy: `input` and `query` together. T17 puts the typing strategy here. */
-      const commit = (input: string, query: string) => {
+      const write = (input: string, query: string, status: SearchStatus) => {
         const s = ctx.getState()
-        if (s?.input === input && s.query === query && s.status === 'idle' && !('error' in s)) {
+        if (s?.input === input && s.query === query && s.status === status && !('error' in s)) {
           return
         }
-        ctx.setState({ input, query, status: 'idle' })
+        ctx.setState({ input, query, status })
+      }
+      /** Inside a strategy call: a synchronous apply is collected here (one update, not two). */
+      let calling = false
+      let appliedNow: string | undefined
+      const apply = (query: string) => {
+        if (calling) appliedNow = query
+        else write(ctx.getState()?.input ?? '', query, 'idle')
+      }
+      const timer =
+        strategy === 'debounce'
+          ? debouncedSignal(() => ctx.getState()?.query ?? '', apply, wait, {
+              behavior: typing.behavior ?? 'trailing',
+            })
+          : strategy === 'throttle'
+            ? throttle(apply, wait)
+            : undefined
+      if (timer) timers.set(ctx.table, timer)
+
+      /** Typing: `input` at once; `query` through the strategy (`pending` while scheduled). */
+      const commit = (input: string) => {
+        const current = ctx.getState()?.query ?? ''
+        const query = target(input)
+        if (strategy === 'enter') return write(input, current, 'idle')
+        if (!timer || query === current) {
+          timer?.cancel()
+          return write(input, query, 'idle')
+        }
+        calling = true
+        appliedNow = undefined
+        try {
+          timer(query)
+        } finally {
+          calling = false
+        }
+        if (appliedNow !== undefined) return write(input, appliedNow, 'idle')
+        // A leading debounce drops the rest of the burst: nothing is scheduled to commit it (the
+        // silence window keeps running; `flushSearch()` commits the input).
+        if (strategy === 'debounce' && typing.behavior === 'leading') {
+          return write(input, current, 'idle')
+        }
+        write(input, current, 'pending')
+      }
+      /** Applies `input` now (Enter, clear): any scheduled commit is dropped. */
+      const applyNow = (input: string) => {
+        timer?.cancel()
+        write(input, target(input), 'idle')
       }
       return {
         setSearch: (query) => {
-          const q = toText(query)
-          commit(q, q)
+          commit(toText(query))
           return outcome()
         },
         flushSearch: () => {
-          commit(ctx.getState()?.input ?? '', ctx.getState()?.input ?? '')
+          applyNow(ctx.getState()?.input ?? '')
           return outcome()
         },
         cancelSearch: () => {
+          timer?.cancel()
           const s = ctx.getState()
           if (s?.status === 'pending') ctx.setState({ ...s, status: 'idle' })
         },
-        clearSearch: () => commit('', ''),
+        clearSearch: () => applyNow(''),
       }
     },
     rowModel: (indices, state, ctx) => {

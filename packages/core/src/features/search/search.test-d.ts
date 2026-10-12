@@ -28,6 +28,10 @@ describe('search() types', () => {
     t.setSearch(1)
     // @ts-expect-error unknown option
     search({ treshold: 0.4 })
+    search({ typing: { strategy: 'debounce', wait: { seconds: 1, ms: 500 }, behavior: 'leading' } })
+    search({ typing: { strategy: 'throttle', wait: 100, minLength: 2, commitOn: 'enter' } })
+    // @ts-expect-error unknown strategy
+    search({ typing: { strategy: 'later' } })
   })
 
   it('search API is absent without the feature', () => {

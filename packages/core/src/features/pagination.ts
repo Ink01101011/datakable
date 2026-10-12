@@ -51,6 +51,19 @@ const paginationOptions = {
 /** Stages whose state changes send the table back to page 0 (`autoResetPageIndex`). */
 const RESET_STAGES = new Set(['filter', 'search', 'sort'])
 
+/**
+ * A slice change that resets the page. For a search slice only the applied `query` counts: typing
+ * (`input`) and `status` alone keep the page (a debounced keystroke must not jump to page 0).
+ */
+function changed(stage: string, a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return false
+  if (stage === 'search' && hasQuery(a) && hasQuery(b)) return !Object.is(a.query, b.query)
+  return true
+}
+
+const hasQuery = (v: unknown): v is { query: unknown } =>
+  v !== null && typeof v === 'object' && 'query' in v
+
 /** The page actually shown: `pageIndex` clamped to the last page (0 for no rows). */
 function effectiveIndex(pageIndex: number, pageSize: number, rowCount: number): number {
   const last = rowCount === 0 ? 0 : Math.ceil(rowCount / pageSize) - 1
@@ -161,7 +174,7 @@ export const pagination = (opts: PaginationOptions = {}) => {
           }
           if (!autoReset || (slice as PaginationState).pageIndex === 0) return
           for (const f of getTableInternals(table).features) {
-            if (RESET_STAGES.has(f.stage) && !Object.is(before[f.name], now[f.name])) {
+            if (RESET_STAGES.has(f.stage) && changed(f.stage, before[f.name], now[f.name])) {
               ctx.setState({ ...(slice as PaginationState), pageIndex: 0 })
               return
             }
