@@ -123,6 +123,8 @@ export const pagination = (opts: PaginationOptions = {}) => {
     options: defineOptions(paginationOptions, opts),
     interceptors: [interceptor],
     initialState: (): PaginationState => ({ pageIndex: 0, pageSize: initialSize }),
+    // After destroy(): the getters still return their declared types (no pages, no navigation).
+    destroyedResult: { getPageCount: () => 0, canNextPage: () => false, canPrevPage: () => false },
     createApi: (ctx: FeatureContext<PaginationState>): PaginationApi => {
       const table = ctx.table
 
