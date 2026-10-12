@@ -28,8 +28,10 @@ export const preserveModules = {
     build.onResolve({ filter: /^\.\.?\// }, (args) => {
       if (args.kind === 'entry-point') return undefined
       const base = resolve(dirname(args.importer), args.path)
-      if (existsSync(`${base}.ts`)) return { path: args.path + ext, external: true }
-      if (existsSync(`${base}/index.ts`))
+      // `.tsx` too: @datakable/react builds with this plugin (T37).
+      if (existsSync(`${base}.ts`) || existsSync(`${base}.tsx`))
+        return { path: args.path + ext, external: true }
+      if (existsSync(`${base}/index.ts`) || existsSync(`${base}/index.tsx`))
         return { path: `${args.path}/index${ext}`, external: true }
       return undefined // JSON (the package.json version): inlined
     })
