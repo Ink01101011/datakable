@@ -1,4 +1,4 @@
-import { compilePath, getValue } from '../column/get-value'
+import { getValue } from '../column/get-value'
 import { DEV } from '../diagnostics/env'
 import type { Emit } from '../diagnostics/types'
 import { featureDiagnostics } from '../feature/codes'

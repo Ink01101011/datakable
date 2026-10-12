@@ -479,54 +479,59 @@ export function createTable<T, S extends TableState>(
   function ingest() {
     const seq = ++ingestSeq
     const given = options.data !== undefined
-    dataCheck?.remember(options.data)
     // A validation still in flight is superseded (its result is discarded): not 'validating' now,
     // unless this ingest's own schema step goes async.
     if (validatingSeq !== 0) {
       validatingSeq = 0
       touch()
     }
-    withTrigger('data-change', () => {
-      const ctx = createContext(
-        'data:ingest',
-        { data: options.data ?? EMPTY },
-        'options.data',
-        base(),
-      )
-      ctx.meta.set(FALLBACK, data)
-      let sync = true
-      const out = runtime.run('data:ingest', ctx, (c) => {
-        const input = c.input.data as readonly unknown[]
-        if (!schemaIngest) return input
-        const r = schemaIngest.validate(input, c.emit)
-        if (isThenable(r) && seq === ingestSeq && !destroyed) {
-          // 'validating' is never silent: a new row model and a notification now (§6.6).
-          validatingSeq = seq
-          touch()
-          if (!sync) flush()
-        }
-        return r
-      })
-      sync = false
-      if (!isThenable(out)) {
-        applyIngest(out, ctx.meta.has(FAILED), given)
-        return
-      }
-      const settle = (d: readonly unknown[], failed: boolean) => {
-        if (seq !== ingestSeq || destroyed) return
-        withTrigger('data-change', () => {
-          applyIngest(d, failed, given)
-          flush()
+    try {
+      withTrigger('data-change', () => {
+        const ctx = createContext(
+          'data:ingest',
+          { data: options.data ?? EMPTY },
+          'options.data',
+          base(),
+        )
+        ctx.meta.set(FALLBACK, data)
+        let sync = true
+        const out = runtime.run('data:ingest', ctx, (c) => {
+          const input = c.input.data as readonly unknown[]
+          if (!schemaIngest) return input
+          const r = schemaIngest.validate(input, c.emit)
+          if (isThenable(r) && seq === ingestSeq && !destroyed) {
+            // 'validating' is never silent: a new row model and a notification now (§6.6).
+            validatingSeq = seq
+            touch()
+            if (!sync) flush()
+          }
+          return r
         })
-      }
-      Promise.resolve(out).then(
-        (d) => settle(d, ctx.meta.has(FAILED)),
-        // A DatakableError the boundary rethrew (strict, or `invalidRows: 'throw'` with an async
-        // schema, already reported): the previous data is kept with 'error'. No unhandled
-        // rejection either way (§8.6).
-        () => settle(data, true),
-      )
-    })
+        sync = false
+        if (!isThenable(out)) {
+          applyIngest(out, ctx.meta.has(FAILED), given)
+          return
+        }
+        const settle = (d: readonly unknown[], failed: boolean) => {
+          if (seq !== ingestSeq || destroyed) return
+          withTrigger('data-change', () => {
+            applyIngest(d, failed, given)
+            flush()
+          })
+        }
+        Promise.resolve(out).then(
+          (d) => settle(d, ctx.meta.has(FAILED)),
+          // A DatakableError the boundary rethrew (strict, or `invalidRows: 'throw'` with an async
+          // schema, already reported): the previous data is kept with 'error'. No unhandled
+          // rejection either way (§8.6).
+          () => settle(data, true),
+        )
+      })
+    } finally {
+      // Dev (§5.3): fingerprint `data` after the core read it, so the check never takes reads
+      // first; also when the ingest threw, so a later same-reference check compares this data.
+      dataCheck?.remember(options.data)
+    }
   }
 
   // --- API ---------------------------------------------------------------------------------------

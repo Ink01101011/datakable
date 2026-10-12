@@ -62,7 +62,10 @@ const fnv = (h: number, s: string) => {
   return h
 }
 
-/** Shallow hash of a row: its first {@link KEYS} own keys and their primitive values (or types). */
+/**
+ * Shallow hash of a row: its first {@link KEYS} own keys and their primitive data values (or
+ * types); accessor properties count by key only.
+ */
 function rowHash(row: unknown): number {
   let h = 0x811c9dc5
   if (row === null || typeof row !== 'object') return fnv(h, `${typeof row}:${String(row)}`) >>> 0
@@ -71,8 +74,14 @@ function rowHash(row: unknown): number {
     for (const key in row) {
       if (!Object.hasOwn(row, key)) continue
       if (k++ === KEYS) break
-      const v = (row as Record<string, unknown>)[key]
+      // Never call a getter: a dev check must not run user code (side effects, read budgets).
+      const d = Object.getOwnPropertyDescriptor(row, key)
       h = fnv(h, key)
+      if (!d || !('value' in d)) {
+        h = fnv(h, 'accessor')
+        continue
+      }
+      const v = d.value
       h = fnv(h, v !== null && typeof v === 'object' ? 'object' : `${typeof v}:${String(v)}`)
     }
   } catch {

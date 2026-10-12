@@ -107,6 +107,21 @@ describe('dataPrint', () => {
     expect(diffPrint(p, data)).toEqual([0])
   })
 
+  it('never invokes a getter: an accessor property is hashed by key, not by calling it', () => {
+    let calls = 0
+    const row = Object.defineProperty({ id: 'a' }, 'lazy', {
+      enumerable: true,
+      get() {
+        calls++
+        return 1
+      },
+    })
+    const data = [row]
+    const p = dataPrint(data)
+    expect(diffPrint(p, data)).toEqual([])
+    expect(calls).toBe(0)
+  })
+
   it('handles non-object rows and a length change', () => {
     const data: unknown[] = [1, 'a', null, undefined]
     const p = dataPrint(data)
