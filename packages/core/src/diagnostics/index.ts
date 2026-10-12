@@ -24,7 +24,7 @@
  * table's hub. Pass `{ cause }` for the original error. Data and runtime problems never throw;
  * `error (config)` codes are thrown at creation with `throwConfigError(code, details)`.
  *
- * Call `useDiagnostics(defs)` at the top level of the emitting module so bundlers keep the
+ * Call `keepDiagnostics(defs)` at the top level of the emitting module so bundlers keep the
  * definitions (`sideEffects: false`, one dist file per module); a bare reference is dropped.
  *
  * Production builds strip the text (§8.2). Core passes it separately so it can be stripped:
@@ -55,8 +55,8 @@ export {
   getDiagnosticText,
   hasMessages,
   installMessages,
+  keepDiagnostics,
   listDiagnosticCodes,
-  useDiagnostics,
 } from './catalog'
 export { coreDiagnostics } from './codes'
 export { formatDiagnostic } from './console'

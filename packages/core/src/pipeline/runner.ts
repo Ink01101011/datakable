@@ -1,5 +1,5 @@
 import { getValue } from '../column/get-value'
-import { useDiagnostics } from '../diagnostics/catalog'
+import { keepDiagnostics } from '../diagnostics/catalog'
 import { DEV } from '../diagnostics/env'
 import type { Emit, Trigger } from '../diagnostics/types'
 import { featureDiagnostics } from '../feature/codes'
@@ -21,7 +21,7 @@ import { createSlicer } from './slice'
 import { inStepDiagnosticSetsError } from './status-rule'
 import type { RowModel, RowModelStatus } from './types'
 
-useDiagnostics(featureDiagnostics, stepDiagnostics)
+keepDiagnostics(featureDiagnostics, stepDiagnostics)
 
 const EMPTY: readonly never[] = []
 const NO_EMIT = (() => undefined) as Emit

@@ -1,5 +1,5 @@
 import { throwConfigError } from '../diagnostics/build'
-import { useDiagnostics } from '../diagnostics/catalog'
+import { keepDiagnostics } from '../diagnostics/catalog'
 import { DEV } from '../diagnostics/env'
 import type { Emit } from '../diagnostics/types'
 import { errorName } from '../intercept/classify'
@@ -7,7 +7,7 @@ import type { Table, TableState } from '../table/types'
 import { featureDiagnostics } from './codes'
 import type { AnyFeature, FeatureContext, SliceUpdater } from './types'
 
-useDiagnostics(featureDiagnostics)
+keepDiagnostics(featureDiagnostics)
 
 /** What `createTable` gives the installer: the store operations a feature context needs. */
 export interface FeatureHost {

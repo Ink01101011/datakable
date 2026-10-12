@@ -1,8 +1,8 @@
-import { useDiagnostics } from '../diagnostics/catalog'
+import { keepDiagnostics } from '../diagnostics/catalog'
 import type { Emit, Trigger } from '../diagnostics/types'
 import { envDiagnostics } from './env-codes'
 
-useDiagnostics(envDiagnostics)
+keepDiagnostics(envDiagnostics)
 
 /**
  * Time-sliced work (§9.1): a generator that `yield`s between chunks of work (every few thousand

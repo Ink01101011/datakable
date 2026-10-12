@@ -1,8 +1,8 @@
-import { useDiagnostics } from '../diagnostics/catalog'
+import { keepDiagnostics } from '../diagnostics/catalog'
 import { deferral, getTableInternals } from './internals'
 import { ssrDiagnostics } from './ssr-codes'
 
-useDiagnostics(ssrDiagnostics)
+keepDiagnostics(ssrDiagnostics)
 
 /**
  * SSR seam for bindings (§7.2): runs `create` (a `createTable` call) so that the table it creates

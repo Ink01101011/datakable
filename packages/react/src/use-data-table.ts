@@ -9,7 +9,7 @@ import {
   emitTableDiagnostic,
   type InvalidRowsMode,
   isOptionsDefinition,
-  useDiagnostics as keepDiagnostics,
+  keepDiagnostics,
   type RowModel,
   registerPackage,
   type SchemaRow,
@@ -33,7 +33,6 @@ import { version } from '../package.json'
 import { reactDiagnostics } from './codes'
 
 // Registers the (development-only) definitions where they are emitted, so bundlers keep them.
-// Core's `useDiagnostics` is not a React hook; renamed here for the rules-of-hooks lint.
 keepDiagnostics(reactDiagnostics)
 
 // No @types/node here: declare just what is read.

@@ -1,11 +1,11 @@
 import { suggest } from '../catalog/suggest'
-import { useDiagnostics } from '../diagnostics/catalog'
+import { keepDiagnostics } from '../diagnostics/catalog'
 import type { Emit } from '../diagnostics/types'
 import { type ResolvedColumn, resolveColumns } from '../pipeline/columns'
 import { dataCheckDiagnostics } from './data-check-codes'
 import { forSampledRows, INGEST_SAMPLE } from './derive-columns'
 
-useDiagnostics(dataCheckDiagnostics)
+keepDiagnostics(dataCheckDiagnostics)
 
 /** Sample row indices kept per diagnostic. */
 const MAX_ROWS = 5

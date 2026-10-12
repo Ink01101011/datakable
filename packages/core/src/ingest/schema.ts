@@ -1,13 +1,13 @@
 import { buildDiagnostic, DatakableError } from '../diagnostics/build'
 import type { DiagnosticDetails } from '../diagnostics/catalog'
-import { useDiagnostics } from '../diagnostics/catalog'
+import { keepDiagnostics } from '../diagnostics/catalog'
 import type { Diagnostic, Emit } from '../diagnostics/types'
 import { errorName } from '../intercept/classify'
 import { NO_ISSUES, type RowIssue } from '../pipeline/row'
 import { type InvalidRowsMode, type SchemaIssueColumn, schemaDiagnostics } from './schema-codes'
 import type { StandardSchemaV1 } from './standard-schema'
 
-useDiagnostics(schemaDiagnostics)
+keepDiagnostics(schemaDiagnostics)
 
 /** One row that failed schema validation (`table.getInvalidRows()`, §5.1). */
 export interface InvalidRow {

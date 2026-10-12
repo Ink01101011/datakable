@@ -1,6 +1,6 @@
 import { validateOptionChange, validateOptions } from '../catalog/validator'
 import { DatakableError, defaultPhase } from '../diagnostics/build'
-import { useDiagnostics } from '../diagnostics/catalog'
+import { keepDiagnostics } from '../diagnostics/catalog'
 import { DEV } from '../diagnostics/env'
 import { type ExplainHost, explainRow, explainTable } from '../diagnostics/explain'
 import { createDiagnostics } from '../diagnostics/hub'
@@ -51,7 +51,7 @@ import {
   type Updater,
 } from './types'
 
-useDiagnostics(tableDiagnostics, dataMutationDiagnostics)
+keepDiagnostics(tableDiagnostics, dataMutationDiagnostics)
 
 const EMPTY: readonly never[] = []
 

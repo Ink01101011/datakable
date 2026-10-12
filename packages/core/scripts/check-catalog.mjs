@@ -150,7 +150,7 @@ if (failures.length > 0) {
   console.error(`check:catalog: ${failures.length} problem(s) in consumer bundles:`)
   for (const f of failures) console.error(`  ${f}`)
   console.error(
-    'Use the definitions where the code is emitted (useDiagnostics) so the bundle keeps them.',
+    'Use the definitions where the code is emitted (keepDiagnostics) so the bundle keeps them.',
   )
   process.exit(1)
 }

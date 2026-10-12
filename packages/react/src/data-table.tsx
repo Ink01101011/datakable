@@ -6,7 +6,7 @@ import {
   describeReturn,
   emitTableDiagnostic,
   type InvalidRowsMode,
-  useDiagnostics as keepDiagnostics,
+  keepDiagnostics,
   matchesSlot,
   type RowIssue,
   type RowModelStatus,
@@ -26,7 +26,7 @@ import {
 import { cellSlot, invalidCellSlot, renderDiagnostics } from './render-codes'
 import { type UseDataTableOptions, useDataTable } from './use-data-table'
 
-// The codes this module emits (bundlers keep the definitions; see core's `useDiagnostics`).
+// The codes this module emits (bundlers keep the definitions; see core's `keepDiagnostics`).
 keepDiagnostics(renderDiagnostics, boundaryDiagnostics, slotDiagnostics)
 
 // No @types/node here: declare just what is read.

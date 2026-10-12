@@ -1,7 +1,7 @@
 import { describeReturn, expectedReturn, formatSlot, slotDiagnostics } from '../catalog/slots'
 import { defaultFormat } from '../column/format'
 import { getValue } from '../column/get-value'
-import { useDiagnostics } from '../diagnostics/catalog'
+import { keepDiagnostics } from '../diagnostics/catalog'
 import { DEV } from '../diagnostics/env'
 import type { Emit } from '../diagnostics/types'
 import { CellFailures, type CellSlot, runCells } from '../intercept/cell-batch'
@@ -12,7 +12,7 @@ import type { ColumnLike, ResolvedColumn } from './columns'
 import { allRows } from './indices'
 import type { ColumnValues } from './types'
 
-useDiagnostics(pipelineDiagnostics, slotDiagnostics)
+keepDiagnostics(pipelineDiagnostics, slotDiagnostics)
 
 export interface ColumnCacheHost {
   readonly runtime: InterceptorRuntime

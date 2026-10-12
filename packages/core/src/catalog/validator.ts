@@ -1,5 +1,5 @@
 import { throwConfigError } from '../diagnostics/build'
-import { useDiagnostics } from '../diagnostics/catalog'
+import { keepDiagnostics } from '../diagnostics/catalog'
 import type { Emit, Trigger } from '../diagnostics/types'
 import { STAGES } from '../feature/order'
 import type { AnyFeature } from '../feature/types'
@@ -13,7 +13,7 @@ import {
 import { suggest } from './suggest'
 import { tableOptions } from './table-options'
 
-useDiagnostics(optionDiagnostics)
+keepDiagnostics(optionDiagnostics)
 
 type Values = Readonly<Record<string, unknown>>
 

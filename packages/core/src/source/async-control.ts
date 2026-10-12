@@ -1,10 +1,10 @@
-import { useDiagnostics } from '../diagnostics/catalog'
+import { keepDiagnostics } from '../diagnostics/catalog'
 import type { InterceptorContext } from '../intercept/context'
 import type { Interceptor } from '../intercept/define'
 import { FALLBACK } from '../intercept/fallbacks'
 import { asyncDiagnostics } from './codes'
 
-useDiagnostics(asyncDiagnostics)
+keepDiagnostics(asyncDiagnostics)
 
 /** Spec §7.1: a request that has not settled after 30 s is aborted (`DK_ASYNC_TIMEOUT`). */
 export const DEFAULT_ASYNC_TIMEOUT = 30_000

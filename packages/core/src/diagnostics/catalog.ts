@@ -116,7 +116,7 @@ export function getDiagnosticText(code: string): DiagnosticText | undefined {
  * the codes would then emit as unknown. Call this at the top level of the emitting module. It
  * (re-)registers the definitions, which is idempotent. `pnpm check:catalog` verifies it per bundle.
  */
-export function useDiagnostics(
+export function keepDiagnostics(
   ...lists: ReadonlyArray<readonly { readonly code: string }[]>
 ): void {
   for (const list of lists) {

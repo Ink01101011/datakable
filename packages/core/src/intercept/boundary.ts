@@ -1,5 +1,5 @@
 import { DatakableError } from '../diagnostics/build'
-import { useDiagnostics } from '../diagnostics/catalog'
+import { keepDiagnostics } from '../diagnostics/catalog'
 import type { EmitOptions } from '../diagnostics/types'
 import { type CallbackError, classifyError, errorName } from './classify'
 import { boundaryDiagnostics } from './codes'
@@ -8,7 +8,7 @@ import type { Interceptor } from './define'
 import { FAILED, getFallback } from './fallbacks'
 import type { OpName } from './operations'
 
-useDiagnostics(boundaryDiagnostics)
+keepDiagnostics(boundaryDiagnostics)
 
 /** Emitters (one per table) that already printed their silent `diagnostic:emit` failure. */
 const silenced = new WeakSet<object>()

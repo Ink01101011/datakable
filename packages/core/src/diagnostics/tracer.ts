@@ -1,6 +1,6 @@
 import type { Interceptor } from '../intercept/define'
 import { perfDiagnostics } from '../pipeline/perf-codes'
-import { useDiagnostics } from './catalog'
+import { keepDiagnostics } from './catalog'
 import { readTrace, type Trace, writeTrace } from './trace-store'
 
 /**
@@ -27,7 +27,7 @@ const SEEN = 'tracer'
  */
 export function tracer(): Interceptor<Traced> {
   // Inside the factory: a bundle that never creates a tracer drops the definition (§9.1).
-  useDiagnostics(perfDiagnostics)
+  keepDiagnostics(perfDiagnostics)
   return {
     name: 'tracer',
     on: ['pipeline:run', 'pipeline:step', 'state:dispatch'],

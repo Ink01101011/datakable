@@ -4,7 +4,7 @@ import { describeReturn } from '../../catalog/slots'
 import type { SortAlgorithm } from '../../column/column-def'
 import { compilePath, getValue } from '../../column/get-value'
 import type { Path } from '../../column/path'
-import { useDiagnostics } from '../../diagnostics/catalog'
+import { keepDiagnostics } from '../../diagnostics/catalog'
 import { DEV } from '../../diagnostics/env'
 import type { Emit } from '../../diagnostics/types'
 import { defineFeature } from '../../feature/define'
@@ -37,7 +37,7 @@ import {
   sortWithComparator,
 } from './strategy'
 
-useDiagnostics(
+keepDiagnostics(
   sortingDiagnostics,
   comparatorDiagnostics,
   boundaryDiagnostics,
