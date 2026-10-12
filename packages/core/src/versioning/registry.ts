@@ -1,12 +1,12 @@
 import { throwConfigError } from '../diagnostics/build'
+import { useDiagnostics } from '../diagnostics/catalog'
 import type { Emit } from '../diagnostics/types'
 import type { AnyFeature } from '../feature/types'
 import { VERSION } from '../version'
 import { FIXED_GROUP, versioningDiagnostics } from './codes'
 import { satisfies } from './semver'
 
-// Referencing the definitions keeps them in the bundle (`sideEffects: false`).
-void versioningDiagnostics
+useDiagnostics(versioningDiagnostics)
 
 /** `globalThis[Symbol.for('datakable')]`: shared by every copy of core in the process (§8.5). */
 export const REGISTRY_KEY: unique symbol = Symbol.for('datakable') as never

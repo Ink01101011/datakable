@@ -158,6 +158,7 @@ export function createInterceptorRuntime(
   const warned = new WeakMap<Interceptor<OpName>, Set<string>>()
 
   function warnHot(i: Interceptor<OpName>, op: string) {
+    if (!DEV) return // dev-only warning: drops the text below from production bundles
     let ops = warned.get(i)
     if (ops?.has(op)) return
     if (!ops) {

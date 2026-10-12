@@ -1,4 +1,5 @@
-import { defineDiagnostic } from '../diagnostics/catalog'
+import { type DiagnosticMessages, defineDiagnostic } from '../diagnostics/catalog'
+import { DEV } from '../diagnostics/env'
 
 declare module '../diagnostics/catalog' {
   interface DiagnosticCatalog {
@@ -11,12 +12,9 @@ declare module '../diagnostics/catalog' {
   }
 }
 
-/** Codes owned by asyncControl (spec §3.4, §7.1, §8.3). */
-export const asyncDiagnostics = [
-  defineDiagnostic({
-    code: 'DK_ASYNC_TIMEOUT',
-    level: 'error',
-    where: (d) => ({ kind: 'option', path: d.source }),
+/** Message text (§8.2): development builds, or production via `@datakable/core/messages`. */
+export const asyncMessages: DiagnosticMessages<'DK_ASYNC_TIMEOUT'> = {
+  DK_ASYNC_TIMEOUT: {
     problem: (d) => `${d.source} did not settle within the timeout (${d.timeout} ms)`,
     impact: () =>
       'the request was aborted and its late result is ignored; the previous results were kept ' +
@@ -27,5 +25,17 @@ export const asyncDiagnostics = [
       `pass ctx.signal to fetch() inside ${d.source} so the timed-out request is cancelled on the ` +
         'network too',
     ],
-  }),
+  },
+}
+
+/** Codes owned by asyncControl (spec §3.4, §7.1, §8.3). */
+export const asyncDiagnostics = [
+  defineDiagnostic(
+    {
+      code: 'DK_ASYNC_TIMEOUT',
+      level: 'error',
+      where: (d) => ({ kind: 'option', path: d.source }),
+    },
+    DEV && asyncMessages.DK_ASYNC_TIMEOUT,
+  ),
 ]

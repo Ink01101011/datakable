@@ -1,4 +1,5 @@
-import { defineDiagnostic } from '../diagnostics/catalog'
+import { type DiagnosticMessages, defineDiagnostic } from '../diagnostics/catalog'
+import { DEV } from '../diagnostics/env'
 import type { Location } from '../diagnostics/types'
 
 declare module '../diagnostics/catalog' {
@@ -49,12 +50,11 @@ const label = (d: { path: string; feature?: string }) =>
 
 const leaf = (path: string) => path.slice(path.lastIndexOf('.') + 1)
 
-/** Codes owned by the options catalog (§3.5, §8.3). */
-export const optionDiagnostics = [
-  defineDiagnostic({
-    code: 'DK_UNKNOWN_OPTION',
-    level: 'warn',
-    where,
+/** Message text (§8.2): development builds, or production via `@datakable/core/messages`. */
+export const optionMessages: DiagnosticMessages<
+  'DK_UNKNOWN_OPTION' | 'DK_INVALID_OPTION' | 'DK_OPTION_NO_EFFECT'
+> = {
+  DK_UNKNOWN_OPTION: {
     problem: (d) =>
       d.feature === undefined
         ? `unknown option "${d.path}"`
@@ -76,12 +76,8 @@ export const optionDiagnostics = [
       )
       return out
     },
-  }),
-  defineDiagnostic({
-    code: 'DK_INVALID_OPTION',
-    level: 'error',
-    config: true,
-    where,
+  },
+  DK_INVALID_OPTION: {
     problem: (d) => `${label(d)} must be ${d.expected}, got ${d.received}`,
     impact: (d) =>
       d.phase === 'init'
@@ -95,11 +91,8 @@ export const optionDiagnostics = [
       out.push(`pass ${d.expected} as ${label(d)}, or leave it out for the default`)
       return out
     },
-  }),
-  defineDiagnostic({
-    code: 'DK_OPTION_NO_EFFECT',
-    level: 'warn',
-    where,
+  },
+  DK_OPTION_NO_EFFECT: {
     problem: (d) =>
       d.once
         ? `setOptions({ ${d.path} }) has no effect: ${d.reason}`
@@ -115,5 +108,34 @@ export const optionDiagnostics = [
               '(in React, change the component key)',
           ]
         : [`remove ${label(d)}, or change the configuration so that it applies (${d.reason})`],
-  }),
+  },
+}
+
+/** Codes owned by the options catalog (§3.5, §8.3). */
+export const optionDiagnostics = [
+  defineDiagnostic(
+    {
+      code: 'DK_UNKNOWN_OPTION',
+      level: 'warn',
+      where,
+    },
+    DEV && optionMessages.DK_UNKNOWN_OPTION,
+  ),
+  defineDiagnostic(
+    {
+      code: 'DK_INVALID_OPTION',
+      level: 'error',
+      config: true,
+      where,
+    },
+    DEV && optionMessages.DK_INVALID_OPTION,
+  ),
+  defineDiagnostic(
+    {
+      code: 'DK_OPTION_NO_EFFECT',
+      level: 'warn',
+      where,
+    },
+    DEV && optionMessages.DK_OPTION_NO_EFFECT,
+  ),
 ]

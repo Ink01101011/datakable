@@ -1,4 +1,5 @@
-import { defineDiagnostic } from './catalog'
+import { type DiagnosticMessages, defineDiagnostic } from './catalog'
+import { DEV } from './env'
 import type { Location } from './types'
 
 declare module './catalog' {
@@ -230,18 +231,27 @@ export function redactDetails(
   return out
 }
 
+/** Message text (§8.2): development builds, or production via `@datakable/core/messages`. */
+export const redactionMessages: DiagnosticMessages<'DK_UNSAFE_REDACTION'> = {
+  DK_UNSAFE_REDACTION: {
+    problem: (d) => `diagnostics.redact is '${d.level}' in a production build`,
+    impact: () =>
+      'raw row keys and cell values (except sensitive columns) reach onDiagnostic, ' +
+      'getDiagnostics() and the console',
+    fix: () => [
+      "remove diagnostics.redact in production (the default is 'safe')",
+      "or use 'keys' to log raw row keys without cell values",
+      'mark personal-data columns with sensitive: true so they are never logged',
+    ],
+  },
+}
+
 /** `'full'` in a production build (§8.2: "warns if enabled in production"). Emitted by the hub. */
-export const DK_UNSAFE_REDACTION = defineDiagnostic({
-  code: 'DK_UNSAFE_REDACTION',
-  level: 'warn',
-  where: () => ({ kind: 'option', path: 'diagnostics.redact' }),
-  problem: (d) => `diagnostics.redact is '${d.level}' in a production build`,
-  impact: () =>
-    'raw row keys and cell values (except sensitive columns) reach onDiagnostic, ' +
-    'getDiagnostics() and the console',
-  fix: () => [
-    "remove diagnostics.redact in production (the default is 'safe')",
-    "or use 'keys' to log raw row keys without cell values",
-    'mark personal-data columns with sensitive: true so they are never logged',
-  ],
-})
+export const DK_UNSAFE_REDACTION = defineDiagnostic(
+  {
+    code: 'DK_UNSAFE_REDACTION',
+    level: 'warn',
+    where: () => ({ kind: 'option', path: 'diagnostics.redact' }),
+  },
+  DEV && redactionMessages.DK_UNSAFE_REDACTION,
+)

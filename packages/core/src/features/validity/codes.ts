@@ -1,4 +1,5 @@
-import { defineDiagnostic } from '../../diagnostics/catalog'
+import { type DiagnosticMessages, defineDiagnostic } from '../../diagnostics/catalog'
+import { DEV } from '../../diagnostics/env'
 
 declare module '../../diagnostics/catalog' {
   interface DiagnosticCatalog {
@@ -15,15 +16,9 @@ declare module '../../diagnostics/catalog' {
 
 const ACCEPTED = "'all' | 'valid' | 'invalid'"
 
-/** Codes owned by the `validity` feature (§6.2). */
-export const validityDiagnostics = [
-  defineDiagnostic({
-    code: 'DK_INVALID_VALIDITY',
-    level: 'warn',
-    where: (d) =>
-      d.source === 'state'
-        ? { kind: 'option', path: 'state.validity' }
-        : { kind: 'operation', op: 'table.setValidity' },
+/** Message text (§8.2): development builds, or production via `@datakable/core/messages`. */
+export const validityMessages: DiagnosticMessages<'DK_INVALID_VALIDITY'> = {
+  DK_INVALID_VALIDITY: {
     problem: (d) =>
       d.source === 'state'
         ? `the validity state is ${d.received}; it must be ${ACCEPTED}`
@@ -35,5 +30,20 @@ export const validityDiagnostics = [
           'options.state)'
         : `pass ${ACCEPTED} to setValidity()`,
     ],
-  }),
+  },
+}
+
+/** Codes owned by the `validity` feature (§6.2). */
+export const validityDiagnostics = [
+  defineDiagnostic(
+    {
+      code: 'DK_INVALID_VALIDITY',
+      level: 'warn',
+      where: (d) =>
+        d.source === 'state'
+          ? { kind: 'option', path: 'state.validity' }
+          : { kind: 'operation', op: 'table.setValidity' },
+    },
+    DEV && validityMessages.DK_INVALID_VALIDITY,
+  ),
 ]

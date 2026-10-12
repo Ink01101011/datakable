@@ -1,5 +1,6 @@
 import { validateOptionChange, validateOptions } from '../catalog/validator'
 import { DatakableError, defaultPhase } from '../diagnostics/build'
+import { useDiagnostics } from '../diagnostics/catalog'
 import { DEV } from '../diagnostics/env'
 import { type ExplainHost, explainRow, explainTable } from '../diagnostics/explain'
 import { createDiagnostics } from '../diagnostics/hub'
@@ -50,9 +51,7 @@ import {
   type Updater,
 } from './types'
 
-// Referencing the definitions keeps them in the bundle (`sideEffects: false`).
-void tableDiagnostics
-void dataMutationDiagnostics
+useDiagnostics(tableDiagnostics, dataMutationDiagnostics)
 
 const EMPTY: readonly never[] = []
 

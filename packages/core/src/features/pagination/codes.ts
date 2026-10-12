@@ -1,4 +1,5 @@
-import { defineDiagnostic } from '../../diagnostics/catalog'
+import { type DiagnosticMessages, defineDiagnostic } from '../../diagnostics/catalog'
+import { DEV } from '../../diagnostics/env'
 
 declare module '../../diagnostics/catalog' {
   interface DiagnosticCatalog {
@@ -23,15 +24,11 @@ const ACCEPTED = {
   pageSize: 'an integer > 0',
 } as const
 
-/** Codes owned by the `pagination` feature (§6.5). */
-export const paginationDiagnostics = [
-  defineDiagnostic({
-    code: 'DK_INVALID_PAGINATION',
-    level: 'warn',
-    where: (d) =>
-      d.source === 'state'
-        ? { kind: 'option', path: `state.pagination.${d.field}` }
-        : { kind: 'operation', op: `table.${d.source}` },
+/** Message text (§8.2): development builds, or production via `@datakable/core/messages`. */
+export const paginationMessages: DiagnosticMessages<
+  'DK_INVALID_PAGINATION' | 'DK_ROW_COUNT_MISSING'
+> = {
+  DK_INVALID_PAGINATION: {
     problem: (d) =>
       d.source === 'state'
         ? `the pagination state has ${d.field} = ${d.received}; it must be ${ACCEPTED[d.field]}`
@@ -50,11 +47,8 @@ export const paginationDiagnostics = [
             `pass ${ACCEPTED[d.field]} to ${d.source}()` +
               (d.received.startsWith('string') ? ' (convert input values with Number(...))' : ''),
           ],
-  }),
-  defineDiagnostic({
-    code: 'DK_ROW_COUNT_MISSING',
-    level: 'warn',
-    where: () => ({ kind: 'option', path: 'rowCount' }),
+  },
+  DK_ROW_COUNT_MISSING: {
     problem: () =>
       'pagination is in server mode, but there is no fetcher and no rowCount option: the ' +
       'total number of rows is unknown',
@@ -66,5 +60,28 @@ export const paginationDiagnostics = [
       "or pass a fetcher that resolves { rows, rowCount }, or use pagination({ mode: 'client' }) " +
         'with all rows as data',
     ],
-  }),
+  },
+}
+
+/** Codes owned by the `pagination` feature (§6.5). */
+export const paginationDiagnostics = [
+  defineDiagnostic(
+    {
+      code: 'DK_INVALID_PAGINATION',
+      level: 'warn',
+      where: (d) =>
+        d.source === 'state'
+          ? { kind: 'option', path: `state.pagination.${d.field}` }
+          : { kind: 'operation', op: `table.${d.source}` },
+    },
+    DEV && paginationMessages.DK_INVALID_PAGINATION,
+  ),
+  defineDiagnostic(
+    {
+      code: 'DK_ROW_COUNT_MISSING',
+      level: 'warn',
+      where: () => ({ kind: 'option', path: 'rowCount' }),
+    },
+    DEV && paginationMessages.DK_ROW_COUNT_MISSING,
+  ),
 ]

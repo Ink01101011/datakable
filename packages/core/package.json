@@ -1,7 +1,7 @@
 {
   "name": "@datakable/core",
   "version": "0.0.0",
-  "description": "Headless, framework-agnostic core of DataKable — table state, sorting, filtering and types.",
+  "description": "Headless, framework-agnostic core of DataKable \u2014 table state, sorting, filtering and types.",
   "license": "MIT",
   "author": "Supakit Kitjanabumrungsak",
   "repository": {
@@ -21,7 +21,10 @@
     "headless"
   ],
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "./dist/messages/index.js",
+    "./dist/messages/index.cjs"
+  ],
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -36,13 +39,73 @@
         "default": "./dist/index.cjs"
       }
     },
+    "./column-filters": {
+      "import": {
+        "types": "./dist/column-filters.d.ts",
+        "default": "./dist/features/column-filters/index.js"
+      },
+      "require": {
+        "types": "./dist/column-filters.d.cts",
+        "default": "./dist/features/column-filters/index.cjs"
+      }
+    },
+    "./validity": {
+      "import": {
+        "types": "./dist/validity.d.ts",
+        "default": "./dist/features/validity/index.js"
+      },
+      "require": {
+        "types": "./dist/validity.d.cts",
+        "default": "./dist/features/validity/index.cjs"
+      }
+    },
+    "./search": {
+      "import": {
+        "types": "./dist/search.d.ts",
+        "default": "./dist/features/search/index.js"
+      },
+      "require": {
+        "types": "./dist/search.d.cts",
+        "default": "./dist/features/search/index.cjs"
+      }
+    },
+    "./sorting": {
+      "import": {
+        "types": "./dist/sorting.d.ts",
+        "default": "./dist/features/sorting/index.js"
+      },
+      "require": {
+        "types": "./dist/sorting.d.cts",
+        "default": "./dist/features/sorting/index.cjs"
+      }
+    },
+    "./pagination": {
+      "import": {
+        "types": "./dist/pagination.d.ts",
+        "default": "./dist/features/pagination/index.js"
+      },
+      "require": {
+        "types": "./dist/pagination.d.cts",
+        "default": "./dist/features/pagination/index.cjs"
+      }
+    },
+    "./messages": {
+      "import": {
+        "types": "./dist/messages.d.ts",
+        "default": "./dist/messages/index.js"
+      },
+      "require": {
+        "types": "./dist/messages.d.cts",
+        "default": "./dist/messages/index.cjs"
+      }
+    },
     "./package.json": "./package.json"
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && node scripts/postbuild.mjs",
     "dev": "tsup --watch",
     "typecheck": "tsc -p tsconfig.json",
     "check:pkg": "publint --strict && attw --pack . --profile node16 && node scripts/check-catalog.mjs",
@@ -52,5 +115,8 @@
     "ex-search": "1.1.1",
     "exsorted": "1.2.3",
     "kk-debounce": "1.1.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.27.7"
   }
 }

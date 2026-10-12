@@ -21,7 +21,10 @@
     "headless"
   ],
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "./dist/messages.js",
+    "./dist/messages.cjs"
+  ],
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -44,6 +47,16 @@
       "require": {
         "types": "./dist/core.d.cts",
         "default": "./dist/core.cjs"
+      }
+    },
+    "./messages": {
+      "import": {
+        "types": "./dist/messages.d.ts",
+        "default": "./dist/messages.js"
+      },
+      "require": {
+        "types": "./dist/messages.d.cts",
+        "default": "./dist/messages.cjs"
       }
     },
     "./package.json": "./package.json"

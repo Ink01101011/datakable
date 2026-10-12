@@ -1,4 +1,5 @@
 import { getValue } from '../column/get-value'
+import { useDiagnostics } from '../diagnostics/catalog'
 import { DEV } from '../diagnostics/env'
 import type { Emit, Trigger } from '../diagnostics/types'
 import { featureDiagnostics } from '../feature/codes'
@@ -19,8 +20,7 @@ import { Row, type RowIssue, type RowSource } from './row'
 import { inStepDiagnosticSetsError } from './status-rule'
 import type { RowModel, RowModelStatus } from './types'
 
-void featureDiagnostics
-void stepDiagnostics
+useDiagnostics(featureDiagnostics, stepDiagnostics)
 
 const EMPTY: readonly never[] = []
 const NO_EMIT = (() => undefined) as Emit
