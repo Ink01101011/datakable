@@ -851,6 +851,7 @@ export function createTable<T, S extends TableState>(
     features: pipeline,
     rowCount: () => (typeof options.fetcher === 'function' ? fetchedRowCount : options.rowCount),
     hasFetcher: () => typeof options.fetcher === 'function',
+    emit: hub.emit,
   })
 
   // --- init --------------------------------------------------------------------------------------

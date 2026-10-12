@@ -1,3 +1,5 @@
+import type { DiagnosticCode, DiagnosticDetails } from '../diagnostics/catalog'
+import type { Emit, EmitOptions } from '../diagnostics/types'
 import type { AnyFeature } from '../feature/types'
 import type { AsyncStatus } from '../source/async-control'
 
@@ -18,6 +20,8 @@ export interface TableInternals {
   rowCount(): number | undefined
   /** `options.fetcher` is set. */
   hasFetcher(): boolean
+  /** The table's diagnostics hub emit (`emitTableDiagnostic`). */
+  readonly emit: Emit
   /**
    * Runs one `async:request` through the table's interceptor chain (errorBoundary → asyncControl
    * → …), with `previous` as FALLBACK. Resolves with the outcome; apply `value` only when
@@ -49,4 +53,18 @@ export function getTableInternals(table: object): TableInternals {
   const i = registry.get(table)
   if (!i) throw new TypeError('getTableInternals: not a table made by createTable()')
   return i
+}
+
+/**
+ * Reports a catalog diagnostic on `table`'s hub (its sinks, `onDiagnostic`, `getDiagnostics()`), for
+ * bindings that detect problems outside the table, e.g. `@datakable/react`'s unstable-columns warning.
+ * The code must be defined with `defineDiagnostic`.
+ */
+export function emitTableDiagnostic<C extends DiagnosticCode>(
+  table: object,
+  code: C,
+  details: DiagnosticDetails<C>,
+  options?: EmitOptions,
+): void {
+  getTableInternals(table).emit(code, details, options)
 }
