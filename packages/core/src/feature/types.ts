@@ -1,3 +1,4 @@
+import type { OptionsDefinition } from '../catalog/options'
 import type { Emit } from '../diagnostics/types'
 import type { Interceptor } from '../intercept/define'
 import type { OpName } from '../intercept/operations'
@@ -87,8 +88,11 @@ export interface Feature<Name extends string = string, F extends FeatureTypes = 
   readonly stage: Stage
   /** Phantom: carries `F` for {@link StateOf} / {@link ApiOf}. Never set at runtime. */
   readonly _types?: F
-  /** The option schema (`defineOptions`, T10), read by the generic option validator. */
-  readonly options?: unknown
+  /**
+   * The feature's options: `defineOptions(schema, factoryOptions)`. `createTable` checks the values
+   * against the schema (`DK_UNKNOWN_OPTION`, `DK_INVALID_OPTION`, `DK_OPTION_NO_EFFECT`).
+   */
+  readonly options?: OptionsDefinition
   /** Fresh starting value of the slice; `options.initialState[name]` takes precedence. */
   initialState: () => Apply<F, AnyRow, 'state'>
   /**
