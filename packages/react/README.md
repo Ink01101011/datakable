@@ -62,7 +62,8 @@ and the same object otherwise, so it works as a `useMemo` dependency.
   `rowCount`.
 - `fetcher`, `onStateChange` and `onDiagnostic` may be inline functions: the table always calls
   the latest one, and a new reference does not refetch — call `refetch()` when a value the fetcher
-  reads changes.
+  reads changes. Wrap the fetcher with `withFetcher()` (`@datakable/core/server`, also exported by
+  `datakable`).
 - `columns`, `data` and a `rowKey` function are compared by reference. In development,
   `DK_UNSTABLE_COLUMNS` / `DK_UNSTABLE_OPTION` warn when a new same-shape value arrives on every
   render. Structural comparison is not used, because a changed `format` or `accessor` would then

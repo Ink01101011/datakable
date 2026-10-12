@@ -12,6 +12,7 @@ import {
 } from '../index'
 import { makeSchema } from '../ingest/test-schemas'
 import { withSchema } from '../ingest/with-schema'
+import { withFetcher } from '../source/with-fetcher'
 import {
   type AnyTable,
   expectNoRowData,
@@ -257,13 +258,13 @@ const faults: Fault[] = [
   {
     slot: 'fetcher throws',
     absent: ['setValidity'],
-    options: { data: undefined, fetcher: fail },
+    options: { data: undefined, fetcher: withFetcher(fail) },
     features: () => preset({ mode: 'server' }),
   },
   {
     slot: 'fetcher rejects',
     absent: ['setValidity'],
-    options: { data: undefined, fetcher: reject },
+    options: { data: undefined, fetcher: withFetcher(reject) },
     features: () => preset({ mode: 'server' }),
   },
   {

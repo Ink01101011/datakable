@@ -25,23 +25,19 @@ import type { OpInput, OpName, OpResult } from '../intercept/operations'
 import { type Core, createInterceptorRuntime } from '../intercept/runtime'
 import { createPipeline } from '../pipeline/runner'
 import type { RowModel, RowModelStatus } from '../pipeline/types'
-import { ASYNC_STATUS, type AsyncStatus, asyncControl } from '../source/async-control'
-import {
-  callFetcher,
-  checkModes,
-  checkResponse,
-  type Fetcher,
-  FetchFailure,
-  type FetchKey,
-  type FetchOutcome,
-  fetchParams,
-  isServer,
-  sameParams,
-} from '../source/fetcher'
+import { checkModeOrder, type FetchOutcome } from '../source/fetcher'
+import type { ServerSource } from '../source/server'
+import { SERVER_SOURCE, type ServerFetcher } from '../source/server-brand'
 import { checkVersions } from '../versioning/registry'
 import { tableDiagnostics } from './codes'
 import { createDataMutationCheck, dataMutationDiagnostics } from './data-mutation'
-import { deferral, setTableInternals } from './internals'
+import {
+  deferral,
+  type ExtensionFactory,
+  setTableInternals,
+  type TableExtension,
+  type TableHost,
+} from './internals'
 import { keepReadOnce } from './read-once'
 import {
   type ControlledState,
@@ -56,6 +52,16 @@ import {
 keepDiagnostics(tableDiagnostics, dataMutationDiagnostics)
 
 const EMPTY: readonly never[] = []
+
+/** §6.6 status precedence, lowest first: the table shows the highest of its sources. */
+const RANK: readonly RowModelStatus[] = [
+  'idle',
+  'pending',
+  'validating',
+  'searching',
+  'fetching',
+  'error',
+]
 
 const isThenable = (v: unknown): v is PromiseLike<unknown> =>
   v != null && typeof (v as { then?: unknown }).then === 'function'
@@ -77,7 +83,7 @@ export type CreateTableOptions<T, S extends TableState, Sch, M extends InvalidRo
   /** With a schema, the raw rows (validated like `data`). */
   initialData?: readonly ([Sch] extends [TableSchema] ? unknown : T)[]
   /** With a schema, the fetcher returns raw rows (validated like `data`). */
-  fetcher?: Fetcher<[Sch] extends [TableSchema] ? unknown : T>
+  fetcher?: ServerFetcher<[Sch] extends [TableSchema] ? unknown : T>
   // Without an inferred schema (explicit type arguments, a `TableOptions<T>` object) these keep
   // their `TableOptions` types.
   schema?: [Sch] extends [TableSchema] ? Sch : TableSchema<unknown, T>
@@ -129,14 +135,6 @@ export function createTable<T, S extends TableState>(
   let ingestFailed = false
   /** The ingest whose async schema validation is in flight (`status: 'validating'`); 0: none. */
   let validatingSeq = 0
-  /** In-flight `async:request`s per source: `status` 'fetching' / 'searching' (§6.6). */
-  const inflight = { fetcher: 0, searchFn: 0 }
-  /** The latest fetcher request failed or returned a bad response: 'error' until one applies. */
-  let fetchFailed = false
-  /** `rowCount` of the last applied fetcher result (§6.5). */
-  let fetchedRowCount: number | undefined
-  /** Params of the last fetcher request; a flush with other params starts a new one (§7.1). */
-  let fetchedParams: FetchKey | undefined
   /** Rows of the current data that failed the schema (`getInvalidRows`, §5.1). */
   let schemaOutcome: SchemaOutcome | undefined
   /**
@@ -145,10 +143,15 @@ export function createTable<T, S extends TableState>(
    */
   let initialInput = options.data === undefined ? options.initialData : undefined
   let initialRows: readonly unknown[] | undefined
-  /** `createDeferred` (§7.2): the async work waiting for `startTable`; `undefined` once started. */
-  let waiting: Set<'fetcher' | 'searchFn'> | undefined = deferral.depth > 0 ? new Set() : undefined
-  /** Every source deferred since creation (`DK_SSR_ASYNC_DEFERRED`). */
-  const deferredSources: ('fetcher' | 'searchFn')[] = []
+  /** Created inside `createDeferred` (§7.2): async work waits for `startTable`. */
+  let deferring = deferral.depth > 0
+  /**
+   * Opt-in parts of the store (`TableInternals.use`): the async request machinery and the server
+   * source. A table without an async source creates none (§9.3).
+   */
+  const extensions = new Map<ExtensionFactory<TableExtension>, TableExtension>()
+  /** The server source (`withFetcher`, §7.1), once a fetcher was given. */
+  let server: ServerSource | undefined
 
   let controlled = new Set<string>()
   let snapshot: S
@@ -214,26 +217,26 @@ export function createTable<T, S extends TableState>(
   // reports); `pipeline` is stage order for the runner. Duplicates throw here (config error).
   const features: readonly AnyFeature[] = options.features ?? EMPTY
   const pipeline = orderFeatures(features, hub.table)
-  // Data modes (§7.1): DK_MODE_ORDER, DK_FETCHER_WITHOUT_SERVER_MODE (config errors).
-  checkModes(pipeline, options.fetcher, hub.table)
-  const serverFeatures = pipeline.filter(isServer)
+  // Data modes (§7.1): DK_MODE_ORDER (a config error, development). A fetcher without a server-mode
+  // feature (DK_FETCHER_WITHOUT_SERVER_MODE) is checked by the server source.
+  if (DEV) checkModeOrder(pipeline, hub.table)
   for (const f of pipeline) if (f.stage !== 'none') modes[f.name] = f.mode ?? 'client'
-  // One asyncControl per table (it holds this table's in-flight requests), first in the list so
-  // user / feature interceptors and the core see its signal; the boundary stays outermost.
-  // Feature interceptors (pipeline order) come next, then the user's. `timeout` is read once.
-  const control = asyncControl(options.timeout === undefined ? {} : { timeout: options.timeout })
+  // Extension interceptors come first (asyncControl, one per table, installed with the first async
+  // source: user / feature interceptors and the core see its signal); the boundary stays
+  // outermost. Feature interceptors (pipeline order) come next, then the user's.
+  const front: Interceptor<OpName>[] = []
   const featureInterceptors = pipeline.flatMap((f) => f.interceptors ?? EMPTY)
   // The tracer (§3.4, explain timings) is development-only: `DEV` folds to `false` in production
   // builds, which drops it from the bundle; there it is opt-in with `interceptors: [tracer()]`.
   const traced = DEV ? [tracer() as Interceptor<OpName>] : EMPTY
-  const withControl = (list: readonly Interceptor<OpName>[] | undefined) => [
-    control as Interceptor<OpName>,
+  const withFront = (list: readonly Interceptor<OpName>[] | undefined) => [
+    ...front,
     ...traced,
     ...featureInterceptors,
     ...(list ?? EMPTY),
   ]
   const runtime = createInterceptorRuntime({
-    interceptors: withControl(options.interceptors),
+    interceptors: withFront(options.interceptors),
     emit: hub.emit,
   })
   runtime.installBoundary(errorBoundary)
@@ -377,14 +380,14 @@ export function createTable<T, S extends TableState>(
    */
   function flush() {
     if (notifying) return
-    void syncFetch()
+    sync()
     if (!pending) return
     notifying = true
     let rethrow: unknown
     try {
       while (pending && !destroyed) {
         // Server state changed (this round's state): the fetch starts in the same notification.
-        void syncFetch()
+        sync()
         pending = false
         rounds++
         const prev = notified
@@ -507,19 +510,33 @@ export function createTable<T, S extends TableState>(
   }
 
   /**
-   * Status from outside the pipeline (§6.6): a failed ingest or fetch, an in-flight fetcher /
-   * `searchFn`, a running async schema, the search slice (`pending` / `searching` / `error`).
-   * Precedence: error > fetching > searching >
+   * Status from outside the pipeline (§6.6): a failed ingest, a running async schema, the search
+   * slice (`pending` / `searching` / `error`), and the extensions' (a failed fetch, an in-flight
+   * fetcher / `searchFn`, deferred async work). Precedence: error > fetching > searching >
    * validating > pending > idle.
    */
   function status(): RowModelStatus {
     const search = searchStatus()
-    if (ingestFailed || fetchFailed || search === 'error') return 'error'
-    if (inflight.fetcher > 0) return 'fetching'
-    if (inflight.searchFn > 0 || search === 'searching') return 'searching'
-    if (validatingSeq !== 0) return 'validating'
-    // Deferred async work (SSR, §7.2) waits for the client: 'pending'.
-    return search === 'pending' || (waiting !== undefined && waiting.size > 0) ? 'pending' : 'idle'
+    let s: RowModelStatus =
+      ingestFailed || search === 'error'
+        ? 'error'
+        : search === 'searching'
+          ? 'searching'
+          : validatingSeq !== 0
+            ? 'validating'
+            : search === 'pending'
+              ? 'pending'
+              : 'idle'
+    for (const e of extensions.values()) {
+      const x = e.status?.()
+      if (x !== undefined && RANK.indexOf(x) > RANK.indexOf(s)) s = x
+    }
+    return s
+  }
+
+  /** Extensions start work that follows state (the fetcher on server state, §7.1). */
+  function sync() {
+    for (const e of extensions.values()) e.sync?.()
   }
 
   /** The `status` of the first search-stage slice that reports one (§6.3). */
@@ -723,11 +740,11 @@ export function createTable<T, S extends TableState>(
       // value in every build.
       if (DEV) validateOptionChange(partial, next, previous, { table: hub.table, emit: hub.emit })
       else keepReadOnce(partial, next, previous)
-      if ('fetcher' in partial) checkModes(pipeline, next.fetcher, hub.table, 'setOptions')
+      if ('fetcher' in partial) useServer(next.fetcher)?.check(next.fetcher)
       void op('table:setOptions', { options: next, previous }, 'options', (): undefined => {
         options = next
         if (next.interceptors !== previous.interceptors) {
-          runtime.setInterceptors(withControl(next.interceptors))
+          runtime.setInterceptors(withFront(next.interceptors))
         }
         if ('state' in partial || 'onStateChange' in partial) syncControlled()
         if (next.columns !== previous.columns || next.rowKey !== previous.rowKey) {
@@ -736,8 +753,8 @@ export function createTable<T, S extends TableState>(
         }
         // The page count changed (§6.5): listeners re-read it (and pagination clamps).
         if (next.rowCount !== previous.rowCount) pending = true
-        // A new fetcher reference runs at once, even with the same params (flush → syncFetch).
-        if (next.fetcher !== previous.fetcher) fetchedParams = undefined
+        // A new fetcher reference runs at once, even with the same params (flush → sync).
+        if (next.fetcher !== previous.fetcher) server?.reset()
         // New data is checked when applied (setData); same data with new columns is checked here.
         if (next.data !== previous.data) ingest()
         else {
@@ -766,170 +783,82 @@ export function createTable<T, S extends TableState>(
     })
   }
 
-  /** Moves the in-flight count of `source`; a status change is never silent (§6.6). */
-  function track(source: 'fetcher' | 'searchFn', delta: 1 | -1) {
-    const before = status()
-    inflight[source] += delta
-    if (status() !== before) touch()
-  }
+  // --- extensions (§9.3) ---------------------------------------------------------------------
 
-  async function request(
-    source: 'fetcher' | 'searchFn',
-    core: (signal: AbortSignal) => Promise<unknown>,
-    opts: {
-      previous?: unknown
-      params?: unknown
-      signal?: AbortSignal
-      onSettle?: (value: unknown, status: AsyncStatus) => void
-    } = {},
-  ): Promise<{ value: unknown; status: AsyncStatus }> {
-    if (destroyed) return { value: opts.previous, status: 'aborted' }
-    const ctx = createContext(
-      'async:request',
-      opts.params === undefined ? { source } : { source, params: opts.params },
-      source,
-      { ...base(), trigger: 'fetch' },
-      opts.signal,
-    )
-    ctx.meta.set(FALLBACK, opts.previous)
-    // 'fetching' / 'searching' starts now: a new row model and a notification (unless batched).
-    track(source, 1)
-    if (apiDepth === 0) flush()
-    let value: unknown = opts.previous
-    let outcome: AsyncStatus = 'error'
-    try {
-      value = await runtime.run('async:request', ctx, (c) => core(c.signal as AbortSignal))
-      outcome = (ctx.meta.get(ASYNC_STATUS) as AsyncStatus | undefined) ?? 'error'
-      return { value, status: outcome }
-    } finally {
-      // Also when it rejected (strict): the status never stays in flight.
-      settle(source, () => opts.onSettle?.(value, outcome))
-    }
-  }
-
-  /** Ends a request in one batch: its result applied and the status cleared, one notification. */
-  function settle(source: 'fetcher' | 'searchFn', apply: () => void) {
-    if (destroyed) {
-      inflight[source]--
-      return
-    }
-    withTrigger('fetch', () => {
-      const before = status()
+  function batch<R>(t: Trigger, fn: () => R): R {
+    return withTrigger(t, () => {
       apiDepth++
       try {
-        inflight[source]--
-        apply()
+        return fn()
       } finally {
-        if (status() !== before) touch()
         apiDepth--
         if (apiDepth === 0) flush()
       }
     })
   }
 
-  // --- server source (§7.1) ----------------------------------------------------------------------
-
-  /**
-   * Starts a fetcher request when the server-mode state differs from the last request's (or
-   * `force`: `refetch()`). Resolves with the outcome; never rejects.
-   */
-  function syncFetch(force = false): Promise<FetchOutcome> | undefined {
-    const fetcher = options.fetcher
-    if (typeof fetcher !== 'function' || destroyed) return
-    const params = fetchParams(serverFeatures, snapshot)
-    if (!force && fetchedParams && sameParams(fetchedParams, params)) return
-    // Deferred (SSR, §7.2): no request until startTable; then the latest params are fetched.
-    if (defer('fetcher')) return
-    fetchedParams = params
-    let result: FetchOutcome['status'] | undefined
-    const done = (): FetchOutcome => ({ status: result ?? (destroyed ? 'superseded' : 'error') })
-    return request('fetcher', (signal) => callFetcher(fetcher, params, signal), {
-      params,
-      onSettle: (value, outcome) => {
-        result = outcome === 'superseded' || outcome === 'aborted' ? 'superseded' : 'error'
-        if (applyFetch(value, outcome)) result = 'applied'
-      },
-      // strict: the DatakableError was reported by the hub; the status is 'error' (applyFetch).
-    }).then(done, done)
+  const host: TableHost = {
+    table: table as unknown as Table<unknown, TableState>,
+    name: hub.table,
+    emit: hub.emit,
+    runtime,
+    features: pipeline,
+    options: () => options as TableOptions<unknown>,
+    state: () => snapshot,
+    base,
+    destroyed: () => destroyed,
+    loaded: () => loaded,
+    status,
+    touch,
+    notify: () => {
+      if (apiDepth === 0) flush()
+    },
+    batch,
+    ingest: (rows) => ingest(rows),
+    intercept(interceptor) {
+      front.push(interceptor)
+      runtime.setInterceptors(withFront(options.interceptors))
+    },
+    deferring: () => deferring,
+    use,
   }
 
+  function use<E extends TableExtension>(factory: ExtensionFactory<E>): E {
+    let e = extensions.get(factory as ExtensionFactory<TableExtension>) as E | undefined
+    if (!e) {
+      e = factory(host)
+      extensions.set(factory as ExtensionFactory<TableExtension>, e)
+    }
+    return e
+  }
+
+  /** The server source a `withFetcher` fetcher brings (created once); else the current one. */
+  function useServer(fetcher: unknown): ServerSource | undefined {
+    const factory = (fetcher as Partial<ServerFetcher<unknown>> | undefined)?.[SERVER_SOURCE]
+    if (factory) server = use(factory)
+    return server
+  }
+
+  /**
+   * Runs the fetcher again with the current params (§7.1); never rejects. Without a fetcher:
+   * `{ status: 'applied' }` at once.
+   */
   function refetch(): Promise<FetchOutcome> {
     if (destroyed) {
       destroyedCall('refetch')
       return Promise.resolve({ status: 'superseded' })
     }
     return (
-      withTrigger('api:refetch', () => syncFetch(true)) ?? Promise.resolve({ status: 'applied' })
+      withTrigger('api:refetch', () => server?.sync(true)) ?? Promise.resolve({ status: 'applied' })
     )
-  }
-
-  function failFetch() {
-    if (fetchFailed) return
-    fetchFailed = true
-    touch()
-  }
-
-  /**
-   * Applies a fetcher outcome; only the latest request reaches `'applied'` (asyncControl). `true`
-   * when its rows were applied.
-   */
-  function applyFetch(value: unknown, outcome: AsyncStatus): boolean {
-    if (outcome === 'superseded') {
-      hub.emit('DK_FETCH_ABORTED', {})
-      return false
-    }
-    if (outcome === 'aborted') return false
-    // 'error' / 'timeout': already reported by the errorBoundary / asyncControl.
-    if (outcome !== 'applied') {
-      failFetch()
-      return false
-    }
-    if (value instanceof FetchFailure) {
-      failFetch()
-      const name = errorName(value.error)
-      hub.emit(
-        'DK_FETCH_FAILED',
-        { ...(name === undefined ? {} : { errorName: name }), hadRows: loaded },
-        { cause: value.error },
-      )
-      return false
-    }
-    const bad = checkResponse(
-      value,
-      serverFeatures.some((f) => f.stage === 'paginate'),
-    )
-    if (bad) {
-      failFetch()
-      hub.emit('DK_FETCH_BAD_RESPONSE', bad)
-      return false
-    }
-    if (fetchFailed) {
-      fetchFailed = false
-      touch()
-    }
-    const result = value as { rows: readonly unknown[]; rowCount?: number }
-    fetchedRowCount = result.rowCount ?? result.rows.length
-    ingest(result.rows)
-    return true
-  }
-
-  /** `true` (and `source` recorded as waiting) while deferred (§7.2). */
-  function defer(source: 'fetcher' | 'searchFn'): boolean {
-    if (waiting === undefined) return false
-    if (!waiting.has(source)) {
-      waiting.add(source)
-      if (!deferredSources.includes(source)) deferredSources.push(source)
-      // 'pending' is never silent (§6.6).
-      touch()
-    }
-    return true
   }
 
   /** `startTable` (§7.2): the deferred work starts; listeners see the new status at once. */
   function start() {
-    if (waiting === undefined || destroyed) return
-    const had = waiting.size > 0
-    waiting = undefined
+    if (!deferring || destroyed) return
+    deferring = false
+    let had = false
+    for (const e of extensions.values()) if (e.start?.()) had = true
     if (!had) return
     // The pipeline re-runs: 'pending' ends and the search feature's check starts its searchFn.
     touch()
@@ -937,13 +866,12 @@ export function createTable<T, S extends TableState>(
   }
 
   setTableInternals(table, {
-    request,
     features: pipeline,
-    rowCount: () => (typeof options.fetcher === 'function' ? fetchedRowCount : options.rowCount),
+    rowCount: () => (typeof options.fetcher === 'function' ? server?.rowCount() : options.rowCount),
     hasFetcher: () => typeof options.fetcher === 'function',
     emit: hub.emit,
-    defer,
-    deferred: () => deferredSources,
+    use,
+    peek: (factory) => extensions.get(factory as ExtensionFactory<TableExtension>) as never,
     start,
     initialRows: () =>
       initialRows !== undefined && initialRows === data ? initialRows : undefined,
@@ -964,6 +892,8 @@ export function createTable<T, S extends TableState>(
     setSlice,
     call: callApi,
   })
+  // Server source (§7.1): with a `withFetcher` fetcher (throws DK_FETCHER_WITHOUT_SERVER_MODE).
+  useServer(options.fetcher)
   withTrigger('init', () => {
     // `void`: sync ops never return a promise (op kinds, §3.4).
     void op('table:init', { options }, 'options', (): undefined => {
@@ -971,13 +901,9 @@ export function createTable<T, S extends TableState>(
       ingest()
       warnControlled(undefined)
     })
-    // initialData answers the initial server state (§7.2): no first request, its total as rowCount.
-    if (options.initialData !== undefined && options.data === undefined) {
-      fetchedParams = fetchParams(serverFeatures, snapshot)
-      fetchedRowCount = options.rowCount ?? options.initialData.length
-    }
-    // Server source (§7.1): the first request starts now ('fetching', isInitialLoad: true).
-    void syncFetch()
+    // Server source (§7.1): the first request starts now ('fetching', isInitialLoad: true), unless
+    // initialData answered the initial server state (§7.2).
+    sync()
   })
   pending = false
   return table

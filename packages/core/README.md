@@ -228,14 +228,18 @@ console.log(table.getInvalidRows()) // [{ index, raw, issues }] in every mode
 
 Every pipeline feature takes `mode: 'client' | 'server'`. Server steps must form a prefix of the
 pipeline (server filter + search, then client sort + paginate is fine; server paginate before
-client search is not) — a violation throws `DatakableConfigError` (`DK_MODE_ORDER`) at creation.
+client search is not) — a violation throws `DatakableConfigError` (`DK_MODE_ORDER`) at creation
+(a development check).
 
-With a `fetcher`, the table loads its own data:
+With a `fetcher`, the table loads its own data. The server source is an opt-in import: wrap the
+fetcher with `withFetcher()` from `@datakable/core/server`, so a table without one does not bundle
+it:
 
 ```ts
 import { createTable, type FetchResult } from '@datakable/core'
 import { pagination } from '@datakable/core/pagination'
 import { search } from '@datakable/core/search'
+import { withFetcher } from '@datakable/core/server'
 import { sorting } from '@datakable/core/sorting'
 
 type User = { id: number; name: string }
@@ -250,7 +254,7 @@ const table = createTable({
     pagination({ mode: 'server', pageSize: 20 }),
   ],
   // Receives only the server-mode state. Latest request wins; superseded ones are aborted.
-  fetcher: async ({ query, sort, pageIndex, pageSize, signal }) => {
+  fetcher: withFetcher(async ({ query, sort, pageIndex, pageSize, signal }) => {
     const params = new URLSearchParams({
       q: query ?? '',
       sort: (sort ?? []).map((s) => `${s.desc ? '-' : ''}${s.id}`).join(','),
@@ -260,7 +264,7 @@ const table = createTable({
     const res = await fetch(`/api/users?${params}`, { signal })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     return (await res.json()) as FetchResult<User> // { rows, rowCount }
-  },
+  }),
   timeout: 10_000, // default 30 s → DK_ASYNC_TIMEOUT
 })
 

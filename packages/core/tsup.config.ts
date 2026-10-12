@@ -15,6 +15,7 @@ const entries = {
   pagination: 'src/features/pagination/index.ts',
   messages: 'src/messages/index.ts',
   schema: 'src/ingest/schema-entry.ts',
+  server: 'src/source/server-entry.ts',
 }
 
 export default defineConfig({

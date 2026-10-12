@@ -1,5 +1,6 @@
 import { isStandardSchema } from '../ingest/schema'
 import { SCHEMA_INGEST } from '../ingest/schema-brand'
+import { SERVER_SOURCE } from '../source/server-brand'
 import type { TableOptions } from '../table/types'
 import { defineOptions, type OptionRule } from './options'
 
@@ -57,7 +58,13 @@ const schema = {
     expected: 'a number of milliseconds > 0, or Infinity to disable the timeout',
     once: true,
   },
-  fetcher: { type: 'function' },
+  fetcher: {
+    type: 'function',
+    check: (v: object) => typeof (v as { [SERVER_SOURCE]?: unknown })[SERVER_SOURCE] === 'function',
+    expected:
+      "a fetcher wrapped with withFetcher() from '@datakable/core/server': " +
+      'fetcher: withFetcher(fetchUsers)',
+  },
   rowCount: {
     type: 'number',
     check: (v: number) => Number.isInteger(v) && v >= 0,

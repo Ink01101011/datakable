@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { type FetchResult, search, sorting } from '@datakable/core'
+import { withFetcher } from '@datakable/core/server'
 import { renderToString } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DataTable } from './data-table'
@@ -30,7 +31,7 @@ describe('<DataTable /> on the server (§7.2, §10)', () => {
       <DataTable<User>
         columns={columns}
         features={[sorting({ mode: 'server' })]}
-        fetcher={fetcher}
+        fetcher={withFetcher(fetcher)}
       />,
     )
     expect(fetcher).not.toHaveBeenCalled()
@@ -62,7 +63,7 @@ describe('<DataTable /> on the server (§7.2, §10)', () => {
       <DataTable<User>
         columns={columns}
         features={[sorting({ mode: 'server' })]}
-        fetcher={fetcher}
+        fetcher={withFetcher(fetcher)}
         initialData={users}
       />,
     )

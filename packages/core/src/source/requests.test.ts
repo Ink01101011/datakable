@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Diagnostic } from '../diagnostics/types'
 import { defineInterceptor } from '../intercept/define'
-import { createTable } from './create-table'
-import { getTableInternals } from './internals'
+import { createTable } from '../table/create-table'
+import { requestsOf } from './requests'
 
 // R3 integration: one asyncControl per table, first in the interceptor list, aborted by destroy().
 
@@ -40,7 +40,7 @@ describe('createTable: asyncControl integration', () => {
     const t = make()
     const late = deferred<string[]>()
     let signal: AbortSignal | undefined
-    const req = getTableInternals(t).request(
+    const req = requestsOf(t).request(
       'fetcher',
       (s) => {
         signal = s
@@ -60,7 +60,7 @@ describe('createTable: asyncControl integration', () => {
 
   it("a superseded request's late result is never applied through a real table", async () => {
     const t = make()
-    const { request } = getTableInternals(t)
+    const { request } = requestsOf(t)
     const apply = async (p: ReturnType<typeof request>) => {
       const { value, status } = await p
       if (status === 'applied') t.setState({ rows: value as string[] })
@@ -82,7 +82,7 @@ describe('createTable: asyncControl integration', () => {
     vi.useFakeTimers()
     const t = make({ timeout: 50 })
     const never = deferred<string[]>()
-    const req = getTableInternals(t).request('searchFn', () => never.promise, { previous: ['old'] })
+    const req = requestsOf(t).request('searchFn', () => never.promise, { previous: ['old'] })
     await vi.advanceTimersByTimeAsync(50)
     expect(await req).toEqual({ value: ['old'], status: 'timeout' })
     expect(seen.map((d) => d.code)).toEqual(['DK_ASYNC_TIMEOUT'])
@@ -101,7 +101,7 @@ describe('createTable: asyncControl integration', () => {
     const t = make()
     t.setOptions({ interceptors: [spy] })
     let core: AbortSignal | undefined
-    await getTableInternals(t).request('fetcher', async (s) => {
+    await requestsOf(t).request('fetcher', async (s) => {
       core = s
       return []
     })

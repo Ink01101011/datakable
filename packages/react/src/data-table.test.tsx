@@ -8,6 +8,7 @@ import {
   sorting,
 } from '@datakable/core'
 import { withSchema } from '@datakable/core/schema'
+import { withFetcher } from '@datakable/core/server'
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { type ReactNode, useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest'
@@ -262,7 +263,9 @@ describe('<DataTable /> states (status + isInitialLoad, §6.6, USER DECISION)', 
   it('Loading on the first fetch; rows after; a refresh indicator over stale rows on refetch', async () => {
     const { calls, fetcher } = deferredFetcher()
     const { container } = render(
-      <Hooked options={{ fetcher, features: [sorting({ mode: 'server' })] }} />,
+      <Hooked
+        options={{ fetcher: withFetcher(fetcher), features: [sorting({ mode: 'server' })] }}
+      />,
     )
     const r = root(container)
     expect(r.getAttribute('data-status')).toBe('fetching')
@@ -294,7 +297,13 @@ describe('<DataTable /> states (status + isInitialLoad, §6.6, USER DECISION)', 
     const { calls, fetcher } = deferredFetcher()
     const onDiagnostic = vi.fn<(d: Diagnostic) => void>()
     const { container } = render(
-      <Hooked options={{ fetcher, onDiagnostic, features: [sorting({ mode: 'server' })] }} />,
+      <Hooked
+        options={{
+          fetcher: withFetcher(fetcher),
+          onDiagnostic,
+          features: [sorting({ mode: 'server' })],
+        }}
+      />,
     )
     await act(async () => calls[0]?.reject(new Error('boom')))
     const r = root(container)
@@ -321,7 +330,11 @@ describe('<DataTable /> states (status + isInitialLoad, §6.6, USER DECISION)', 
 
   it('an empty first result is loaded: Empty, not Loading', async () => {
     const { calls, fetcher } = deferredFetcher()
-    render(<Hooked options={{ fetcher, features: [sorting({ mode: 'server' })] }} />)
+    render(
+      <Hooked
+        options={{ fetcher: withFetcher(fetcher), features: [sorting({ mode: 'server' })] }}
+      />,
+    )
     await act(async () => calls[0]?.resolve({ rows: [], rowCount: 0 }))
     expect(screen.queryByText('Loading…')).toBeNull()
     expect(screen.getByText('No rows')).toBeTruthy()
@@ -412,7 +425,10 @@ describe('<DataTable /> components overrides', () => {
     const { unmount } = render(
       <Hooked
         components={components}
-        options={{ fetcher, features: [search({ mode: 'server' }), pagination()] }}
+        options={{
+          fetcher: withFetcher(fetcher),
+          features: [search({ mode: 'server' }), pagination()],
+        }}
       />,
     )
     expect(screen.getByText('wait fetching')).toBeTruthy()

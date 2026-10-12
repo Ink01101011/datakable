@@ -51,26 +51,18 @@ export const isServer = (f: AnyFeature) => f.stage !== 'none' && f.mode === 'ser
 const rank = (f: AnyFeature) => STAGES.indexOf(f.stage)
 
 /**
- * Config checks of the data modes (§7.1), at creation and on `setOptions({ fetcher })`:
- * - `DK_MODE_ORDER`: server steps must form a prefix of the pipeline. Steps of the same stage
- *   commute (filters AND together), so only a client step of an earlier stage is a violation.
- * - `DK_FETCHER_WITHOUT_SERVER_MODE`: a `fetcher` needs at least one server-mode feature.
+ * `DK_MODE_ORDER` (§7.1, a config error; checked in development, changed 2026-10-13 for §9.3):
+ * server steps must form a prefix of the pipeline. Steps of the same stage commute (filters AND
+ * together), so only a client step of an earlier stage is a violation.
  */
-export function checkModes(
-  features: readonly AnyFeature[],
-  fetcher: unknown,
-  table: string,
-  phase: 'init' | 'setOptions' = 'init',
-): void {
+export function checkModeOrder(features: readonly AnyFeature[], table: string): void {
   let client: AnyFeature | undefined
-  let server = false
   for (const f of features) {
     if (f.stage === 'none') continue
     if (f.mode !== 'server') {
       client ??= f
       continue
     }
-    server = true
     if (client && rank(client) < rank(f)) {
       throwConfigError(
         'DK_MODE_ORDER',
@@ -79,13 +71,24 @@ export function checkModes(
       )
     }
   }
-  if (fetcher !== undefined && !server) {
-    throwConfigError(
-      'DK_FETCHER_WITHOUT_SERVER_MODE',
-      { features: features.filter((f) => f.stage !== 'none').map((f) => f.name), phase },
-      { table, trigger: phase },
-    )
-  }
+}
+
+/**
+ * `DK_FETCHER_WITHOUT_SERVER_MODE` (§7.1, a config error), at creation and on
+ * `setOptions({ fetcher })`: a `fetcher` needs at least one server-mode feature.
+ */
+export function checkFetcher(
+  features: readonly AnyFeature[],
+  fetcher: unknown,
+  table: string,
+  phase: 'init' | 'setOptions' = 'init',
+): void {
+  if (fetcher === undefined || features.some(isServer)) return
+  throwConfigError(
+    'DK_FETCHER_WITHOUT_SERVER_MODE',
+    { features: features.filter((f) => f.stage !== 'none').map((f) => f.name), phase },
+    { table, trigger: phase },
+  )
 }
 
 /** The fetcher params without `signal`. */

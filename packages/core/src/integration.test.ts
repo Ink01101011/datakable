@@ -9,6 +9,7 @@ import { makeSchema } from './ingest/test-schemas'
 import { withSchema } from './ingest/with-schema'
 import { defineInterceptor } from './intercept/define'
 import { Row } from './pipeline/row'
+import { withFetcher } from './source/with-fetcher'
 import { createTable } from './table/create-table'
 
 /**
@@ -331,11 +332,13 @@ describe('integration (R7): server sorting + pagination with a fetcher', () => {
   function serverTable() {
     const calls: Call[] = []
     const t = createTable({
-      fetcher: (params) =>
-        new Promise<{ rows: U[]; rowCount: number }>((resolve) => {
-          const { signal: _signal, ...rest } = params
-          calls.push({ params: rest, resolve: resolve as (r: unknown) => void })
-        }),
+      fetcher: withFetcher(
+        (params) =>
+          new Promise<{ rows: U[]; rowCount: number }>((resolve) => {
+            const { signal: _signal, ...rest } = params
+            calls.push({ params: rest, resolve: resolve as (r: unknown) => void })
+          }),
+      ),
       rowKey: 'id',
       columns: [{ key: 'id' }, { key: 'name' }, { key: 'city' }, { key: 'age', sortable: true }],
       // Listed out of stage order; a client filter would precede them (DK_MODE_ORDER).
@@ -396,7 +399,7 @@ describe('integration (R7): server sorting + pagination with a fetcher', () => {
   it('a client step before a server step is a config error (DK_MODE_ORDER)', () => {
     expect(() =>
       createTable({
-        fetcher: () => ({ rows: [] }),
+        fetcher: withFetcher(() => ({ rows: [] })),
         features: [columnFilters(), sorting({ mode: 'server' })],
       }),
     ).toThrow(/DK_MODE_ORDER/)

@@ -1,4 +1,11 @@
-import { DataTable, type FetchParams, type FetchResult, pagination, sorting } from 'datakable'
+import {
+  DataTable,
+  type FetchParams,
+  type FetchResult,
+  pagination,
+  sorting,
+  withFetcher,
+} from 'datakable'
 
 type User = { id: number; name: string }
 
@@ -19,7 +26,7 @@ export function Users({ firstPage, rowCount }: { firstPage: User[]; rowCount: nu
     <DataTable
       rowKey="id"
       features={features}
-      fetcher={fetchUsers}
+      fetcher={withFetcher(fetchUsers)}
       // The server HTML shows these rows and hydration does not fetch them again. Without
       // initialData nothing is fetched on the server: the HTML shows Loading (status 'pending',
       // DK_SSR_ASYNC_DEFERRED) and the browser fetches right after hydrating.

@@ -10,7 +10,8 @@ import type { Interceptor } from '../intercept/define'
 import type { OpName } from '../intercept/operations'
 import type { RowKey } from '../pipeline/row'
 import type { RowModel } from '../pipeline/types'
-import type { Fetcher, FetchOutcome } from '../source/fetcher'
+import type { FetchOutcome } from '../source/fetcher'
+import type { ServerFetcher } from '../source/server-brand'
 
 /** Table state: one entry per slice (feature state is typed by `StateOf`, T08). */
 export type TableState = Record<string, unknown>
@@ -90,8 +91,10 @@ export interface TableOptions<T, S extends TableState = TableState> {
    * creation and whenever that state changes (`status: 'fetching'`), through `async:request`
    * (latest wins, abort, `timeout`). Needs at least one feature with `mode: 'server'`
    * (`DK_FETCHER_WITHOUT_SERVER_MODE`). The returned rows go through `schema` and the data checks.
+   * Opt in with `withFetcher(fetchUsers)` from `@datakable/core/server`: a table without a fetcher
+   * does not bundle the server source (changed 2026-10-13 for §9.3).
    */
-  fetcher?: Fetcher<T>
+  fetcher?: ServerFetcher<T>
   /**
    * Server mode without a fetcher (§7.1): the total number of rows on the server, while `data` is
    * only the current page. Server-mode pagination counts pages from it (`DK_ROW_COUNT_MISSING`

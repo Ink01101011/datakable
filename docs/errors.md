@@ -976,15 +976,16 @@ prints (development console):
 
 ```ts
 import { createTable, type FetchResult, pagination } from '@datakable/core'
+import { withFetcher } from '@datakable/core/server'
 
 type User = { id: number; name: string }
 
 createTable({
   rowKey: 'id',
   features: [pagination({ mode: 'server' })],
-  fetcher: async (): Promise<FetchResult<User>> => {
+  fetcher: withFetcher(async (): Promise<FetchResult<User>> => {
     throw new TypeError('Failed to fetch') // e.g. the API is unreachable
-  },
+  }),
 })
 ```
 
@@ -1018,17 +1019,20 @@ prints (development console):
 
 ```ts
 import { createTable, type FetchResult, sorting } from '@datakable/core'
+import { withFetcher } from '@datakable/core/server'
 
 type User = { id: number; name: string }
 
 const table = createTable({
   rowKey: 'id',
   features: [sorting({ mode: 'server' })],
-  fetcher: ({ signal }) =>
-    new Promise<FetchResult<User>>((resolve) => {
-      const timer = setTimeout(() => resolve({ rows: [], rowCount: 0 }), 50)
-      signal.addEventListener('abort', () => clearTimeout(timer))
-    }),
+  fetcher: withFetcher(
+    ({ signal }) =>
+      new Promise<FetchResult<User>>((resolve) => {
+        const timer = setTimeout(() => resolve({ rows: [], rowCount: 0 }), 50)
+        signal.addEventListener('abort', () => clearTimeout(timer))
+      }),
+  ),
 })
 table.toggleSort('name') // a new request supersedes the first one
 ```
@@ -1064,6 +1068,7 @@ prints (development console):
 
 ```ts
 import { createTable, type FetchResult, pagination } from '@datakable/core'
+import { withFetcher } from '@datakable/core/server'
 
 type User = { id: number; name: string }
 
@@ -1071,8 +1076,9 @@ createTable({
   rowKey: 'id',
   features: [pagination({ mode: 'server' })],
   // The API answers { items, total }; the fetcher returns it as is.
-  fetcher: async () =>
-    ({ items: [{ id: 1, name: 'Ada' }], total: 1 }) as unknown as FetchResult<User>,
+  fetcher: withFetcher(
+    async () => ({ items: [{ id: 1, name: 'Ada' }], total: 1 }) as unknown as FetchResult<User>,
+  ),
 })
 ```
 
@@ -1108,11 +1114,12 @@ prints (development console):
 
 ```ts
 import { createTable, pagination } from '@datakable/core'
+import { withFetcher } from '@datakable/core/server'
 
 createTable({
   features: [pagination({ mode: 'server' })],
   // An API that never answers.
-  fetcher: () => new Promise(() => {}),
+  fetcher: withFetcher(() => new Promise(() => {})),
   timeout: 50, // ms; the default is 30 s
 })
 ```
@@ -1731,11 +1738,12 @@ prints (development console):
 
 ```ts
 import { createTable, pagination, sorting } from '@datakable/core'
+import { withFetcher } from '@datakable/core/server'
 
 createTable({
   // Sorting in the browser, but paging on the server: the client sort would see one page only.
   features: [sorting(), pagination({ mode: 'server' })],
-  fetcher: async () => ({ rows: [], rowCount: 0 }),
+  fetcher: withFetcher(async () => ({ rows: [], rowCount: 0 })),
 })
 ```
 
@@ -1769,10 +1777,11 @@ DatakableConfigError: DK_MODE_ORDER: feature "pagination" (paginate) is in serve
 
 ```ts
 import { createTable, pagination } from '@datakable/core'
+import { withFetcher } from '@datakable/core/server'
 
 createTable({
   features: [pagination()], // client mode (the default)
-  fetcher: async () => ({ rows: [], rowCount: 0 }),
+  fetcher: withFetcher(async () => ({ rows: [], rowCount: 0 })),
 })
 ```
 
@@ -2224,6 +2233,7 @@ Needs a server render, then a hydration that differs from it; the injecting test
 
 ```tsx
 import { type FetchParams, type FetchResult, pagination } from '@datakable/core'
+import { withFetcher } from '@datakable/core/server'
 import { DataTable } from '@datakable/react'
 import { renderToString } from 'react-dom/server'
 
@@ -2237,7 +2247,7 @@ const features = [pagination({ mode: 'server' })]
 
 function Users() {
   // No initialData: the server has no rows to render.
-  return <DataTable rowKey="id" features={features} fetcher={fetchUsers} />
+  return <DataTable rowKey="id" features={features} fetcher={withFetcher(fetchUsers)} />
 }
 
 // In the server render (Next.js, Remix, a Node server, …).

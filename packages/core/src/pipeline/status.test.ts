@@ -7,6 +7,8 @@ import { search } from '../features/search/search'
 import { makeSchema } from '../ingest/test-schemas'
 import { withSchema } from '../ingest/with-schema'
 import { defineInterceptor } from '../intercept/define'
+import { requestsOf } from '../source/requests'
+import { withFetcher } from '../source/with-fetcher'
 import { createTable } from '../table/create-table'
 import { getTableInternals } from '../table/internals'
 
@@ -245,7 +247,7 @@ describe("'fetching' is never silent (§6.6, §7.1)", () => {
 
   it('fetch start notifies with a new row model', async () => {
     const m = manual()
-    const t = createTable({ fetcher: m.fetcher, features: [server()] })
+    const t = createTable({ fetcher: withFetcher(m.fetcher), features: [server()] })
     m.last().resolve({ rows: people(10), rowCount: 30 })
     await tick()
     const idle = t.getRowModel()
@@ -257,7 +259,7 @@ describe("'fetching' is never silent (§6.6, §7.1)", () => {
 
   it('fetch end notifies with a new row model', async () => {
     const m = manual()
-    const t = createTable({ fetcher: m.fetcher, features: [server()] })
+    const t = createTable({ fetcher: withFetcher(m.fetcher), features: [server()] })
     const fetching = t.getRowModel()
     expect([fetching.status, fetching.isInitialLoad]).toEqual(['fetching', true])
     const seen = track(t)
@@ -269,7 +271,11 @@ describe("'fetching' is never silent (§6.6, §7.1)", () => {
 
   it("first-fetch failure: 'error' with isInitialLoad true, notified", async () => {
     const m = manual()
-    const t = createTable({ fetcher: m.fetcher, features: [server()], onDiagnostic: () => {} })
+    const t = createTable({
+      fetcher: withFetcher(m.fetcher),
+      features: [server()],
+      onDiagnostic: () => {},
+    })
     const seen = track(t)
     m.last().reject(new Error('down'))
     await tick()
@@ -278,7 +284,7 @@ describe("'fetching' is never silent (§6.6, §7.1)", () => {
 
   it("a superseded request keeps 'fetching' without an extra notification", async () => {
     const m = manual()
-    const t = createTable({ fetcher: m.fetcher, features: [server()] })
+    const t = createTable({ fetcher: withFetcher(m.fetcher), features: [server()] })
     m.last().resolve({ rows: people(10), rowCount: 30 })
     await tick()
     const seen = track(t)
@@ -298,7 +304,7 @@ describe("'fetching' is never silent (§6.6, §7.1)", () => {
   it("precedence: 'fetching' over 'validating' (async schema on fetched rows)", async () => {
     const schema = withSchema(makeSchema<P>((v) => ({ value: v as P }), { async: true }))
     const m = manual()
-    const t = createTable({ schema, fetcher: m.fetcher, features: [server()] })
+    const t = createTable({ schema, fetcher: withFetcher(m.fetcher), features: [server()] })
     const seen = track(t)
     m.last().resolve({ rows: people(10), rowCount: 30 })
     await tick()
@@ -328,7 +334,7 @@ describe('overlapping sources compose: error > fetching > searching > validating
       })
     const t = createTable({
       schema,
-      fetcher,
+      fetcher: withFetcher(fetcher),
       columns: [{ key: 'id', search: 1 }],
       // Server steps come first (DK_MODE_ORDER): server filters, client search on the fetched rows.
       features: [
@@ -350,7 +356,7 @@ describe('overlapping sources compose: error > fetching > searching > validating
 
     // searching under fetching: masked, so no notification.
     let resolveSearch: (v: unknown) => void = () => {}
-    void getTableInternals(t).request(
+    void requestsOf(t).request(
       'searchFn',
       () =>
         new Promise((r) => {
@@ -389,7 +395,7 @@ describe('overlapping sources compose: error > fetching > searching > validating
         rejectFetch = rej
       })
     const t = createTable({
-      fetcher,
+      fetcher: withFetcher<{ id: number }>(fetcher),
       onDiagnostic: () => {},
       columns: [{ key: 'id', search: 1 }],
       // Server steps come first (DK_MODE_ORDER): server filters, client search on the fetched rows.
@@ -399,7 +405,7 @@ describe('overlapping sources compose: error > fetching > searching > validating
       ],
     })
     void api(t).setSearch?.('p1')
-    void getTableInternals(t).request('searchFn', () => new Promise(() => {}))
+    void requestsOf(t).request('searchFn', () => new Promise(() => {}))
     const seen: string[] = []
     t.subscribe(() => seen.push(t.getRowModel().status))
     rejectFetch(new Error('down'))

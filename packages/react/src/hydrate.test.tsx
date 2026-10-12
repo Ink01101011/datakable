@@ -1,4 +1,5 @@
 import { type Diagnostic, type FetchResult, search, sorting } from '@datakable/core'
+import { withFetcher } from '@datakable/core/server'
 import { act } from '@testing-library/react'
 import { hydrateRoot, type Root } from 'react-dom/client'
 import { renderToString } from 'react-dom/server'
@@ -70,7 +71,7 @@ describe('hydration (§7.2)', () => {
     const el = (
       <Names
         features={[sorting({ mode: 'server' })]}
-        fetcher={fetcher}
+        fetcher={withFetcher(fetcher)}
         initialData={users}
         onDiagnostic={(d: Diagnostic) => codes.push(d.code)}
       />
@@ -92,7 +93,7 @@ describe('hydration (§7.2)', () => {
           resolve = r
         }),
     )
-    const el = <Names features={[sorting({ mode: 'server' })]} fetcher={fetcher} />
+    const el = <Names features={[sorting({ mode: 'server' })]} fetcher={withFetcher(fetcher)} />
     const html = await ssrThenHydrate(el)
     expect(html).toBe('<ul data-status="pending"></ul>')
     expect(hydrationErrors()).toEqual([])

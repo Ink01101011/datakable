@@ -1,5 +1,6 @@
 import { type FetchResult, pagination, search, sorting } from '@datakable/core'
 import { withSchema } from '@datakable/core/schema'
+import { withFetcher } from '@datakable/core/server'
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest'
 import { makeSchema, userCheck } from '../../core/src/ingest/test-schemas'
@@ -87,7 +88,9 @@ async function renderedHooks(): Promise<Set<string>> {
   const calls: { resolve: (r: FetchResult<User>) => void; reject: (e: unknown) => void }[] = []
   const fetcher = () =>
     new Promise<FetchResult<User>>((resolve, reject) => calls.push({ resolve, reject }))
-  const remote = render(<Hooked options={{ fetcher, features: [sorting({ mode: 'server' })] }} />)
+  const remote = render(
+    <Hooked options={{ fetcher: withFetcher(fetcher), features: [sorting({ mode: 'server' })] }} />,
+  )
   collect(remote.container, seen)
   await act(async () => calls[0]?.reject(new Error('boom')))
   collect(remote.container, seen)
@@ -101,7 +104,7 @@ async function renderedHooks(): Promise<Set<string>> {
   const stale = render(
     <Hooked
       options={{
-        fetcher,
+        fetcher: withFetcher(fetcher),
         columns: [{ key: 'name' }],
         features: [sorting({ mode: 'server' })],
       }}

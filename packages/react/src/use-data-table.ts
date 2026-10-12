@@ -13,6 +13,7 @@ import {
   type RowModel,
   registerPackage,
   type SchemaRow,
+  SERVER_SOURCE,
   startTable,
   type Table,
   type TableSchema,
@@ -290,9 +291,25 @@ function createInstance(options: Options): Instance {
   return inst
 }
 
+/**
+ * The stable wrapper of callback `k`. The fetcher's also carries the server source of the user's
+ * `withFetcher` fetcher (§7.1), which is what makes the table load through it.
+ */
+function wrapper(inst: Instance, k: CallbackKey, v: unknown): Callback {
+  const w = inst.wrappers[k]
+  if (k === 'fetcher') {
+    ;(w as unknown as Record<symbol, unknown>)[SERVER_SOURCE] = (v as Record<symbol, unknown>)[
+      SERVER_SOURCE
+    ]
+  }
+  return w
+}
+
 function build(inst: Instance, options: Options) {
   const init: Options = { ...options }
-  for (const k of CALLBACKS) if (typeof options[k] === 'function') init[k] = inst.wrappers[k]
+  for (const k of CALLBACKS) {
+    if (typeof options[k] === 'function') init[k] = wrapper(inst, k, options[k])
+  }
   inst.rendering++
   try {
     // Deferred (§7.2): rendering starts no fetch / searchFn (none at all on the server, where
@@ -404,7 +421,7 @@ function sync(inst: Instance, options: Options, selfCaused: boolean) {
       case 'fetcher': {
         const on = typeof v === 'function'
         if (on === (typeof p === 'function')) continue
-        forward = on ? inst.wrappers[k] : undefined
+        forward = on ? wrapper(inst, k, v) : undefined
         break
       }
       case 'state':

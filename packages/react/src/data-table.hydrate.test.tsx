@@ -1,4 +1,5 @@
 import { type Diagnostic, type FetchResult, search, sorting } from '@datakable/core'
+import { withFetcher } from '@datakable/core/server'
 import { act } from '@testing-library/react'
 import { hydrateRoot, type Root } from 'react-dom/client'
 import { renderToString } from 'react-dom/server'
@@ -77,7 +78,7 @@ describe('<DataTable /> hydration: deferred Loading (T32 × T33)', () => {
       <DataTable<User>
         columns={columns}
         features={[sorting({ mode: 'server' })]}
-        fetcher={fetcher}
+        fetcher={withFetcher(fetcher)}
       />
     )
     const html = await ssrThenHydrate(el)

@@ -109,6 +109,16 @@
         "default": "./dist/ingest/schema-entry.cjs"
       }
     },
+    "./server": {
+      "import": {
+        "types": "./dist/server.d.ts",
+        "default": "./dist/source/server-entry.js"
+      },
+      "require": {
+        "types": "./dist/server.d.cts",
+        "default": "./dist/source/server-entry.cjs"
+      }
+    },
     "./package.json": "./package.json"
   },
   "files": [
