@@ -58,7 +58,7 @@ export const reactDiagnostics =
                 'values it reads that are not table state do not reload the data'
               : d.option === 'data'
                 ? 'each new array is ingested again (schema, data checks, pipeline); in a re-render ' +
-                  'caused by the table itself an equal array is skipped'
+                  'caused by the table itself an array with equal rows is skipped'
                 : isFeatureOption(d.option)
                   ? 'features are read once, when the table is created: the table keeps calling the ' +
                     `${d.option} of the first render (a stale closure)`

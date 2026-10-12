@@ -261,6 +261,72 @@ describe('useDataTable (§10)', () => {
     noReactWarnings()
   })
 
+  // R11 BUG: inline data with NEW row objects every render (`data: [{ … }]`, `rows.map(…)`) looped
+  // forever on the first re-render (the self-caused re-render compared rows by reference) — the
+  // render cap makes the test fail instead of hanging.
+  const RENDER_CAP = 60
+  const capped = (n: number) => {
+    if (n > RENDER_CAP) throw new Error(`render loop: ${n} renders`)
+  }
+
+  it('inline data with new row objects: no loop on re-render or interaction; re-ingested + DK_UNSTABLE_OPTION', () => {
+    const diags: Diagnostic[] = []
+    let renders = 0
+    const { result, rerender } = renderHook(() => {
+      capped(++renders)
+      return useDataTable({
+        data: users.map((u) => ({ ...u })),
+        features: [sorting()],
+        onDiagnostic: (d) => diags.push(d),
+      })
+    })
+    const first = result.current.getData()
+    rerender()
+    rerender()
+    act(() => result.current.toggleSort('age'))
+    act(() => result.current.toggleSort('age'))
+    expect(renders).toBeLessThan(20)
+    expect(result.current.rowModel.rows.map((r) => r.original.id)).toEqual([3, 1, 2])
+    // A new array from the parent's re-render is still ingested (a real change could hide in it).
+    expect(result.current.getData()).not.toBe(first)
+    const unstable = diags.filter((d) => d.code === 'DK_UNSTABLE_OPTION')
+    expect(unstable.map((d) => (d.details as { option: string }).option)).toEqual(['data'])
+    noReactWarnings()
+  })
+
+  it('inline data whose rows differ on every render (nested objects) still never loops', () => {
+    let renders = 0
+    const { result, rerender } = renderHook(() => {
+      capped(++renders)
+      return useDataTable({
+        data: users.map((u) => ({ ...u, meta: { at: renders } })),
+        features: [sorting()],
+      })
+    })
+    rerender()
+    act(() => result.current.toggleSort('id'))
+    act(() => result.current.toggleSort('id'))
+    expect(renders).toBeLessThan(20)
+    expect(result.current.rowModel.rows.map((r) => r.original.id)).toEqual([3, 2, 1])
+    noReactWarnings()
+  })
+
+  it('a real data change in a parent re-render is forwarded (inline row objects)', () => {
+    let renders = 0
+    const { result, rerender } = renderHook(
+      ({ n }: { n: number }) => {
+        capped(++renders)
+        return useDataTable({ data: users.slice(0, n).map((u) => ({ ...u })) })
+      },
+      { initialProps: { n: 3 } },
+    )
+    rerender({ n: 2 })
+    expect(result.current.rowModel.rows.map((r) => r.original.id)).toEqual([1, 2])
+    rerender({ n: 3 })
+    expect(result.current.rowModel.rows.map((r) => r.original.id)).toEqual([1, 2, 3])
+    expect(renders).toBeLessThan(20)
+  })
+
   it('a real columns change is forwarded (new functions or a new shape)', () => {
     const fmtA = (v: string) => `a:${v}`
     const fmtB = (v: string) => `b:${v}`

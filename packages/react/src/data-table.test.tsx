@@ -8,7 +8,7 @@ import {
   sorting,
 } from '@datakable/core'
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
-import type { ReactNode } from 'react'
+import { type ReactNode, useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest'
 import { makeSchema, userCheck } from '../../core/src/ingest/test-schemas'
 import { DataTable, type DataTableComponents } from './data-table'
@@ -179,6 +179,73 @@ describe('<DataTable /> (§10)', () => {
     render(<Hooked options={{ data: users, features: [search()] }} />)
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'zzzzzz' } })
     expect(screen.getByText('No matching rows')).toBeTruthy()
+  })
+})
+
+describe('<DataTable /> inline data with new row objects (R11 BUG: render loop)', () => {
+  // Counted where the data is created, outside any of <DataTable />'s error boundaries (a throw in
+  // a `cell` would be caught by its per-cell boundary): the cap makes a loop fail the test instead
+  // of hanging it.
+  const RENDER_CAP = 60
+  let renders = 0
+  const count = () => {
+    if (++renders > RENDER_CAP) throw new Error(`render loop: ${renders} renders`)
+  }
+  const columns: ColumnDef<User, ReactNode>[] = [{ key: 'age' }, { key: 'name' }]
+  beforeEach(() => {
+    renders = 0
+  })
+  const tick = () => fireEvent.click(screen.getByRole('button', { name: 'tick' }))
+  const sortAge = () =>
+    fireEvent.click(within(screen.getByRole('columnheader', { name: /age/ })).getByRole('button'))
+
+  it('table={useDataTable({ data: [{ … }] })} in the same component: sorting and re-renders do not loop', () => {
+    function Users() {
+      count()
+      const [, setTick] = useState(0)
+      const table = useDataTable({
+        data: users.map((u) => ({ ...u })),
+        columns,
+        features: [sorting()],
+      })
+      return (
+        <>
+          <button type="button" onClick={() => setTick((n) => n + 1)}>
+            tick
+          </button>
+          <DataTable table={table} />
+        </>
+      )
+    }
+    render(<Users />)
+    sortAge()
+    expect(names()).toEqual(['Anan', 'Mali', 'Ploy'])
+    tick()
+    sortAge()
+    expect(names()).toEqual(['Ploy', 'Mali', 'Anan'])
+    expect(renders).toBeLessThan(20)
+  })
+
+  it('<DataTable data={[{ … }]} /> in a re-rendering parent: sorting does not loop', () => {
+    function Parent() {
+      count()
+      const [, setTick] = useState(0)
+      return (
+        <>
+          <button type="button" onClick={() => setTick((n) => n + 1)}>
+            tick
+          </button>
+          <DataTable data={users.map((u) => ({ ...u }))} columns={columns} features={[sorting()]} />
+        </>
+      )
+    }
+    render(<Parent />)
+    tick()
+    sortAge()
+    expect(names()).toEqual(['Anan', 'Mali', 'Ploy'])
+    tick()
+    expect(names()).toEqual(['Anan', 'Mali', 'Ploy'])
+    expect(renders).toBeLessThan(20)
   })
 })
 

@@ -118,6 +118,12 @@ interface Instance {
   syncing: boolean
   /** That call notified: the next commit is the re-render it caused. */
   selfCaused: boolean
+  /**
+   * `data` was forwarded in a self-caused re-render. Rows that differ on every render (nested
+   * objects, computed fields) would otherwise ingest → notify → re-render forever: the next
+   * self-caused re-render keeps the data the table has.
+   */
+  selfData: boolean
   /** Notifications seen; part of the view cache key (a notification is never silent, §6.6). */
   version: number
   view: { table: AnyTable; version: number; value: object } | undefined
@@ -267,6 +273,7 @@ function createInstance(options: Options): Instance {
     rendering: 0,
     syncing: false,
     selfCaused: false,
+    selfData: false,
     version: 0,
     view: undefined,
     server: undefined,
@@ -375,13 +382,16 @@ function checkHydration(inst: Instance) {
 
 /**
  * Forwards the changed options with one `setOptions` call. In the re-render caused by that call,
- * values recomputed from the same inputs (same-shape `columns`, an equal `data` array, a `rowKey`
- * function) are not forwarded again: an inline `columns` / `data` would otherwise loop.
+ * values recomputed from the same inputs (same-shape `columns`, `data` with equal rows, a `rowKey`
+ * function) are not forwarded again: an inline `columns` / `data` would otherwise loop. A `data`
+ * that still differs is forwarded at most once per chain of self-caused re-renders, so rows that
+ * are new on every render (`data: [{ … }]` with nested objects) re-ingest but never hang.
  */
 function sync(inst: Instance, options: Options, selfCaused: boolean) {
   // Written out (not a module-level flag) so bundlers fold it while parsing (§8.2).
   if (process.env.NODE_ENV !== 'production') checkUnstable(inst, options)
   const prev = inst.synced
+  if (!selfCaused) inst.selfData = false
   let partial: Record<string, unknown> | undefined
   for (const k of SYNCED) {
     const v = options[k]
@@ -405,7 +415,11 @@ function sync(inst: Instance, options: Options, selfCaused: boolean) {
         break
       case 'data':
         // Two empty arrays hold nothing to ingest (e.g. an inline `data: []` with a fetcher).
-        if ((selfCaused || isEmpty(v)) && sameItems(v, p)) continue
+        if (isEmpty(v) && sameItems(v, p)) continue
+        if (selfCaused) {
+          if (inst.selfData || sameRows(v, p)) continue
+          inst.selfData = true
+        }
         break
       case 'columns':
         if (selfCaused && sameShape(v, p)) continue
@@ -468,6 +482,24 @@ function sameItems(a: unknown, b: unknown): boolean {
   return true
 }
 
+/**
+ * Two arrays of equal rows: each pair the same reference, or objects with the same own keys and
+ * `Object.is`-equal values (`data: rows.map((r) => ({ ...r }))` recomputed in a re-render).
+ */
+function sameRows(a: unknown, b: unknown): boolean {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    const x: unknown = a[i]
+    const y: unknown = b[i]
+    if (Object.is(x, y)) continue
+    if (!isObject(x) || !isObject(y)) return false
+    const keys = Object.keys(x)
+    if (keys.length !== Object.keys(y).length) return false
+    for (const k of keys) if (!Object.hasOwn(y, k) || !Object.is(x[k], y[k])) return false
+  }
+  return true
+}
+
 const loose = (v: unknown) => typeof v === 'function' || isObject(v)
 
 /**
@@ -522,7 +554,7 @@ function checkUnstable(inst: Instance, options: Options) {
   const fn = (k: string) =>
     changed(k) && typeof options[k] === 'function' && typeof seen[k] === 'function'
   track(inst, 'columns', changed('columns') && sameShape(options.columns, seen.columns))
-  track(inst, 'data', changed('data') && sameItems(options.data, seen.data))
+  track(inst, 'data', changed('data') && sameRows(options.data, seen.data))
   track(inst, 'fetcher', fn('fetcher'))
   track(inst, 'rowKey', fn('rowKey'))
   const option = changedFeatureOption(options.features, seen.features)
