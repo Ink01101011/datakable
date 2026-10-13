@@ -97,7 +97,7 @@ export default async function UsersPage(props: { searchParams: Promise<{ page?: 
 - **Keep the page in the URL:** control `pagination` and `sorting` and write them back with the
   router ([Keep the table's state in the URL](url-state.md)); on the server, parse them into
   `initialState`.
-- **Import from `@datakable/react`:** its modules are marked `'use client'`, so `<DataTable />`
+- **Import from `@datakable/react`:** its `<DataTable />` module is marked `'use client'`, so `<DataTable />`
   imported from there can be rendered directly by a server component. The features and the fetcher
   are functions, though, which cannot be passed from a server component; keep them in a client
   file as here.

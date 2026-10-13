@@ -32,7 +32,7 @@ code; render `useDataTable` and `<DataTable />` from a client component in the N
 
 | Import | What it brings |
 | --- | --- |
-| `@datakable/react` | `useDataTable` and `<DataTable />` with no features unless you pass them, their prop and component types (`DataTableComponents`, `SearchInputProps`, …), and everything exported by `@datakable/core`. Every module is marked `"use client"`. |
+| `@datakable/react` | `useDataTable` and `<DataTable />` with no features unless you pass them, their prop and component types (`DataTableComponents`, `SearchInputProps`, …), and everything exported by `@datakable/core`. The `<DataTable />` and `useDataTable` modules are marked `"use client"`; the rest also works in server code. |
 | `@datakable/react/styles.css` | The same optional stylesheet. |
 
 With `@datakable/react`, `import '@datakable/core/messages'` keeps the text of core's codes in

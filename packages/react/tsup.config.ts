@@ -21,9 +21,11 @@ export default defineConfig([
     splitting: false,
     external: ['react', 'react/jsx-runtime', '@datakable/core'],
     esbuildPlugins: [preserveModules],
-    // RSC: mark every module as a client module. (treeshake is off because rollup would strip the
-    // directive.)
-    banner: { js: '"use client";' },
+    // RSC: only the modules that use React hooks (data-table, use-data-table) are client modules;
+    // their source starts with 'use client' and esbuild keeps it per output file. The index stays
+    // a plain module: Next's webpack rejects `export *` in a client boundary (#8), and core's
+    // exports (`createTable`, …) must stay callable on the server. (treeshake is off because
+    // rollup would strip the directive.)
   },
   // The optional stylesheet (§10): dist/styles.css, minified. No JS imports it.
   { entry: { styles: 'src/styles.css' }, minify: true },
