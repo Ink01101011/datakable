@@ -81,7 +81,10 @@ export interface SortingTypes extends FeatureTypes {
 export type SortAlgorithmOption = SortAlgorithm
 
 export interface SortingOptions {
-  /** Locale(s) of the string collator (`Intl.Collator(locale, { numeric: true })`); default: the runtime's. */
+  /**
+   * Locale(s) of the string collator (`Intl.Collator(locale, { numeric: true })`). Default `'en'`,
+   * not the runtime's: the server and the browser must sort alike (SSR hydration, #12).
+   */
   locale?: string | readonly string[]
   /** The sort algorithm (default `'auto'`); a column's `sortAlgorithm` takes precedence. */
   algorithm?: SortAlgorithmOption
@@ -202,11 +205,11 @@ export const sorting = (opts: SortingOptions = {}) => {
   /** The collator; `DK_ENV_FALLBACK` when the runtime supports none of the requested locales. */
   const getCollator = (emit: Emit) => {
     if (collator) return collator
-    const locale = opts.locale as string | string[] | undefined
+    const locale = (opts.locale ?? 'en') as string | string[]
     let supported = true
     try {
       collator = new Intl.Collator(locale, { numeric: true })
-      supported = locale === undefined || Intl.Collator.supportedLocalesOf(locale).length > 0
+      supported = Intl.Collator.supportedLocalesOf(locale).length > 0
     } catch {
       collator = new Intl.Collator(undefined, { numeric: true })
       supported = false
@@ -215,7 +218,7 @@ export const sorting = (opts: SortingOptions = {}) => {
       emit('DK_ENV_FALLBACK', {
         api: 'Intl.Collator',
         feature: 'sorting',
-        requested: ([] as string[]).concat(locale ?? []).join(', '),
+        requested: ([] as string[]).concat(locale).join(', '),
         fallback: `the runtime's collation for "${collator.resolvedOptions().locale}"`,
       })
     }

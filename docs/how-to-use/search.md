@@ -48,7 +48,9 @@ table.clearSearch() // empties input and query: every row again
 - **What is matched.** The formatted cell values: the column's `format`, else the default
   formatter (so a `Date` is matched as the user sees it, and arrays are joined). Matching is
   fuzzy (Levenshtein distance up to `fuzzyMaxDistance`) and case-insensitive unless
-  `caseSensitive: true`. A row is kept when its relevance (0–1, weights applied) reaches
+  `caseSensitive: true`. A one-word query is measured against each word of a cell as well as
+  the whole cell, so `lopes` finds `Garcia Lopez`; a query with spaces is measured against the
+  whole cell. A row is kept when its relevance (0–1, weights applied) reaches
   `threshold`.
 - **Order.** Results come best match first (ties keep the input order). An active sort replaces
   that order: the pipeline runs `filter → search → sort → paginate`.
@@ -139,8 +141,9 @@ table.cancelSearch() // or drop the waiting query; input and the applied query s
 | `clearSearch()` | Empties `input` and `query`: every row is shown again. |
 
 The promises (`SearchOutcome`) resolve when the query is settled and **never reject**:
-`'applied'` (the row model reflects it), `'superseded'` (a newer query or `destroy()` replaced it)
-or `'error'` (`searchFn` failed). Still mark them handled (`void` or `await`) for your linter.
+`'applied'` (the row model reflects it: on large data, after the time-sliced matching finishes and
+the row model is no longer `'pending'`), `'superseded'` (a newer query, `cancelSearch()` or
+`destroy()` replaced it) or `'error'` (`searchFn` failed). Still mark them handled (`void` or `await`) for your linter.
 
 ## A search input
 

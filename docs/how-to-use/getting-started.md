@@ -88,7 +88,10 @@ rejects; `void` it in an event handler. You can also hand the hook's result to
 ## Without React: `createTable`
 
 `createTable` is the same table as a plain object. It runs anywhere JavaScript runs: Node, a worker,
-a test, or your own framework bindings.
+a test, or your own framework bindings. A bundle that uses only `createTable` contains no React.
+`datakable` still lists `react` as a peer dependency (its root entry also exports the hook and the
+component); a project without React can install `@datakable/core` instead and pass
+`features: createDefaultFeatures()` for the same preset.
 
 ```ts
 import { createTable } from 'datakable'
@@ -178,16 +181,18 @@ builds keep the diagnostics themselves but drop their text unless you opt in; se
 
 ## Next.js app router
 
-`@datakable/react` marks every module `"use client"`. `datakable` does not, so its `createTable`
-also works in server code. Render `<DataTable />` and `useDataTable` from a client component (or
-import them from `@datakable/react`):
+Only the modules of `<DataTable />` and `useDataTable` are marked `"use client"`, in `datakable` as
+in `@datakable/react`. `createTable` and the rest also work in server code, and a server component
+that only calls `createTable` sends no table code to the browser. A server component can render
+`<DataTable />` with plain data props; call `useDataTable`, or pass functions (cell components,
+features, a fetcher), from a client component:
 
 ```tsx
 'use client'
 
-// app/users/users-table.tsx — a client component of the Next.js app router. `datakable` has no
-// "use client" directive (so createTable also runs on the server); the hook and the component
-// must be rendered from a client component like this one.
+// app/users/users-table.tsx — a client component of the Next.js app router. Only the modules of
+// <DataTable /> and useDataTable are "use client" (createTable also runs on the server); call the
+// hook, or pass functions such as cell components, features or a fetcher, from a file like this.
 import { DataTable } from 'datakable'
 
 type User = { id: number; name: string }

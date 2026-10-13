@@ -1,7 +1,7 @@
 'use client'
-// app/users/users-table.tsx — a client component of the Next.js app router. `datakable` has no
-// "use client" directive (its createTable also runs on the server), so the file that renders
-// <DataTable /> or calls useDataTable is the client boundary.
+// app/users/users-table.tsx — a client component of the Next.js app router. Only the modules of
+// <DataTable /> and useDataTable are "use client" (createTable also runs on the server); call the
+// hook, or pass functions such as cell components, features or a fetcher, from a file like this.
 import { DataTable } from 'datakable'
 
 type User = { id: number; name: string }

@@ -99,7 +99,10 @@ interface Host {
  *   replaced, both with `DK_INVALID_PAGINATION`.
  */
 export const pagination = (opts: PaginationOptions = {}) => {
-  const initialSize = opts.pageSize ?? DEFAULT_PAGE_SIZE
+  // Production skips the option validator: an invalid size must not reach the state, or sanitize()
+  // would "fix" a slice with the same bad size and re-dispatch forever (#13). Reported in createApi.
+  const badSize = opts.pageSize !== undefined && !isSize(opts.pageSize)
+  const initialSize = badSize ? DEFAULT_PAGE_SIZE : (opts.pageSize ?? DEFAULT_PAGE_SIZE)
   const autoReset = opts.autoResetPageIndex !== false
   const mode = opts.mode ?? 'client'
   // One feature instance may serve several tables: per-table state lives here.
@@ -176,7 +179,7 @@ export const pagination = (opts: PaginationOptions = {}) => {
       }
 
       function report(
-        source: 'setPageIndex' | 'setPageSize' | 'state',
+        source: 'setPageIndex' | 'setPageSize' | 'state' | 'option',
         field: 'pageIndex' | 'pageSize',
         value: unknown,
         fallback: string,
@@ -222,6 +225,7 @@ export const pagination = (opts: PaginationOptions = {}) => {
         },
       })
 
+      if (badSize) report('option', 'pageSize', opts.pageSize, `pageSize ${initialSize} was used`)
       // A slice given at creation (initialState / controlled state) is checked once, here.
       const fixed = sanitize(ctx.getState(), undefined)
       if (fixed) ctx.setState(fixed)

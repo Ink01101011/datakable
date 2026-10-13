@@ -107,8 +107,8 @@ The default comparator, per entry:
 - **Type rank first** in mixed columns: numbers (and bigints) < `Date`s < strings < booleans <
   everything else (objects, arrays: equal to each other, so they keep their order).
 - **Strings** compare with one `Intl.Collator(locale, { numeric: true })`, so `'item 2'` comes
-  before `'item 10'`. `locale` defaults to the runtime's; an unsupported one falls back with
-  `DK_ENV_FALLBACK` (info).
+  before `'item 10'`. `locale` defaults to `'en'`, not the runtime's, so a server-rendered table
+  sorts the same in every browser; an unsupported one falls back with `DK_ENV_FALLBACK` (info).
 - Numbers, bigints and dates by value; `false` before `true`.
 
 Per column you can replace it:
@@ -162,7 +162,7 @@ table.toggleSort('priority')
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
-| `locale` | `string \| readonly string[]` | the runtime's | BCP 47 locale(s) of the string collator, e.g. `'th'` or `['th', 'en']`. |
+| `locale` | `string \| readonly string[]` | `'en'` | BCP 47 locale(s) of the string collator, e.g. `'th'` or `['th', 'en']`. |
 | `algorithm` | `'auto' \| 'tim' \| 'radix' \| 'counting' \| 'native' \| (indices, compare) => Uint32Array` | `'auto'` | How the row indices are sorted. A column's `sortAlgorithm` takes precedence. |
 | `debug` | `boolean` | `false` | Report each sort as `DK_SORT_STRATEGY` (info): algorithm, reason, n, time. |
 | `mode` | `'client' \| 'server'` | `'client'` | `'server'`: the server sorts; core skips this step. |

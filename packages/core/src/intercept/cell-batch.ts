@@ -1,5 +1,11 @@
+import { keepDiagnostics } from '../diagnostics/catalog'
 import type { Emit, EmitOptions } from '../diagnostics/types'
 import { errorName } from './classify'
+import { boundaryDiagnostics } from './codes'
+
+// CellFailures emits DK_CALLBACK_FAILED: keep its definition wherever this module is bundled (a
+// feature entry alone brings the feature runtime, and with it the column cache, #5).
+keepDiagnostics(boundaryDiagnostics)
 
 /** The cell slots of `column:batch`. */
 export type CellSlot = 'accessor' | 'format' | 'filterFn' | 'sortBy'

@@ -178,7 +178,7 @@ const searchOptions = {
 
 const settledSuperseded = () => Promise.resolve(SUPERSEDED)
 
-const toText = (q: unknown): string => (typeof q === 'string' ? q : q == null ? '' : String(q))
+const toText = (q: unknown): string => (q == null ? '' : String(q))
 
 /**
  * Global search (§6.3), client mode: fuzzy matching with `ex-search` on the formatted values of the
@@ -243,6 +243,10 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
   }
   /** Per table: ends its timers, searches and waiters on `table:destroy`. */
   const instances = new WeakMap<object, () => void>()
+  /** Per table: after each `pipeline:run`, whether the step waited on sliced work (#6). */
+  const ran = new WeakMap<object, (waited: boolean) => void>()
+  /** The step of the run in progress returned a stand-in (sliced work runs, §9.1). */
+  let waited = false
 
   /** The projection of (data, columns): built by a sliced job; `undefined` while it runs. */
   function indexFor(ctx: RowModelContext): SearchIndex | null | undefined {
@@ -252,7 +256,7 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
       indexes.set(ctx.data, byColumns)
     }
     let key = byColumns.get(ctx.columns)
-    if (key === undefined) {
+    if (!key) {
       key = {}
       byColumns.set(ctx.columns, key)
     }
@@ -286,8 +290,10 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
   }
 
   /** While sliced work runs: the previous output for the same input, else the input. */
-  const standIn = (indices: Uint32Array) =>
-    shown && shown.input === indices ? shown.output : indices
+  const standIn = (indices: Uint32Array) => {
+    waited = true
+    return shown && shown.input === indices ? shown.output : indices
+  }
 
   /** The client step (§6.3); the rowModel below records its output for {@link standIn}. */
   function step(indices: Uint32Array, state: SearchState, ctx: RowModelContext): Uint32Array {
@@ -337,19 +343,28 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
     interceptors: [
       defineInterceptor({
         name: 'search',
-        on: engine ? ['table:destroy', 'pipeline:run'] : ['table:destroy'],
+        on: ['table:destroy', 'pipeline:run'],
         intercept(ctx, next) {
           const table = ctx.table as object
           if (ctx.op === 'table:destroy') {
             instances.get(table)?.()
             return next()
           }
-          return (engine as SearchEngine).run(table, next)
+          const prev = waited
+          waited = false
+          try {
+            return engine ? engine.run(table, next) : next()
+          } finally {
+            const w = waited
+            waited = prev
+            ran.get(table)?.(w)
+          }
         },
       }),
     ],
     createApi: (ctx): SearchApi => {
       const table = ctx.table as unknown as object
+      /** Writes the slice; `true` when the state changed (a pipeline run follows). */
       const write = (input: string, query: string, status: SearchStatus, error?: unknown) => {
         const s = ctx.getState()
         if (
@@ -359,11 +374,12 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
           s.status === status &&
           !('error' in s)
         ) {
-          return
+          return false
         }
         ctx.setState(
           status === 'error' ? { input, query, status, error } : { input, query, status },
         )
+        return ctx.getState() !== s
       }
       const applied = () => ctx.getState()?.query ?? ''
       const input = () => ctx.getState()?.input ?? ''
@@ -375,12 +391,6 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
         new Promise<SearchOutcome>((resolve) => {
           waiting.push({ query, resolve })
         })
-      /** Resolves the waiters of `query` with `outcome`, every other one `'superseded'`. */
-      const settleWaiting = (query: string, outcome: SearchOutcome) => {
-        const list = waiting
-        waiting = []
-        for (const w of list) w.resolve(w.query === query ? outcome : SUPERSEDED)
-      }
       /** A newer query replaces the waiting ones that differ from it. */
       const replaceWaiting = (query: string) => {
         if (waiting.length === 0) return
@@ -399,6 +409,28 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
         waiting = []
         return keep
       }
+      /**
+       * Waiters of the applied query until the row model reflects it (#6): sliced work (§9.1)
+       * keeps the row model 'pending' after the query is written.
+       */
+      let held: Waiter[] = []
+      /** The last run's step waited on sliced work. */
+      let busy = false
+      const release = (outcome: SearchOutcome) => {
+        const list = held
+        held = []
+        for (const w of list) w.resolve(outcome)
+      }
+      /** Cancel, destroy: every waiter, waiting then held, resolves `'superseded'`. */
+      const supersede = () => {
+        held = [...waiting, ...held]
+        waiting = []
+        release(SUPERSEDED)
+      }
+      ran.set(table, (w) => {
+        busy = w
+        if (!w) release(APPLIED)
+      })
       const session: SearchSession | undefined = engine?.session({
         ctx,
         write,
@@ -413,8 +445,10 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
        */
       const applyQuery = (query: string, inp: string = input()) => {
         if (session?.apply(query, inp)) return
-        write(inp, query, 'idle')
-        settleWaiting(query, APPLIED)
+        if (held[0]?.query !== query) release(SUPERSEDED)
+        held.push(...claim(query))
+        // A changed state runs the pipeline (its end releases them); else the last run decides.
+        if (!write(inp, query, 'idle') && !busy) release(APPLIED)
       }
 
       // --- typing (T17) ---
@@ -437,7 +471,7 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
       instances.set(table, () => {
         timer?.cancel()
         session?.destroy()
-        settleWaiting('\0', SUPERSEDED)
+        supersede()
       })
 
       /** Typing: `input` at once; `query` through the strategy (`pending` while scheduled). */
@@ -490,10 +524,10 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
         cancelSearch: () => {
           timer?.cancel()
           session?.abort()
-          settleWaiting('\0', SUPERSEDED)
+          supersede()
           const s = ctx.getState()
           if (s?.status === 'pending' || s?.status === 'searching') {
-            ctx.setState({ input: s.input, query: s.query, status: 'idle' })
+            ctx.setState({ ...s, status: 'idle' })
           }
         },
         clearSearch: () => {

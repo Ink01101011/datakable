@@ -81,16 +81,17 @@ webpack, Next.js, Rollup (with `@rollup/plugin-replace`) and esbuild (`--define`
 Without a replacement, unbundled browser code throws `ReferenceError: process is not defined`, as
 React and Redux do.
 
-**Next.js app router:** `@datakable/react` is marked `"use client"`; `datakable` is not, so its
-`createTable` also works on the server. Import `<DataTable />` / `useDataTable` from a client
-component (a `'use client'` file), or from `@datakable/react`.
+**Next.js app router:** only the modules of `<DataTable />` and `useDataTable` are marked
+`"use client"`, so `createTable` also works on the server and a server component can render
+`<DataTable />` with plain data props. Call `useDataTable`, or pass functions (cells, features, a
+fetcher), from a client component (a `'use client'` file).
 
 ## Packages
 
 | Package | Path | Purpose |
 | --- | --- | --- |
 | [`datakable`](packages/datakable/README.md) | `packages/datakable` | Main entry: `useDataTable` / `createTable` with the default preset; `datakable/core`, `datakable/messages` |
-| [`@datakable/react`](packages/react/README.md) | `packages/react` | `useDataTable` hook (`"use client"` bundle), no features by default |
+| [`@datakable/react`](packages/react/README.md) | `packages/react` | `useDataTable` hook (`"use client"` modules), no features by default |
 | [`@datakable/core`](packages/core/README.md) | `packages/core` | Headless, framework-agnostic table: store, features, diagnostics. No React |
 | `@datakable/docs` | `apps/docs` | Vite playground (private) |
 

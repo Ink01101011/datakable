@@ -305,6 +305,70 @@ describe('search: sliced projection and matching (§6.3, §9.1)', () => {
     expect(at(t.getRowModel())).toEqual(expected)
   })
 
+  // #6: the promises resolve 'applied' only once the row model reflects the query (not 'pending').
+  it("setSearch / flushSearch resolve 'applied' only when the sliced row model reflects the query", async () => {
+    const data = users(10_000)
+    const sync = createTable({ data, columns, features: [search()] })
+    sync.getRowModel()
+    await sync.setSearch('ada')
+    const expected = at(sync.getRowModel())
+
+    fastClock()
+    const t = createTable({ data, columns, features: [search()], onDiagnostic })
+    t.getRowModel()
+    const seenAt = (o: { status: string }) => ({
+      outcome: o.status,
+      status: t.getRowModel().status,
+      rows: at(t.getRowModel()),
+    })
+    const first = t.setSearch('ada').then(seenAt)
+    await settle()
+    expect(await first).toEqual({ outcome: 'applied', status: 'idle', rows: expected })
+
+    const t2 = createTable({
+      data,
+      columns,
+      features: [search({ typing: { commitOn: 'enter' } })],
+      onDiagnostic,
+    })
+    t2.getRowModel()
+    void t2.setSearch('ada')
+    const flushed = t2.flushSearch().then((o) => ({
+      outcome: o.status,
+      status: t2.getRowModel().status,
+      n: t2.getRowModel().rows.length,
+    }))
+    await settle()
+    expect(await flushed).toEqual({ outcome: 'applied', status: 'idle', n: expected.length })
+  })
+
+  it("a newer query, cancelSearch() or destroy() during sliced work: 'superseded'", async () => {
+    const data = users(10_000)
+    fastClock()
+    const mk = () => {
+      const t = createTable({ data, columns, features: [search()], onDiagnostic })
+      t.getRowModel()
+      return t
+    }
+    let t = mk()
+    const older = t.setSearch('ada')
+    const newer = t.setSearch('bob')
+    await settle()
+    await expect(older).resolves.toEqual({ status: 'superseded' })
+    await expect(newer).resolves.toEqual({ status: 'applied' })
+    expect(t.getRowModel().status).toBe('idle')
+
+    t = mk()
+    const cancelled = t.setSearch('ada')
+    t.cancelSearch()
+    await expect(cancelled).resolves.toEqual({ status: 'superseded' })
+
+    t = mk()
+    const destroyed = t.setSearch('ada')
+    t.destroy()
+    await expect(destroyed).resolves.toEqual({ status: 'superseded' })
+  })
+
   it('matching in chunks equals one ex-search pass over every row (> 4096 rows)', async () => {
     vi.unstubAllGlobals() // synchronous (SSR) run: same chunked code, no slicing
     const data = users(10_000)
