@@ -367,6 +367,8 @@ on `[data-datakable]`: `--dk-font-size`, `--dk-fg`, `--dk-muted`, `--dk-bg`, `--
   render has no effect; remount the component (a new `key`) to start over.
 - **Controlled `state` without `onStateChange`** freezes those slices:
   [`DK_CONTROLLED_WITHOUT_HANDLER`](../how-to-fix/errors.md#dk_controlled_without_handler).
+- **An `onStateChange` that does not set the state you pass back** freezes them too:
+  [`DK_CONTROLLED_NOT_FED_BACK`](../how-to-fix/errors.md#dk_controlled_not_fed_back) (development).
 - **A cell that throws** renders `⚠`: [`DK_CALLBACK_FAILED`](../how-to-fix/errors.md#dk_callback_failed); a
   component inside a cell that throws: [`DK_RENDER_FAILED`](../how-to-fix/errors.md#dk_render_failed).
 - **`format` returning a number** or `cell` returning a promise:
