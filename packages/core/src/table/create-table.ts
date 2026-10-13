@@ -39,6 +39,7 @@ import {
   type TableHost,
 } from './internals'
 import { keepReadOnce } from './read-once'
+import { createStateFeedbackCheck, stateFeedbackDiagnostics } from './state-feedback'
 import {
   type ControlledState,
   type Listener,
@@ -49,7 +50,12 @@ import {
   type Updater,
 } from './types'
 
-keepDiagnostics(tableDiagnostics, dataMutationDiagnostics, optionDiagnostics)
+keepDiagnostics(
+  tableDiagnostics,
+  dataMutationDiagnostics,
+  stateFeedbackDiagnostics,
+  optionDiagnostics,
+)
 
 const EMPTY: readonly never[] = []
 
@@ -251,6 +257,8 @@ export function createTable<T, S extends TableState>(
   // Ingest data checks (§5.3) and zero-config columns (§4.1): both read only the first rows.
   // The data checks are developer hints: development only (changed 2026-10-13 for §9.3).
   const dataChecks = DEV ? createDataChecks(hub.emit) : undefined
+  /** Controlled changes not fed back (DK_CONTROLLED_NOT_FED_BACK, development). */
+  const feedback = DEV ? createStateFeedbackCheck(hub.emit) : undefined
   const derivedColumns = createDerivedColumns()
   // Schema ingest (§5.1): `schema` and `invalidRows` are read once (validated above). The step
   // comes with the schema (`withSchema`, `@datakable/core/schema`): a table without one never
@@ -336,6 +344,7 @@ export function createTable<T, S extends TableState>(
     controlled = controlledKeys(options.state)
     const next = overlay(snapshot)
     if (next !== snapshot) commit(next)
+    if (DEV) feedback?.settle(options.state as TableState | undefined, controlled)
     warnControlled(undefined)
   }
 
@@ -374,7 +383,9 @@ export function createTable<T, S extends TableState>(
     // The owner is told first: if onStateChange throws, nothing is committed (state unchanged).
     if (changes && options.onStateChange) {
       const c = changes as Partial<S>
+      if (DEV) feedback?.ask(Object.keys(changes), trigger)
       callUser('onStateChange', options.onStateChange, (prev: Partial<S>) => ({ ...prev, ...c }))
+      if (DEV) feedback?.asked()
     }
     if (next) commit(freeze(next as S))
     if (dropped) warnControlled(dropped)
@@ -787,6 +798,7 @@ export function createTable<T, S extends TableState>(
         ingestSeq++
         listeners.clear()
         runner.dispose()
+        if (DEV) feedback?.dispose()
       }
     })
   }
@@ -907,6 +919,7 @@ export function createTable<T, S extends TableState>(
   // --- init --------------------------------------------------------------------------------------
 
   controlled = controlledKeys(options.state)
+  if (DEV) feedback?.settle(options.state as TableState | undefined, controlled)
   // Feature `initialState()` slices, with `options.initialState` on top per slice.
   snapshot = overlay(
     freeze(

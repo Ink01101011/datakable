@@ -5,6 +5,7 @@ import type { Diagnostic } from '../diagnostics/types'
 import { defineInterceptor } from '../intercept/define'
 import { FALLBACK } from '../intercept/fallbacks'
 import { createTable } from './create-table'
+import { FEEDBACK_MS } from './state-feedback'
 import { UPDATE_DEPTH_LIMIT } from './types'
 
 declare module '../diagnostics/catalog' {
@@ -242,6 +243,89 @@ describe('createTable: controlled state per slice', () => {
     // Same code + where: aggregated by the hub's dedupe.
     expect(t.getDiagnostics()).toHaveLength(1)
     expect(t.getDiagnostics()[0]?.context.occurrences.count).toBe(2)
+  })
+
+  describe('DK_CONTROLLED_NOT_FED_BACK (development)', () => {
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('an onStateChange that never feeds the value back is reported once, after FEEDBACK_MS', () => {
+      const t = make({ state: { sorting: [] }, onStateChange: () => {} })
+      t.setState({ sorting: ['id'] })
+      t.setState({ sorting: ['email'] })
+      vi.advanceTimersByTime(FEEDBACK_MS - 1)
+      expect(codes()).toEqual([])
+      vi.advanceTimersByTime(1)
+      expect(codes()).toEqual(['DK_CONTROLLED_NOT_FED_BACK'])
+      const d = seen[0] as Diagnostic
+      expect(d.level).toBe('warn')
+      expect(d.where).toEqual({ kind: 'option', path: 'state.sorting' })
+      expect(d.details).toEqual({ slices: ['sorting'], waitedMs: FEEDBACK_MS })
+      expect(d.context.trigger).toBe('api:setState')
+      expect(d.fix.join('\n')).toContain('initialState')
+      expect(t.getState().sorting).toEqual([])
+      // A later ignored change is reported again (aggregated by the hub's dedupe).
+      t.setState({ sorting: ['id'] })
+      vi.advanceTimersByTime(FEEDBACK_MS)
+      expect(t.getDiagnostics()[0]?.context.occurrences.count).toBe(2)
+    })
+
+    it('a synchronous or later feed-back is silent, and so is a different value fed back', () => {
+      const t0: { table?: ReturnType<typeof make> } = {}
+      let owned: Partial<S> = { sorting: [] }
+      let t = make({
+        state: owned,
+        onStateChange: (u) => {
+          owned = u(owned)
+          t0.table?.setOptions({ state: owned })
+        },
+      })
+      t0.table = t
+      t.setState({ sorting: ['id'] })
+      expect(t.getState().sorting).toEqual(['id'])
+      vi.advanceTimersByTime(FEEDBACK_MS * 2)
+      expect(codes()).toEqual([])
+
+      let asked: Partial<S> = {}
+      t = make({ state: { sorting: [] }, onStateChange: (u) => (asked = u({})) })
+      t.setState({ sorting: ['id'] })
+      vi.advanceTimersByTime(FEEDBACK_MS - 1)
+      expect(asked).toEqual({ sorting: ['id'] })
+      // The owner normalises the request: still an answer.
+      t.setOptions({ state: { sorting: ['id', 'email'] } })
+      vi.advanceTimersByTime(FEEDBACK_MS)
+      expect(codes()).toEqual([])
+      expect(vi.getTimerCount()).toBe(0)
+    })
+
+    it('owned slices, a slice leaving control, destroy and a throwing handler start no report', () => {
+      const t = make({ state: { sorting: [] }, onStateChange: () => {} })
+      t.setState({ page: 3 })
+      expect(vi.getTimerCount()).toBe(0)
+      t.setState({ sorting: ['id'] })
+      t.setOptions({ state: {} })
+      vi.advanceTimersByTime(FEEDBACK_MS)
+      expect(codes()).toEqual([])
+
+      const u = make({ state: { sorting: [] }, onStateChange: () => {} })
+      u.setState({ sorting: ['id'] })
+      u.destroy()
+      expect(vi.getTimerCount()).toBe(0)
+
+      const v = make({
+        state: { sorting: [] },
+        onStateChange: () => {
+          throw new Error('nope')
+        },
+      })
+      v.setState({ sorting: ['id'] })
+      vi.advanceTimersByTime(FEEDBACK_MS)
+      expect(codes()).toEqual(['DK_CALLBACK_FAILED'])
+    })
   })
 
   it('a throwing onStateChange drops the whole update (DK_CALLBACK_FAILED)', () => {

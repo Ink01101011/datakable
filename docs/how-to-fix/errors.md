@@ -85,7 +85,9 @@ In development, the console prints one collapsed group per diagnostic:
   `import 'datakable/messages'` (or `@datakable/core/messages`) once to get the full text in
   production.
 - **Development only** (absent from production bundles, never emitted there): the dev checks
-  [`DK_DATA_MUTATED`](#dk_data_mutated), [`DK_CALLBACK_BAD_RETURN`](#dk_callback_bad_return),
+  [`DK_DATA_MUTATED`](#dk_data_mutated),
+  [`DK_CONTROLLED_NOT_FED_BACK`](#dk_controlled_not_fed_back),
+  [`DK_CALLBACK_BAD_RETURN`](#dk_callback_bad_return),
   [`DK_FEATURE_BAD_OUTPUT`](#dk_feature_bad_output),
   [`DK_FEATURE_MUTATED_INPUT`](#dk_feature_mutated_input),
   [`DK_SORT_COMPARATOR_INVALID`](#dk_sort_comparator_invalid),
@@ -202,6 +204,7 @@ To trace a production table, install it: `createTable({ interceptors: [tracer()]
 | [`DK_FEATURE_API_CONFLICT`](#dk_feature_api_conflict) | error | Options and config |
 | [`DK_FEATURE_INCOMPATIBLE`](#dk_feature_incompatible) | error | Options and config |
 | [`DK_CONTROLLED_WITHOUT_HANDLER`](#dk_controlled_without_handler) | warn | Options and config |
+| [`DK_CONTROLLED_NOT_FED_BACK`](#dk_controlled_not_fed_back) | warn | Options and config |
 | [`DK_UNSTABLE_COLUMNS`](#dk_unstable_columns) | warn | Options and config |
 | [`DK_UNSTABLE_OPTION`](#dk_unstable_option) | warn | Options and config |
 | [`DK_STATE_UNKNOWN_KEY`](#dk_state_unknown_key) | warn | Options and config |
@@ -1978,6 +1981,58 @@ prints (development console):
           2. or remove "sorting" from options.state (use initialState) so the table owns them
   docs    https://github.com/Ink01101011/datakable/blob/main/docs/errors.md#dk_controlled_without_handler
   context trigger=init run=0 phase=client
+```
+
+### DK_CONTROLLED_NOT_FED_BACK
+
+`warn` · development only · fault test: [create-table.test.ts](../../packages/core/src/table/create-table.test.ts)
+
+**Problem.** The table asked `onStateChange` to change a controlled slice, but one second later `options.state` still holds the old value. A controlled slice shows only what you pass back, so the interaction that asked for the change (a sort, a page change, …) looks frozen. The check runs in development only, once per ignored change, and only when the value is never fed back: a re-render, store update or navigation that passes any new value (even a different one than asked) is an answer.
+
+**Common causes.**
+
+- An `onStateChange` that logs or stores the change somewhere the table does not read (a ref, a variable, an analytics call).
+- Calling the updater but discarding its result, or setting a different state than the one passed as `state`.
+- Passing a constant `state` object (to restore a saved view) where `initialState` was meant.
+
+**Fix.**
+
+- Apply the updater and pass the result back: `onStateChange: (updater) => setMyState(updater)` with `state={myState}` in React, or `table.setOptions({ state })` with `createTable`.
+- To set only a starting value, use `initialState` so the table owns the slice.
+- To reject a change on purpose, disable the control that asks for it instead.
+
+**Example.**
+
+```ts
+import { createTable, sorting } from '@datakable/core'
+
+const users = [
+  { id: 1, name: 'Ada' },
+  { id: 2, name: 'Grace' },
+]
+
+const table = createTable({
+  data: users,
+  features: [sorting()],
+  state: { sorting: { by: [] } },
+  onStateChange: (updater) => {
+    console.log(updater({})) // receives the change, but never passes it back in state
+  },
+})
+table.toggleSort('name')
+```
+
+prints (development console):
+
+```text
+⚠ [DataKable table#1] DK_CONTROLLED_NOT_FED_BACK: onStateChange was called with a change to "sorting", but options.state still had the old value 1000 ms later
+  where   options.state.sorting
+  impact  the change was not applied: a controlled slice shows only the value you pass back, so interactions that change it look frozen
+  fix     1. apply the updater and feed the result back: onStateChange: (updater) => setMyState(updater), then pass the new state as options.state (React: the state prop; createTable: table.setOptions({ state }))
+          2. or move "sorting" to initialState so the table owns it
+          3. if you reject the change on purpose, disable the control that asks for it instead
+  docs    https://github.com/Ink01101011/datakable/blob/main/docs/errors.md#dk_controlled_not_fed_back
+  context trigger=api:toggleSort run=0 phase=client
 ```
 
 ### DK_UNSTABLE_COLUMNS

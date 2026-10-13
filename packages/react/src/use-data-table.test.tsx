@@ -168,6 +168,42 @@ describe('useDataTable (§10)', () => {
     noReactWarnings()
   })
 
+  it('controlled slice: a fed-back change is silent, an ignored one is DK_CONTROLLED_NOT_FED_BACK', () => {
+    vi.useFakeTimers()
+    try {
+      const codes: string[] = []
+      const fed = renderHook(() => {
+        const [sort, setSort] = useState<SortingState<User>>({ by: [] })
+        return useDataTable({
+          data: users,
+          features: [sorting()],
+          state: { sorting: sort },
+          onStateChange: (updater) => setSort((prev) => updater({ sorting: prev }).sorting ?? prev),
+          onDiagnostic: (d) => codes.push(d.code),
+        })
+      })
+      act(() => fed.result.current.toggleSort('age'))
+      act(() => vi.advanceTimersByTime(2000))
+      expect(codes).toEqual([])
+
+      const ignored = renderHook(() =>
+        useDataTable({
+          data: users,
+          features: [sorting()],
+          state: { sorting: { by: [] } },
+          onStateChange: () => {},
+          onDiagnostic: (d) => codes.push(d.code),
+        }),
+      )
+      act(() => ignored.result.current.toggleSort('age'))
+      act(() => vi.advanceTimersByTime(2000))
+      expect(codes).toEqual(['DK_CONTROLLED_NOT_FED_BACK'])
+      expect(ids(ignored.result.current.rowModel.rows)).toEqual([1, 2, 3])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('keeps an inline fetcher stable: re-renders never refetch; the latest one is called', async () => {
     const calls: string[] = []
     const { result, rerender } = renderHook(

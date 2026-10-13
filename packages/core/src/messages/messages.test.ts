@@ -5,6 +5,7 @@ import { hasMessages, listDiagnosticCodes } from '../diagnostics/catalog'
 import { comparatorDiagnostics } from '../features/sorting/codes'
 import { stepDiagnostics } from '../pipeline/dev-checks'
 import { dataMutationDiagnostics } from '../table/data-mutation'
+import { stateFeedbackDiagnostics } from '../table/state-feedback'
 import '../index'
 
 describe('@datakable/core/messages (§8.2)', () => {
@@ -31,6 +32,7 @@ describe('@datakable/core/messages (§8.2)', () => {
         ...comparatorDiagnostics,
         ...stepDiagnostics,
         ...dataMutationDiagnostics,
+        ...stateFeedbackDiagnostics,
       ].map((d) => d.code),
     )
     const covered = new Set(allMessages.flatMap((m) => Object.keys(m)))

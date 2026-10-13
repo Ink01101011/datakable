@@ -18,6 +18,7 @@ export const injectedBy: Readonly<Record<string, string>> = {
   DK_CALLBACK_FAILED: HARNESS,
   DK_COLUMN_PATH_NOT_FOUND: 'ingest/data-checks.test.ts',
   DK_COLUMN_PATH_PARTIAL: 'ingest/data-checks.test.ts',
+  DK_CONTROLLED_NOT_FED_BACK: 'table/create-table.test.ts',
   DK_CONTROLLED_WITHOUT_HANDLER: 'table/create-table.test.ts',
   DK_DATA_MUTATED: 'table/data-mutation.test.ts',
   DK_DEP_INCOMPATIBLE: 'versioning/versioning.test.ts',
