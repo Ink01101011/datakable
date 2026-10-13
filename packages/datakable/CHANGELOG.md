@@ -1,5 +1,50 @@
 # datakable
 
+## 1.0.1
+
+### Patch Changes
+
+- ca17b72: Fix `createTable` from `datakable` bringing React along: the package was one file, so a bundle
+  that used only `createTable` still contained React (and kept `import 'react'` with React external),
+  a Next.js server component that only called `createTable` shipped about 19 KB gzip of table code
+  to the browser (Turbopack), and `<DataTable />` from `datakable` in a server component failed the
+  build with `(0 , e.useRef) is not a function`. `datakable` is now published one file per module,
+  like `@datakable/core` and `@datakable/react`, and only the modules of `<DataTable />` and
+  `useDataTable` are marked `"use client"`: a `createTable`-only bundle has no React, a server
+  component can render `<DataTable />` with plain data props, and `useDataTable` called on the
+  server gets Next's `Attempted to call useDataTable() from the server`. The public imports are
+  unchanged. `pnpm check:pkg` now loads `datakable` as a React server module and bundles
+  `createTable` alone, and fails if React is in that bundle. Fixes #9.
+- f9bc815: Fix tables with features throwing `options.features is set but no feature runtime is loaded`
+  when the app is bundled with `esbuild --minify` (the documented production command). The feature
+  runtime is now installed by calling `defineFeature()` (every built-in feature does), not only by
+  a top-level statement that esbuild dropped after inlining `defineFeature` into its callers. This
+  covers `datakable`'s `createTable`, `useDataTable` and `<DataTable />` (default preset).
+  `pnpm size` now also runs every bundle it measures and fails when one does not work. Fixes #5.
+  
+  New §9.3 size budgets (gzip, `pnpm size`) for the entries with features, set at the measured sizes
+  of bundles that now run: the earlier budgets were measured on bundles that threw (#5). Core +
+  `columnFilters` + `sorting` + `pagination` ≤ 24 KB (was 22 KB); `datakable` `createTable` ≤ 27 KB
+  (was 24.5 KB), `useDataTable` ≤ 28.5 KB (was 26.5 KB), `<DataTable />` ≤ 31.5 KB (was 29.5 KB).
+  Core `createTable` stays ≤ 15 KB.
+- 8a6ca7c: Fix `next build --webpack` (and `next dev --webpack`) failing with `It's currently unsupported to
+  use "export *" in a client boundary` when a server component imports `@datakable/react`,
+  `createTable` from `datakable`, or `datakable/messages` in `app/layout.tsx`. `"use client"` is now
+  only on the modules of `<DataTable />` and `useDataTable`, not on `@datakable/react`'s index, so
+  `<DataTable />` imported from a server component is still a client component and core's exports
+  (`createTable`, …) stay callable on the server. `pnpm check:pkg` now loads the built entries as a
+  React server module and fails where Next's webpack build would. Fixes #8.
+- Updated dependencies [0395d5c]
+- Updated dependencies [f9bc815]
+- Updated dependencies [8a6ca7c]
+- Updated dependencies [b985a35]
+- Updated dependencies [53f8be8]
+- Updated dependencies [1d94455]
+- Updated dependencies [e7d5cf2]
+- Updated dependencies [77743f5]
+  - @datakable/core@1.0.1
+  - @datakable/react@1.0.1
+
 ## 1.0.0
 
 ### Major Changes
