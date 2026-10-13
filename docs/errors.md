@@ -97,7 +97,9 @@ In development, the console prints one collapsed group per diagnostic:
   and the data checks [`DK_COLUMN_PATH_NOT_FOUND`](#dk_column_path_not_found),
   [`DK_COLUMN_PATH_PARTIAL`](#dk_column_path_partial) and
   [`DK_INCONSISTENT_ROW_SHAPE`](#dk_inconsistent_row_shape). A production `setOptions` still keeps
-  the read-once options.
+  the read-once options, and a `schema` / `fetcher` / `searchFn` not wrapped with `withSchema()` /
+  `withFetcher()` / `withSearchFn()` still throws `DK_INVALID_OPTION` (a small production guard,
+  never ignored silently).
   The tracer, which reports [`DK_PERF_HINT`](#dk_perf_hint), runs in development; in production
   only with `interceptors: [tracer()]`.
 - **Production only:** [`DK_UNSAFE_REDACTION`](#dk_unsafe_redaction).
@@ -1658,7 +1660,7 @@ prints (development console):
 
 ### DK_INVALID_OPTION
 
-`error` · development only · config: thrown at creation · fault test: [options.test.ts](../packages/core/src/catalog/options.test.ts)
+`error` · development only, except the unwrapped `schema` / `fetcher` / `searchFn` guard (every build) · config: thrown at creation · fault test: [options.test.ts](../packages/core/src/catalog/options.test.ts), [options.prod.test.ts](../packages/core/src/table/options.prod.test.ts)
 
 **Problem.** An option has the wrong runtime type or is out of range. At creation the table is not created (`DatakableConfigError`); in `setOptions()` the call is rejected and the previous options are kept. The fix names the accepted values (and the closest one, for enums).
 
@@ -1666,10 +1668,12 @@ prints (development console):
 
 - Values read from the environment, the URL or JSON without conversion (`timeout: Number('30s')`).
 - Untyped (JavaScript) configuration.
+- A `schema`, `fetcher` or `searchFn` passed without its opt-in wrapper (`withSchema()` from `@datakable/core/schema`, `withFetcher()` from `@datakable/core/server`, `withSearchFn()` from `@datakable/core/search-async`). This one is also thrown in production builds.
 
 **Fix.**
 
 - Pass a value of the accepted type, or leave the option out for its default.
+- Wrap it: `schema: withSchema(UserSchema)`, `fetcher: withFetcher(fetchUsers)`, `search({ searchFn: withSearchFn(fn) })`.
 
 **Example.**
 

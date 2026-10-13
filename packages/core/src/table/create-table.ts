@@ -1,5 +1,6 @@
+import { optionDiagnostics } from '../catalog/codes'
 import { validateOptionChange, validateOptions } from '../catalog/validator'
-import { DatakableError, defaultPhase } from '../diagnostics/build'
+import { DatakableError, defaultPhase, throwConfigError } from '../diagnostics/build'
 import { keepDiagnostics } from '../diagnostics/catalog'
 import { DEV } from '../diagnostics/env'
 import { type ExplainHost, explainRow, explainTable } from '../diagnostics/explain'
@@ -48,7 +49,7 @@ import {
   type Updater,
 } from './types'
 
-keepDiagnostics(tableDiagnostics, dataMutationDiagnostics)
+keepDiagnostics(tableDiagnostics, dataMutationDiagnostics, optionDiagnostics)
 
 const EMPTY: readonly never[] = []
 
@@ -258,6 +259,8 @@ export function createTable<T, S extends TableState>(
     options.invalidRows ?? 'drop',
     () => options.columns,
   )
+  // Never silent (§8.6): in production (no option validator) an unwrapped schema would be ignored.
+  if (options.schema && !schemaIngest) unwrapped('schema', 'withSchema')
 
   function sensitiveColumns(): string[] {
     const out: string[] = []
@@ -745,7 +748,7 @@ export function createTable<T, S extends TableState>(
       // value in every build.
       if (DEV) validateOptionChange(partial, next, previous, { table: hub.table, emit: hub.emit })
       else keepReadOnce(partial, next, previous)
-      if ('fetcher' in partial) useServer(next.fetcher)?.check(next.fetcher)
+      if ('fetcher' in partial) useServer(next.fetcher, 'setOptions')?.check(next.fetcher)
       void op('table:setOptions', { options: next, previous }, 'options', (): undefined => {
         options = next
         if (next.interceptors !== previous.interceptors) {
@@ -838,10 +841,28 @@ export function createTable<T, S extends TableState>(
   }
 
   /** The server source a `withFetcher` fetcher brings (created once); else the current one. */
-  function useServer(fetcher: unknown): ServerSource | undefined {
+  function useServer(fetcher: unknown, phase?: 'setOptions'): ServerSource | undefined {
     const factory = (fetcher as Partial<ServerFetcher<unknown>> | undefined)?.[SERVER_SOURCE]
     if (factory) server = use(factory)
+    // Never silent (§8.6): in production an unwrapped fetcher would never run.
+    else if (fetcher) unwrapped('fetcher', 'withFetcher', phase)
     return server
+  }
+
+  /**
+   * `DK_INVALID_OPTION` for a schema / fetcher not wrapped with its opt-in import (§5.1, §7.1). A
+   * production check: in development the option validator reports it first, with the full text.
+   */
+  function unwrapped(
+    path: 'schema' | 'fetcher',
+    wrap: string,
+    phase: 'init' | 'setOptions' = 'init',
+  ): never {
+    return throwConfigError(
+      'DK_INVALID_OPTION',
+      { path, expected: `${wrap}(${path})`, received: path, suggestions: [], phase },
+      { table: hub.table, trigger: phase },
+    )
   }
 
   /**

@@ -2,6 +2,7 @@ import { debouncedSignal } from 'kk-debounce/debounceSignal'
 import { throttle } from 'kk-debounce/throttle'
 import { optionDiagnostics } from '../../catalog/codes'
 import { defineOptions } from '../../catalog/options'
+import { throwConfigError } from '../../diagnostics/build'
 import { keepDiagnostics } from '../../diagnostics/catalog'
 import { DEV } from '../../diagnostics/env'
 import { defineFeature } from '../../feature/define'
@@ -228,6 +229,18 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
   const target = (input: string) => (input.trim().length < minLength ? '' : input)
   /** The async engine a `withSearchFn` searchFn brings (§6.3); `undefined` for client search. */
   const engine: SearchEngine | undefined = opts.searchFn?.[SEARCH_ENGINE]?.(opts.searchFn as never)
+  // Never silent (§8.6): in production (no option validator) an unwrapped searchFn would be
+  // ignored; in development the validator reports it at createTable(), with the full text.
+  if (!DEV && opts.searchFn && !engine) {
+    throwConfigError('DK_INVALID_OPTION', {
+      path: 'searchFn',
+      feature: 'search',
+      expected: 'withSearchFn(searchFn)',
+      received: 'searchFn',
+      suggestions: [],
+      phase: 'init',
+    })
+  }
   /** Per table: ends its timers, searches and waiters on `table:destroy`. */
   const instances = new WeakMap<object, () => void>()
 

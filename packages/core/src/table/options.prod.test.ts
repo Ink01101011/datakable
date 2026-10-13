@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { DatakableConfigError } from '../diagnostics/build'
 import type { Diagnostic } from '../diagnostics/types'
 import { defineFeature } from '../feature/define'
+import { pagination } from '../features/pagination'
+import { search } from '../features/search'
+import { makeSchema } from '../ingest/test-schemas'
 import { createTable } from './create-table'
 
 /**
@@ -62,5 +66,35 @@ describe('production: development checks are off (changed 2026-10-13 for §9.3)'
       onDiagnostic: (d) => seen.push(d),
     }).getRowModel()
     expect(seen.map((d) => d.code)).toEqual([])
+  })
+})
+
+describe('production: an unwrapped schema / fetcher / searchFn is never ignored silently (§8.6)', () => {
+  it('a schema not wrapped with withSchema() throws DK_INVALID_OPTION at creation', () => {
+    const create = () =>
+      createTable({ data: [{ id: 1 }], schema: makeSchema((v) => ({ value: v })) as never })
+    expect(create).toThrow(DatakableConfigError)
+    expect(create).toThrow(/DK_INVALID_OPTION/)
+  })
+
+  it('a fetcher not wrapped with withFetcher() throws DK_INVALID_OPTION, at creation and on setOptions', () => {
+    const fetcher = async () => ({ rows: [], rowCount: 0 })
+    const features = [pagination({ mode: 'server' })]
+    expect(() => createTable({ features, fetcher: fetcher as never })).toThrow(/DK_INVALID_OPTION/)
+    const t = createTable({ data: [{ id: 1 }], features })
+    expect(() => t.setOptions({ fetcher: fetcher as never })).toThrow(/DK_INVALID_OPTION/)
+  })
+
+  it('a searchFn not wrapped with withSearchFn() throws DK_INVALID_OPTION naming search', () => {
+    let error: unknown
+    try {
+      createTable({ data: [{ id: 1 }], features: [search({ searchFn: (() => []) as never })] })
+    } catch (e) {
+      error = e
+    }
+    expect(error).toBeInstanceOf(DatakableConfigError)
+    const d = (error as DatakableConfigError).diagnostic
+    expect(d.code).toBe('DK_INVALID_OPTION')
+    expect(d.details).toMatchObject({ feature: 'search', path: 'searchFn', phase: 'init' })
   })
 })
