@@ -266,6 +266,38 @@ describe('search(): client matching (§6.3)', () => {
     expect(ids(noFuzzy)).toEqual([])
   })
 
+  it('a typo matches one word of a multi-word cell, and still the whole cell (#10)', async () => {
+    const data = [
+      { id: 1, name: 'José García' },
+      { id: 2, name: 'Garcia Lopez' },
+      { id: 3, name: 'Somchai Jaidee' },
+      { id: 4, name: 'Mali' },
+    ]
+    const t = createTable({ data, rowKey: 'id', columns: [{ key: 'name' }], features: [search()] })
+    const found: Record<string, number[]> = {}
+    for (const q of ['jose', 'lopes', 'somchia', 'Maly', 'garcia lopes', 'jaidee somchai']) {
+      await t.setSearch(q)
+      found[q] = ids(t)
+    }
+    expect(found).toEqual({
+      jose: [1],
+      lopes: [2],
+      somchia: [3],
+      Maly: [4],
+      'garcia lopes': [2],
+      'jaidee somchai': [],
+    })
+    // The edit limit still holds per word: 2 edits from every word (and the cell) is no match at 1.
+    const one = createTable({
+      data,
+      rowKey: 'id',
+      columns: [{ key: 'name' }],
+      features: [search({ fuzzyMaxDistance: 1 })],
+    })
+    await one.setSearch('somchia')
+    expect(ids(one)).toEqual([])
+  })
+
   it('the query is trimmed before matching', async () => {
     const t = make()
     await t.setSearch('  bob ')

@@ -48,7 +48,9 @@ table.clearSearch() // empties input and query: every row again
 - **What is matched.** The formatted cell values: the column's `format`, else the default
   formatter (so a `Date` is matched as the user sees it, and arrays are joined). Matching is
   fuzzy (Levenshtein distance up to `fuzzyMaxDistance`) and case-insensitive unless
-  `caseSensitive: true`. A row is kept when its relevance (0–1, weights applied) reaches
+  `caseSensitive: true`. A one-word query is measured against each word of a cell as well as
+  the whole cell, so `lopes` finds `Garcia Lopez`; a query with spaces is measured against the
+  whole cell. A row is kept when its relevance (0–1, weights applied) reaches
   `threshold`.
 - **Order.** Results come best match first (ties keep the input order). An active sort replaces
   that order: the pipeline runs `filter → search → sort → paginate`.
