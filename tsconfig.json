@@ -5,8 +5,15 @@
   "compilerOptions": {
     "paths": {
       "@datakable/core": ["./packages/core/src/index.ts"],
-      "@datakable/react": ["./packages/react/src/index.ts"]
+      "@datakable/core/messages": ["./packages/core/src/messages/index.ts"],
+      "@datakable/core/schema": ["./packages/core/src/ingest/schema-entry.ts"],
+      "@datakable/core/server": ["./packages/core/src/source/server-entry.ts"],
+      "@datakable/core/search-async": ["./packages/core/src/features/search/search-async-entry.ts"],
+      "@datakable/core/*": ["./packages/core/src/features/*/index.ts"],
+      "@datakable/react": ["./packages/react/src/index.ts"],
+      "datakable": ["./packages/datakable/src/index.ts"],
+      "datakable/*": ["./packages/datakable/src/*.ts"]
     }
   },
-  "include": ["packages/*/src", "vitest.config.ts"]
+  "include": ["packages/*/src", "vitest.config.ts", "vitest.budgets.config.ts", "budgets"]
 }

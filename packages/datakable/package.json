@@ -21,7 +21,11 @@
     "headless"
   ],
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "./dist/messages.js",
+    "./dist/messages.cjs",
+    "./dist/styles.css"
+  ],
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -46,6 +50,17 @@
         "default": "./dist/core.cjs"
       }
     },
+    "./messages": {
+      "import": {
+        "types": "./dist/messages.d.ts",
+        "default": "./dist/messages.js"
+      },
+      "require": {
+        "types": "./dist/messages.d.cts",
+        "default": "./dist/messages.cjs"
+      }
+    },
+    "./styles.css": "./dist/styles.css",
     "./package.json": "./package.json"
   },
   "files": [
@@ -55,7 +70,7 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "typecheck": "tsc -p tsconfig.json",
-    "check:pkg": "publint --strict && attw --pack . --profile node16"
+    "check:pkg": "publint --strict && attw --pack . --profile node16 --exclude-entrypoints styles.css"
   },
   "dependencies": {
     "@datakable/core": "workspace:^",

@@ -1,0 +1,464 @@
+import { getValue } from '../column/get-value'
+import { keepDiagnostics } from '../diagnostics/catalog'
+import { DEV } from '../diagnostics/env'
+import type { Emit, Trigger } from '../diagnostics/types'
+import { featureDiagnostics } from '../feature/codes'
+import type { FeatureRuntime } from '../feature/runtime'
+import type { AnyFeature, RowModelContext } from '../feature/types'
+import { matchCellIssues } from '../ingest/cell-issues'
+import { type KeyOf, resolveRowKeys } from '../ingest/row-key'
+import { CellFailures } from '../intercept/cell-batch'
+import { errorName } from '../intercept/classify'
+import { type ContextBase, createContext } from '../intercept/context'
+import { FALLBACK } from '../intercept/fallbacks'
+import type { InterceptorRuntime } from '../intercept/runtime'
+import type { TableState } from '../table/types'
+import type { ColumnCache } from './column-cache'
+import { type ResolvedColumn, type ResolvedColumns, resolveColumns } from './columns'
+import { checkStep, indexPrint, stepDiagnostics } from './dev-checks'
+import { allRows } from './indices'
+import { lazyRows, Row, type RowIssue, type RowSource } from './row'
+import type { Slicer } from './slice'
+import { inStepDiagnosticSetsError } from './status-rule'
+import type { RowModel, RowModelStatus } from './types'
+
+keepDiagnostics(featureDiagnostics, stepDiagnostics)
+
+const EMPTY: readonly never[] = []
+const NO_EMIT = (() => undefined) as Emit
+
+/** What `createTable` gives the runner. */
+export interface PipelineHost {
+  readonly runtime: InterceptorRuntime
+  /**
+   * What the features brought (`runtimeFor`): the column cache and time-slicing of their steps.
+   * Always set when a feature has a `rowModel`; a table without features runs no step.
+   */
+  readonly featureRuntime?: FeatureRuntime | undefined
+  readonly emit: Emit
+  /** Installed features in pipeline (stage) order. */
+  readonly features: readonly AnyFeature[]
+  /** `options.features` in the listed order: `where` = `features[<listed index>].rowModel`. */
+  readonly listed: readonly AnyFeature[]
+  base(): ContextBase
+  /** Starts a pipeline run: increments and returns the run id. */
+  nextRun(): number
+  getData(): readonly unknown[]
+  getState(): TableState
+  getColumns(): readonly unknown[] | undefined
+  getRowKey(): unknown
+  /** `RowModel.isInitialLoad`: no data applied yet (§6.6). */
+  isInitialLoad(): boolean
+  /**
+   * The table's status outside the pipeline (`'validating'`, `'error'` after a failed ingest, …);
+   * a step failing in this run makes the row model `'error'` regardless.
+   */
+  status(): RowModelStatus
+  /** Schema issues of a flagged row by data index (`invalidRows: 'flag'`); else `undefined`. */
+  issues(index: number): readonly RowIssue[] | undefined
+  /** `schema` + `invalidRows: 'flag'` (read once): steps get `RowModelContext.flagged`. */
+  readonly flagMode?: boolean
+  /**
+   * Time-sliced work (§9.1, `RowModelContext.slice`) ended: recompute the row model and notify,
+   * under the trigger of the run that started it. Without it nothing is sliced.
+   */
+  refresh?(trigger: Trigger): void
+}
+
+export interface Pipeline<T> {
+  /** Runs `pipeline:run` and returns the row model (the previous object when nothing changed). */
+  run(): RowModel<T>
+  /** The last row model, if the pipeline ran. */
+  current(): RowModel<T> | undefined
+  /** The last run (`explain`, §8.4); `undefined` before the first. */
+  lastRun(): RunRecord | undefined
+  /**
+   * A `rowModel` context over the current data and columns for replaying a step on chosen rows
+   * (`explainRow`, §8.4): diagnostics are dropped and `batch` runs its body directly (no
+   * interceptors), so a replay reports nothing and changes nothing.
+   */
+  replayContext(name: string): RowModelContext
+  /** Cancels time-sliced work in progress (`destroy()`). */
+  dispose(): void
+}
+
+/**
+ * One step of the last run (`explain` / `explainRow`, §8.4): references to the index arrays the
+ * step memo holds anyway, never copies. `cached`: served from the memo; `failed`: the step threw or
+ * returned a bad output and passed its input through.
+ */
+export interface RunRecord {
+  readonly run: number
+  readonly trigger: Trigger
+  /** The client steps that ran, in order (fewer when `pipeline:run` itself failed). */
+  readonly steps: readonly StepRecord[]
+}
+
+export interface StepRecord {
+  readonly feature: AnyFeature
+  readonly input: Uint32Array
+  readonly output: Uint32Array
+  readonly cached: boolean
+  readonly failed: boolean
+}
+
+interface StepMemo {
+  input: Uint32Array
+  state: unknown
+  columns: readonly unknown[]
+  output: Uint32Array
+}
+
+interface Built<T> {
+  model: RowModel<T>
+  data: readonly unknown[]
+  indices: Uint32Array
+  columns: readonly unknown[]
+  rowKey: unknown
+}
+
+/**
+ * The index-based pipeline (§3.3, §9.1): each step consumes and produces a `Uint32Array` of row
+ * indices, is memoised on (input reference, own slice, columns), and `Row` objects are created only
+ * for the final (visible) indices, each when it is first read.
+ */
+export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
+  /**
+   * In-step diagnostics the §6.6 status rule counts (`inStepDiagnosticSetsError`), ever reported:
+   * a step whose run moved it makes the row model `'error'` and is not memoised.
+   */
+  const flags = { count: 0 }
+  /** `emit` for steps and the column cache: counts through the status rule. */
+  const stepEmit = ((code, details, options) => {
+    if (inStepDiagnosticSetsError(code)) flags.count++
+    host.emit(code, details, options)
+  }) as Emit
+  const rt = host.featureRuntime
+  // Only steps (and explainRow's replay of them) read the cache: they exist only with a runtime.
+  const cache = rt?.createColumnCache({
+    runtime: host.runtime,
+    emit: stepEmit,
+    base: () => host.base(),
+    flags,
+  }) as ColumnCache
+  // A server-mode feature (§7.1) only holds state: the server ran its step.
+  const steps = host.features.filter(
+    (f) => f.stage !== 'none' && f.mode !== 'server' && typeof f.rowModel === 'function',
+  )
+  const where = new Map(steps.map((f) => [f, `features[${host.listed.indexOf(f)}].rowModel`]))
+  const memo = new Map<AnyFeature, StepMemo>()
+  const sources = new WeakMap<ResolvedColumns, RowSource>()
+  const keyFailures = new CellFailures()
+  /** The first `rowKey` error of the current build (its `cause`). */
+  let keyError: unknown
+  const keyFailed = (index: number, e: unknown) => {
+    if (keyFailures.count === 0) keyError = e
+    keyFailures.add(index, e)
+  }
+  let last: Built<T> | undefined
+  /** Row keys resolved over all rows (§5.2), per (data, rowKey) reference. */
+  let keys: { data: readonly unknown[]; rowKey: unknown; keyOf: KeyOf } | undefined
+  let model: RowModel<T> | undefined
+  /** The last run (replaced per run; a few references per step). */
+  let lastRun: RunRecord | undefined
+  /** Steps of the current run waiting on time-sliced work (§9.1): the row model is 'pending'. */
+  let waiting = 0
+  const refresh = host.refresh
+  const slicer: Slicer | undefined = rt?.createSlicer({
+    emit: stepEmit,
+    // Not during SSR, and not for the first row model (the hydrated client matches the server).
+    enabled: () => refresh !== undefined && last !== undefined && host.base().phase === 'client',
+    trigger: () => host.base().trigger,
+    done: (trigger) => refresh?.(trigger),
+  })
+
+  /** `Row.getValue` failures: one emit per failing cell, built only when a cell fails. */
+  function reportCell(col: ResolvedColumn, index: number, e: unknown, field: string) {
+    const name = errorName(e)
+    host.emit(
+      'DK_CALLBACK_FAILED',
+      {
+        slot: `columns[${col.index}].${field}`,
+        column: col.id,
+        rows: [index],
+        count: 1,
+        fallback: 'the cell reads as undefined',
+        ...(name === undefined ? {} : { errorName: name }),
+      },
+      { cause: e },
+    )
+  }
+  // A key-path read error, captured by a closure made once (Row.getValue is per cell: no
+  // allocation per call).
+  let pathFailed = false
+  let pathError: unknown
+  const onPathError = (e: unknown) => {
+    pathFailed = true
+    pathError = e
+  }
+
+  function rowSource(cols: ResolvedColumns): RowSource {
+    let s = sources.get(cols)
+    if (s) return s
+    s = {
+      value(index, original, id) {
+        const col = cols.byId.get(id)
+        if (!col) return undefined
+        if (col.path) {
+          const v = getValue(original, col.path, onPathError)
+          if (pathFailed) {
+            const e = pathError
+            pathFailed = false
+            pathError = undefined
+            reportCell(col, index, e, 'key')
+          }
+          return v
+        }
+        if (!col.accessor) return undefined
+        try {
+          return col.accessor(original)
+        } catch (e) {
+          reportCell(col, index, e, 'accessor')
+          return undefined
+        }
+      },
+      issues: (index) => host.issues(index),
+      cellIssues(issues, id) {
+        const col = cols.byId.get(id)
+        return col ? matchCellIssues(issues, col.path) : EMPTY
+      },
+    }
+    sources.set(cols, s)
+    return s
+  }
+
+  function reportKeyFailures() {
+    if (keyFailures.count === 0) return
+    const name = errorName(keyError)
+    host.emit(
+      'DK_CALLBACK_FAILED',
+      {
+        slot: 'rowKey',
+        rows: Array.from(keyFailures.sample()),
+        count: keyFailures.count,
+        fallback: "those rows use the fallback key '#<index>'",
+        ...(name === undefined ? {} : { errorName: name }),
+      },
+      { cause: keyError },
+    )
+    keyFailures.reset()
+    keyError = undefined
+  }
+
+  function build(
+    data: readonly unknown[],
+    indices: Uint32Array,
+    columns: readonly unknown[],
+    filteredCount: number,
+    status: RowModelStatus,
+  ): RowModel<T> {
+    const rowKey = host.getRowKey()
+    const isInitialLoad = host.isInitialLoad()
+    const prev = last
+    if (
+      prev &&
+      prev.indices === indices &&
+      prev.data === data &&
+      prev.columns === columns &&
+      prev.rowKey === rowKey &&
+      prev.model.status === status &&
+      prev.model.isInitialLoad === isInitialLoad
+    ) {
+      return prev.model
+    }
+    const source = rowSource(resolveColumns(columns))
+    keyFailures.reset()
+    if (keys?.data !== data || keys.rowKey !== rowKey) {
+      keys = { data, rowKey, keyOf: resolveRowKeys(data, rowKey, host.emit, keyFailed) }
+    }
+    const keyOf = keys.keyOf
+    reportKeyFailures()
+    // A data array whose rows cannot be read fails this run (the last good row model is kept),
+    // not a later read of `rows[i]`.
+    for (let i = 0; i < indices.length; i++) void data[indices[i] as number]
+    // Rows are built when read (§9.3: no Row per visible row up front). The key scan above read
+    // every key; one that throws only now is reported now.
+    const rows = lazyRows(indices.length, (i) => {
+      const r = indices[i] as number
+      const original = data[r] as T
+      const row = new Row<T>(source, r, keyOf(original, r), original)
+      reportKeyFailures()
+      return row
+    })
+    const m: RowModel<T> = { rows, filteredCount, totalCount: data.length, status, isInitialLoad }
+    last = { model: m, data, indices, columns, rowKey }
+    return m
+  }
+
+  function run(): RowModel<T> {
+    host.nextRun()
+    const data = host.getData()
+    const columns = host.getColumns() ?? EMPTY
+    const cols = resolveColumns(columns)
+    const state = host.getState()
+    let failed = false
+    let result: RowModel<T> | undefined
+    const records: StepRecord[] = []
+    const { run: runId, trigger } = host.base()
+    lastRun = { run: runId, trigger, steps: records }
+
+    const rowModelContext = (name: string): RowModelContext => ({
+      name,
+      data,
+      emit: stepEmit,
+      ...(host.flagMode ? { flagged: (i: number) => host.issues(i) } : {}),
+      run: host.base().run,
+      columns,
+      getColumnValues: (id) => {
+        const col = cols.byId.get(id)
+        return col ? cache.values(data, col) : undefined
+      },
+      getFormattedValues: (id) => {
+        const col = cols.byId.get(id)
+        return col ? cache.formatted(data, col) : undefined
+      },
+      batch: (id, slot, rows, body) => {
+        const col = cols.byId.get(id)
+        if (col) cache.batch(col, slot, slot, rows, body)
+        return col !== undefined
+      },
+      slice: (key, job) => {
+        const r = (slicer as Slicer).run(key, job, name)
+        if (r === undefined) waiting++
+        return r
+      },
+    })
+
+    function step(f: AnyFeature, input: Uint32Array): Uint32Array {
+      const slice = state[f.name]
+      const m = memo.get(f)
+      if (m && m.input === input && Object.is(m.state, slice) && m.columns === columns) {
+        records.push({ feature: f, input, output: m.output, cached: true, failed: false })
+        return m.output
+      }
+      let ok = false
+      const flagged = flags.count
+      const waited = waiting
+      const ctx = createContext(
+        'pipeline:step',
+        { stage: f.stage, feature: f.name, indices: input },
+        where.get(f) as string,
+        host.base(),
+      )
+      const output = host.runtime.run('pipeline:step', ctx, () => {
+        let out: unknown
+        // Dev check (§3.4 devChecks): a bounded fingerprint of the input before rowModel runs.
+        const before = DEV ? indexPrint(input) : 0
+        try {
+          out = (f.rowModel as NonNullable<AnyFeature['rowModel']>)(
+            input,
+            slice,
+            rowModelContext(f.name),
+          )
+        } catch (e) {
+          const name = errorName(e)
+          host.emit(
+            'DK_FEATURE_FAILED',
+            {
+              feature: f.name,
+              hook: 'rowModel',
+              fallback: 'the step passed its input through',
+              ...(name === undefined ? {} : { errorName: name }),
+            },
+            { cause: e },
+          )
+          return input
+        }
+        // Dev: a mutated input warns; a bad output passes the input through, not memoised.
+        if (DEV && !checkStep(stepEmit, f.name, input, before, out, data.length)) return input
+        ok = true
+        return out instanceof Uint32Array ? out : input
+      })
+      // A counted in-step diagnostic (status rule): 'error' with the step's output, re-run next time.
+      // A step waiting on sliced work returned a stand-in: re-run next time too.
+      if (ok && flags.count === flagged) {
+        if (waiting === waited) memo.set(f, { input, state: slice, columns, output })
+        else memo.delete(f)
+      } else {
+        failed = true
+        memo.delete(f)
+      }
+      records.push({ feature: f, input, output, cached: false, failed: !ok })
+      return output
+    }
+
+    const ctx = createContext('pipeline:run', { rowCount: data.length }, 'features', host.base())
+    // The last good row model (§3.4): its indices; the runner keeps the matching rows below.
+    if (last) ctx.meta.set(FALLBACK, last.indices)
+    waiting = 0
+    slicer?.begin()
+    try {
+      void host.runtime.run('pipeline:run', ctx, () => {
+        let indices = allRows(data)
+        let filteredCount = -1
+        for (const f of steps) {
+          if (f.stage === 'paginate' && filteredCount < 0) filteredCount = indices.length
+          indices = step(f, indices)
+        }
+        if (filteredCount < 0) filteredCount = indices.length
+        // Sliced work in progress is 'pending', below every other status (§6.6 precedence).
+        const outside = host.status()
+        const status = failed ? 'error' : waiting > 0 && outside === 'idle' ? 'pending' : outside
+        result = build(data, indices, columns, filteredCount, status)
+        return indices
+      })
+    } finally {
+      // Sliced work no step asked for in this run is stale: cancelled.
+      slicer?.end()
+    }
+    if (result) model = result
+    else {
+      // pipeline:run failed: the boundary reported it; keep the last good rows.
+      const isInitialLoad = host.isInitialLoad()
+      model = last
+        ? { ...last.model, status: 'error', isInitialLoad }
+        : { rows: EMPTY, filteredCount: 0, totalCount: 0, status: 'error', isInitialLoad }
+    }
+    return model
+  }
+
+  function replayContext(name: string): RowModelContext {
+    const data = host.getData()
+    const columns = host.getColumns() ?? EMPTY
+    const cols = resolveColumns(columns)
+    return {
+      name,
+      data,
+      emit: NO_EMIT,
+      ...(host.flagMode ? { flagged: (i: number) => host.issues(i) } : {}),
+      run: host.base().run,
+      columns,
+      getColumnValues: (id) => {
+        const col = cols.byId.get(id)
+        return col ? cache.values(data, col) : undefined
+      },
+      getFormattedValues: (id) => {
+        const col = cols.byId.get(id)
+        return col ? cache.formatted(data, col) : undefined
+      },
+      batch: (id, _slot, _rows, body) => {
+        if (!cols.byId.has(id)) return false
+        body()
+        return true
+      },
+    }
+  }
+
+  return {
+    run,
+    current: () => model,
+    lastRun: () => lastRun,
+    replayContext,
+    dispose: () => slicer?.cancel(),
+  }
+}
