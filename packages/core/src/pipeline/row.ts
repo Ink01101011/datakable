@@ -19,6 +19,14 @@ export interface RowSource {
 export const NO_ISSUES: readonly RowIssue[] = Object.freeze([])
 
 /**
+ * The key a {@link Row} keeps its {@link RowSource} under. A symbol, not a `#private` field: a
+ * proxy-based store (Vue `ref` / `reactive`, Pinia, MobX) calls the getters and methods with
+ * `this` = its proxy, which has no private slot, so `#source` threw there (#11). A symbol key
+ * reads through any proxy, stays out of `Object.keys` and JSON, and is not exported.
+ */
+const SOURCE = Symbol()
+
+/**
  * One visible row (§6.6). Created only for the rows `getRowModel()` returns, never for the whole
  * data set (§9.1), and only when read ({@link lazyRows}); the methods live on the prototype, so a
  * row costs its four fields.
@@ -30,24 +38,25 @@ export class Row<T = unknown> {
   readonly index: number
   /** The row object as passed in `data`. */
   readonly original: T
-  readonly #source: RowSource
+  /** @internal */
+  private readonly [SOURCE]: RowSource
 
   /** @internal Rows are created by the pipeline. */
   constructor(source: RowSource, index: number, key: RowKey, original: T) {
     this.key = key
     this.index = index
     this.original = original
-    this.#source = source
+    this[SOURCE] = source
   }
 
   /** `false` for a row flagged by schema validation (`invalidRows: 'flag'`). */
   get valid(): boolean {
-    return this.#source.issues(this.index) === undefined
+    return this[SOURCE].issues(this.index) === undefined
   }
 
   /** The row's schema issues (empty for a valid row). */
   get issues(): readonly RowIssue[] {
-    return this.#source.issues(this.index) ?? NO_ISSUES
+    return this[SOURCE].issues(this.index) ?? NO_ISSUES
   }
 
   /**
@@ -55,7 +64,7 @@ export class Row<T = unknown> {
    * column. Never throws: a throwing accessor reports `DK_CALLBACK_FAILED` and reads `undefined`.
    */
   getValue(id: string): unknown {
-    return this.#source.value(this.index, this.original, id)
+    return this[SOURCE].value(this.index, this.original, id)
   }
 
   /**
@@ -65,8 +74,8 @@ export class Row<T = unknown> {
    * so they get only those. Empty for a valid row or an unknown column.
    */
   getCellIssues(id: string): readonly RowIssue[] {
-    const issues = this.#source.issues(this.index)
-    return issues === undefined ? NO_ISSUES : this.#source.cellIssues(issues, id)
+    const issues = this[SOURCE].issues(this.index)
+    return issues === undefined ? NO_ISSUES : this[SOURCE].cellIssues(issues, id)
   }
 }
 
