@@ -3,25 +3,26 @@
 DataKable checks your columns against your row type at compile time. TypeScript cannot be made to
 print a custom message for these checks, so the errors come out in TypeScript's own words. This
 page shows the six errors you are most likely to meet, what TypeScript prints for each, which line
-to read, and how to fix it.
+to read, and how to fix it. Every example below is compiled in CI with `// @ts-expect-error` on
+the failing line, and every output is what TypeScript prints for it.
 
 The examples use this row type:
 
 ```ts
-type User = {
+// The row type of the examples on this page.
+export type User = {
   id: number
   first: string
   age: number
   address: { city: string; geo: { lat: number; lng: number } }
   onClick: () => void
   friends: { id: number }[]
-  // …
 }
 ```
 
-The output below is from TypeScript 6.0. In it, `ColumnDef<User, string>` is the column type;
-with `@datakable/react` the second argument is `ReactNode`. Long path unions are shortened to
-`'"id" | "first" | …'`.
+The output is from TypeScript 6.0, for columns typed `ColumnDef<User, ReactNode>` (the type
+`useDataTable` and `<DataTable />` take; with `@datakable/core` alone the second argument is
+`unknown`). `…` marks text left out: mostly the long union of every path of `User`.
 
 **Tip:** read the *last* line of a multi-line error first. It names the property that is wrong.
 
@@ -37,12 +38,18 @@ with `@datakable/react` the second argument is `ReactNode`. Long path unions are
 ## 1. Typo in `key`
 
 ```ts
-columns: [{ key: 'frist' }]
+import type { ColumnDef } from 'datakable'
+import type { ReactNode } from 'react'
+import type { User } from './1-user'
+
+export const columns: ColumnDef<User, ReactNode>[] = [
+  // @ts-expect-error TS2820: 'frist' is not a path of User
+  { key: 'frist' },
+]
 ```
 
 ```text
-error TS2820: Type '"frist"' is not assignable to type '"id" | "first" | "age" | "address" | …'.
-Did you mean '"first"'?
+error TS2820: Type '"frist"' is not assignable to type '"id" | "first" | "age" | "address" | …'. Did you mean '"first"'?
 ```
 
 The long union is every path of your row type. TypeScript suggests the closest one.
@@ -52,12 +59,18 @@ The long union is every path of your row type. TypeScript suggests the closest o
 ## 2. Typo in a nested key
 
 ```ts
-columns: [{ key: 'address.ctiy' }]
+import type { ColumnDef } from 'datakable'
+import type { ReactNode } from 'react'
+import type { User } from './1-user'
+
+export const columns: ColumnDef<User, ReactNode>[] = [
+  // @ts-expect-error TS2820: 'address.ctiy' is not a path of User
+  { key: 'address.ctiy' },
+]
 ```
 
 ```text
-error TS2820: Type '"address.ctiy"' is not assignable to type '"id" | … | "address.city" | …'.
-Did you mean '"address.city"'?
+error TS2820: Type '"address.ctiy"' is not assignable to type '"id" | … | "address.city" | …'. Did you mean '"address.city"'?
 ```
 
 Same error as 1. Nested paths are part of the union (up to 4 levels deep), so the suggestion works
@@ -68,15 +81,22 @@ for them too.
 ## 3. Filter kind not allowed for the value type
 
 ```ts
-columns: [{ key: 'first', filter: { type: 'range' } }]
+import type { ColumnDef } from 'datakable'
+import type { ReactNode } from 'react'
+import type { User } from './1-user'
+
+export const columns: ColumnDef<User, ReactNode>[] = [
+  // @ts-expect-error TS2322: a string column takes 'contains' | 'equals' | 'in', not 'range'
+  { key: 'first', filter: { type: 'range' } },
+]
 ```
 
 ```text
-error TS2322: Type '{ key: "first"; filter: { type: "range"; }; }' is not assignable to type 'ColumnDef<User, string>'.
+error TS2322: Type '{ key: "first"; filter: { type: "range"; }; }' is not assignable to type 'ColumnDef<User, ReactNode>'.
   Types of property 'filter' are incompatible.
     Type '{ type: "range"; }' is not assignable to type 'StringFilter | undefined'.
       Types of property 'type' are incompatible.
-        Type '"range"' is not assignable to type '"contains" | "equals" | "in"'.
+        Type '"range"' is not assignable to type '"equals" | "in" | "contains"'.
 ```
 
 The filter kinds a column accepts depend on its value type. The third line names the set
@@ -94,28 +114,49 @@ The filter kinds a column accepts depend on its value type. The third line names
 ## 4. Object column without `cell` or `format`
 
 ```ts
-columns: [{ key: 'address' }]
+import type { ColumnDef } from 'datakable'
+import type { ReactNode } from 'react'
+import type { User } from './1-user'
+
+export const columns: ColumnDef<User, ReactNode>[] = [
+  // @ts-expect-error TS2322: an object value needs `cell` or `format`
+  { key: 'address' },
+]
 ```
 
 ```text
-error TS2322: Type '{ key: "address"; }' is not assignable to type 'ColumnDef<User, string>'.
-  Type '{ key: "address"; }' is not assignable to type '({ key: "address"; } & BaseColumn<…> & NeedsCell<User, { city: string; geo: { … }; }, string>) | ({ ...; } & ... 1 more ... & NeedsFormat<...>)'.
-    Type '{ key: "address"; }' is not assignable to type '{ key: "address"; } & BaseColumn<…> & NeedsFormat<{ city: string; geo: { … }; }>'.
+error TS2322: Type '{ key: "address"; }' is not assignable to type 'ColumnDef<User, ReactNode>'.
+  Type '{ key: "address"; }' is not assignable to type '({ key: "address"; } & BaseColumn<…> & NeedsCell<User, { city: string; geo: { lat: number; lng: number; }; }, ReactNode> & { ...; }) | ... 4 more ... | (…)'.
+    Type '{ key: "address"; }' is not assignable to type '{ key: "address"; } & BaseColumn<…> & NeedsFormat<{ city: string; geo: { lat: number; lng: number; }; }> & NeedsSortBy<...>'.
       Property 'format' is missing in type '{ key: "address"; }' but required in type 'NeedsFormat<{ city: string; geo: { lat: number; lng: number; }; }>'.
 ```
 
 The default formatter can display primitives, `Date` and arrays of primitives. It cannot display
-an object, so the column must say how to render it. The second line shows the two ways to do that:
-`NeedsCell` **or** `NeedsFormat`. TypeScript reports only the last one it tried, so the final line
-says `format` is missing — but `cell` works just as well.
+an object, so the column must say how to render it. The second line lists the ways the column
+could be valid: `NeedsCell` **or** `NeedsFormat` (each combined with the sort options, hence
+`... 4 more ...`). TypeScript reports only the last one it tried, so the final line says `format`
+is missing — but `cell` works just as well.
 
-**Fix:** add either one.
+**Fix:** add either one, or point the column at a displayable leaf.
 
-```ts
-{ key: 'address', format: (a) => a.city }
-{ key: 'address', cell: ({ value }) => <City city={value} /> }
-// or point at a displayable leaf instead:
-{ key: 'address.city' }
+```tsx
+import type { ColumnDef } from 'datakable'
+import type { ReactNode } from 'react'
+import type { User } from './1-user'
+
+// Any one of these: text with `format`, a component with `cell`, or a displayable leaf.
+export const withFormat: ColumnDef<User, ReactNode>[] = [
+  { key: 'address', format: (address) => address.city },
+]
+export const withCell: ColumnDef<User, ReactNode>[] = [
+  { key: 'address', cell: ({ value }) => <em>{value.city}</em> },
+]
+export const withLeaf: ColumnDef<User, ReactNode>[] = [{ key: 'address.city' }]
+
+// An array of objects is fixed the same way.
+export const friends: ColumnDef<User, ReactNode>[] = [
+  { key: 'friends', format: (list) => `${list.length} friends` },
+]
 ```
 
 The same error appears for an **array of objects** (`{ key: 'friends' }`, with
@@ -124,13 +165,20 @@ The same error appears for an **array of objects** (`{ key: 'friends' }`, with
 ## 5. Function column without `cell` or `format`
 
 ```ts
-columns: [{ key: 'onClick' }]
+import type { ColumnDef } from 'datakable'
+import type { ReactNode } from 'react'
+import type { User } from './1-user'
+
+export const columns: ColumnDef<User, ReactNode>[] = [
+  // @ts-expect-error TS2322: a function value needs `cell` or `format` (or no column)
+  { key: 'onClick' },
+]
 ```
 
 ```text
-error TS2322: Type '{ key: "onClick"; }' is not assignable to type 'ColumnDef<User, string>'.
-  Type '{ key: "onClick"; }' is not assignable to type '({ key: "onClick"; } & BaseColumn<User, () => void, string> & NeedsCell<User, () => void, string>) | ({ key: "onClick"; } & BaseColumn<User, () => void, string> & NeedsFormat<...>)'.
-    Type '{ key: "onClick"; }' is not assignable to type '{ key: "onClick"; } & BaseColumn<User, () => void, string> & NeedsFormat<() => void>'.
+error TS2322: Type '{ key: "onClick"; }' is not assignable to type 'ColumnDef<User, ReactNode>'.
+  Type '{ key: "onClick"; }' is not assignable to type '({ key: "onClick"; } & BaseColumn<User, () => void, ReactNode> & NeedsCell<User, () => void, ReactNode> & { sortable?: false; }) | ... 4 more ... | (…)'.
+    Type '{ key: "onClick"; }' is not assignable to type '{ key: "onClick"; } & BaseColumn<User, () => void, ReactNode> & NeedsFormat<() => void> & NeedsSortFn<() => void>'.
       Property 'format' is missing in type '{ key: "onClick"; }' but required in type 'NeedsFormat<() => void>'.
 ```
 
@@ -142,7 +190,16 @@ exist — a callback is rarely something to show.
 ## 6. `rowKey` is not a path of the row
 
 ```ts
-useDataTable({ data: users, rowKey: 'nope', columns })
+import { createTable } from 'datakable'
+import type { User } from './1-user'
+
+declare const users: User[]
+
+export const table = createTable({
+  data: users,
+  // @ts-expect-error TS2322: 'nope' is not a path of User
+  rowKey: 'nope',
+})
 ```
 
 ```text
@@ -167,4 +224,12 @@ On object, function and array-of-objects columns TypeScript shows only the signa
 - These checks need a known row type. With `any[]` data, keys are not checked and filters are
   limited to `equals` / `contains`. Pass a `schema` or write `useDataTable<User>(…)`.
 - Fields typed `any` or `unknown` need no `cell` / `format`; the default formatter handles them at
-  runtime and reports `DK_UNRENDERABLE_VALUE` if it meets an object.
+  runtime and reports [`DK_UNRENDERABLE_VALUE`](errors.md#dk_unrenderable_value) if it meets an
+  object.
+
+## See also
+
+- [Diagnostics reference](errors.md) — the runtime side: every `DK_*` code.
+- [How to fix](README.md) — troubleshooting by symptom.
+- [`@datakable/core` columns](../../packages/core/README.md#columns) — what each column field
+  takes.

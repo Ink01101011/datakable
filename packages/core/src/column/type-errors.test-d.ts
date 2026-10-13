@@ -1,7 +1,7 @@
 import { describe, test } from 'vitest'
 import { table, type User } from './test-utils'
 
-// The six common column type errors (spec §4.1 / §4.3), explained in docs/reading-type-errors.md.
+// The six common column type errors (spec §4.1 / §4.3), explained in docs/how-to-fix/reading-type-errors.md.
 // type-errors.test.ts compiles this file with the directives removed and pins each message, so
 // keep every case on the single line under its `[E<n>]` marker.
 

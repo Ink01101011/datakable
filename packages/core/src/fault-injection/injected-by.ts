@@ -1,7 +1,7 @@
 /**
  * The fault-injection test of every diagnostic code (§8.3, §11): code → the test file that injects
  * it, relative to `packages/core/src`. Shared by the core catalog test
- * (`fault-injection/catalog.test.ts`) and the `docs/errors.md` test (`packages/datakable`), which
+ * (`fault-injection/catalog.test.ts`) and the `docs/how-to-fix/errors.md` test (`packages/datakable`), which
  * checks it against the full registry (core + `@datakable/react`). Not part of the build.
  *
  * The fault-injection suites under `fault-injection/` check the real diagnostic (code, exact
