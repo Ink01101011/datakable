@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { captureConsole, normalize, parseErrorsDoc } from './errors-doc'
 
 /**
- * The `docs/errors.md` examples that need a server render (no `document`): `*.server.tsx` in
+ * The `docs/how-to-fix/errors.md` examples that need a server render (no `document`): `*.server.tsx` in
  * `./errors-examples/`. The other checks of those sections run in `errors-doc.test.tsx`.
  */
 
@@ -20,7 +20,7 @@ declare global {
 }
 
 const sections = parseErrorsDoc(
-  fs.readFileSync(new URL('../../../docs/errors.md', import.meta.url), 'utf8'),
+  fs.readFileSync(new URL('../../../docs/how-to-fix/errors.md', import.meta.url), 'utf8'),
 )
 const loaders = Object.entries(import.meta.glob('./errors-examples/*.server.{ts,tsx}'))
 
@@ -28,7 +28,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('docs/errors.md server-render examples', () => {
+describe('docs/how-to-fix/errors.md server-render examples', () => {
   it('there are some', () => {
     expect(loaders.length).toBeGreaterThan(0)
   })

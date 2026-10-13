@@ -11,7 +11,7 @@ type IsLoose<V> = IsAny<V> extends true ? true : unknown extends V ? true : fals
 type LooseFilter = { type: 'equals' } | { type: 'contains' }
 
 // The filter sets are named so a wrong kind reads "not assignable to type 'StringFilter'" instead
-// of an inlined union (docs/reading-type-errors.md, E3).
+// of an inlined union (docs/how-to-fix/reading-type-errors.md, E3).
 /** Filter kinds for number, bigint and `Date` values. */
 type NumberFilter = { type: 'range' } | { type: 'equals' } | { type: 'in' }
 /** Filter kinds for string values. `range` is not one of them. */
@@ -102,7 +102,7 @@ export type RenderReq<T, V, R> =
 
 // The two ways to satisfy the rendering requirement are named so that a column missing both reads
 // "Property 'format' is missing ... required in type 'NeedsFormat<V>'", with `NeedsCell<T, V, R>`
-// listed as the alternative (docs/reading-type-errors.md, E4 / E5). The JSDoc repeats BaseColumn's
+// listed as the alternative (docs/how-to-fix/reading-type-errors.md, E4 / E5). The JSDoc repeats BaseColumn's
 // word for word: autocomplete on a required `cell` / `format` shows it once only while the copies
 // are identical (pinned in type-errors.test.ts).
 

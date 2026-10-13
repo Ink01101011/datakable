@@ -12,14 +12,13 @@ import { docsExamples, docsPages } from './docs-files'
  */
 
 /**
- * Pages whose TypeScript blocks another test checks, or that predate the docs hub:
- * - any `errors.md`: its blocks are `./errors-examples/` files, run by `errors-doc.test.tsx`;
- * - `docs/reading-type-errors.md`: type-error fragments. D3 moves the page to `docs/how-to-fix/`
- *   and writes them as compiled examples (`// @ts-expect-error` on the failing line), where this
- *   test checks them.
+ * Pages whose TypeScript blocks another test checks: any `errors.md` (the diagnostics reference in
+ * `docs/how-to-fix/`, and the stub at its old address `docs/errors.md`), whose blocks are
+ * `./errors-examples/` files run by `errors-doc.test.tsx`. (`docs/how-to-fix/reading-type-errors.md`
+ * is checked here: its failing examples carry `// @ts-expect-error`, and
+ * `reading-type-errors.test.ts` checks the printed errors.)
  */
-const verifiedElsewhere = (page: string) =>
-  page === 'docs/errors.md' || page.endsWith('/errors.md') || page === 'docs/reading-type-errors.md'
+const verifiedElsewhere = (page: string) => page.endsWith('/errors.md')
 
 const examples = docsExamples()
 

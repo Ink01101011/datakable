@@ -24,6 +24,14 @@ export default defineConfig({
       },
       { find: /^@datakable\/core$/, replacement: src('core') },
       { find: /^@datakable\/react$/, replacement: src('react') },
+      // The docs examples (packages/datakable/src/docs-examples) import what a consumer writes.
+      { find: /^datakable$/, replacement: src('datakable') },
+      {
+        find: /^datakable\/messages$/,
+        replacement: fileURLToPath(
+          new URL('./packages/datakable/src/messages.ts', import.meta.url),
+        ),
+      },
     ],
   },
   test: {
