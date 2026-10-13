@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { type FetchResult, search, sorting } from '@datakable/core'
+import { withSearchFn } from '@datakable/core/search-async'
 import { withFetcher } from '@datakable/core/server'
 import { renderToString } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -47,7 +48,7 @@ describe('<DataTable /> on the server (§7.2, §10)', () => {
     const html = renderToString(
       <DataTable<User>
         columns={columns}
-        features={[search<User>({ searchFn })]}
+        features={[search<User>({ searchFn: withSearchFn(searchFn) })]}
         initialState={{ search: { input: 'ada', query: 'ada', status: 'idle' } }}
       />,
     )

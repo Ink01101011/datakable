@@ -311,10 +311,12 @@ search({
     minLength: 0 | 2,                                  // default: client 0, server 2; shorter input = empty query
     commitOn: 'type' | 'enter',                        // 'enter' → only flushSearch() commits
   },
-  searchFn?: (ctx: { query, rows, columns, signal }) => Result | Promise<Result>,
+  searchFn?: withSearchFn((ctx: { query, rows, columns, signal }) => Result | Promise<Result>),
 })
 // Result = readonly T[] (references from ctx.rows) | { keys: RowKey[] }
 ```
+
+- **`searchFn` is an opt-in import** *(changed 2026-10-13 for §9.3, user decision)*: `searchFn` takes only a function wrapped with `withSearchFn(fn)` from `@datakable/core/search-async` (also exported from `@datakable/core`). The wrapper carries the async search engine — requests through `async:request`, abort, `'searching'`, stale-while-error, SSR deferral, mapping results back to rows — so client search does not bundle it. An unwrapped function is `DK_INVALID_OPTION` in development (as `withFetcher`, §7.1).
 
 - **State:** `{ input, query, status: 'idle' | 'pending' | 'searching' | 'error', error? }`.
   - `input` updates immediately as the user types.
@@ -330,7 +332,7 @@ search({
 - **Client matching** (`ex-search`):
   - Searchable columns are those with `search: weight` (zero-config: every displayable column, weight 1).
   - Matching runs on the **formatted** value (what the user sees; arrays joined).
-  - The searchable values are projected into flat objects `{ c0, c1, … }`, which also removes ex-search's top-level-key limitation. The projection and the `ExSearch` instance are memoised per data + columns, not per keystroke.
+  - The searchable values are projected into flat objects `{ c0, c1, … }`, which also removes ex-search's top-level-key limitation. The matcher (over the column cache's values) is built once per data + columns, not per keystroke; the projection is a view built one chunk of rows at a time while matching and not kept *(changed 2026-10-13 for the §9.3 memory budget)*.
   - Results map back to the original rows **by index**, because ex-search returns copies (identity lost — verified).
   - A blank or whitespace-only query returns all rows (ex-search returns `[]` for it — verified).
 - **Ordering:** with no active sort, results are ordered by relevance (score descending, ties by original index, enforced by DataKable). An active sort wins over relevance.
@@ -691,6 +693,8 @@ The bundle budgets are estimates from measured dependency sizes plus an assumed 
 
 *Measured 2026-10-13 after the approved §9.3 changes (opt-in `withSchema` / `withFetcher`, development-only option validation, version and data checks, no `merge` sort, the feature runtime brought by `defineFeature`), with the committed method (`pnpm size`): core `createTable` 23,535 → 14,553 B gzip; with filters + sorting + pagination 30,703 → 22,198 B; the `datakable` preset 35,318 → 27,697 B. The original 8 KB core budget was not reached: the remaining bare table is the store, the index pipeline and `Row`s, row keys, the diagnostics pipeline (build, redaction, safe JSON, hub, console sink), the interceptor runtime with the error boundary, and `explain` — all production behaviour this spec requires. The gap was raised with the user, who set the core budget to 15 KB (decisions log #13).*
 
+*Measured 2026-10-13 after F4 (`searchFn` opt-in through `withSearchFn`, feature option schemas, the version registry and `DK_DEP_INCOMPATIBLE` in development only), `pnpm size`: the `datakable` preset `createTable` 27,966 → 24,419 B gzip, `useDataTable` 29,708 → 26,141 B, `<DataTable />` 32,925 → 29,393 B; core with filters + sorting + pagination 21,662 B, with search too 23,990 B. The ≤ 20 KB preset + react budget is **not met**: core `createTable` alone is 14,765 B (≤ 15 KB, #13), the five preset features add ~9.7 KB over it and the React hook + component ~5 KB, all §3.3 / §6 / §10 production behaviour. Raised with the user.*
+
 ---
 
 ## 10. React binding (`@datakable/react`)
@@ -742,7 +746,7 @@ The bundle budgets are estimates from measured dependency sizes plus an assumed 
   - `ex-search` has no per-function subpaths: its exports are only `.`, `./types` and `./react`. Core imports its root, never `./react`.
 - **Standard Schema:** the interface is vendored; no dependency.
 - **Type leak guard:** DataKable's `.d.ts` files must not re-export `ex-search` types, because those reference `ex-flow`. CI compiles a tiny consumer project with `skipLibCheck: false`.
-- **Per-feature entries** (`@datakable/core/search`, …) keep the build tree-shakeable. *(Changed 2026-10-13 for §9.3: `@datakable/core/schema` is the opt-in entry for Standard Schema validation, §5.1.)* `datakable` exposes the default preset. `datakable/messages` is the opt-in for full prod messages.
+- **Per-feature entries** (`@datakable/core/search`, …) keep the build tree-shakeable. *(Changed 2026-10-13 for §9.3: `@datakable/core/schema` is the opt-in entry for Standard Schema validation, §5.1; `@datakable/core/server` for the fetcher, §7.1; `@datakable/core/search-async` for `searchFn`, §6.3.)* `datakable` exposes the default preset. `datakable/messages` is the opt-in for full prod messages.
 - **Existing conventions are kept:** tsup dual ESM/CJS, `exports` with per-condition types, `sideEffects: false` (with an explicit exception for `messages` / `styles.css`), the Changesets fixed group, publint + attw.
 
 ---

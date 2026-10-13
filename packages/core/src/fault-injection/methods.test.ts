@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { withSearchFn } from '../features/search/with-search-fn'
 import {
   type AnyFeature,
   columnFilters,
@@ -200,7 +201,7 @@ const preset = (
   // validity has no server mode; a client filter step before server steps is DK_MODE_ORDER.
   ...(opts.mode ? [] : [validity()]),
   search({
-    ...(opts.searchFn ? { searchFn: opts.searchFn as never } : {}),
+    ...(opts.searchFn ? { searchFn: withSearchFn(opts.searchFn as never) } : {}),
     ...(opts.mode ? { mode: opts.mode } : {}),
   }),
   sorting({

@@ -12,3 +12,5 @@ export {
   type SearchWait,
   search,
 } from './search'
+export { type AsyncSearchFn, SEARCH_ENGINE } from './search-fn-brand'
+export { withSearchFn } from './with-search-fn'

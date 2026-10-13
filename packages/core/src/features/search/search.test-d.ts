@@ -8,6 +8,7 @@ import {
   type StateOf,
   search,
 } from '../../index'
+import { withSearchFn } from './with-search-fn'
 
 type User = { name: string; age: number }
 declare const users: User[]
@@ -37,16 +38,18 @@ describe('search() types', () => {
 
   it('searchFn is typed against the row type; refetch is a core method', () => {
     search<User>({
-      searchFn: ({ query, rows, signal }) => {
+      searchFn: withSearchFn(({ query, rows, signal }) => {
         expectTypeOf(query).toEqualTypeOf<string>()
         expectTypeOf(rows).toEqualTypeOf<readonly User[]>()
         expectTypeOf(signal).toEqualTypeOf<AbortSignal>()
         return rows.filter((r) => r.age > 1)
-      },
+      }),
     })
-    search<User>({ searchFn: async () => ({ keys: [1, 'a'] }) })
+    search<User>({ searchFn: withSearchFn(async () => ({ keys: [1, 'a'] })) })
     // @ts-expect-error a result is rows or { keys }
-    search<User>({ searchFn: () => 1 })
+    search<User>({ searchFn: withSearchFn(() => 1) })
+    // @ts-expect-error searchFn takes a function wrapped with withSearchFn() (§6.3, §9.3)
+    search<User>({ searchFn: () => [] })
     const t = createTable({ data: users, features: [search()] })
     expectTypeOf(t.refetch()).toEqualTypeOf<Promise<FetchOutcome>>()
   })

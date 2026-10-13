@@ -4,6 +4,7 @@ import type { AnyFeature } from '../feature/types'
 import { columnFilters } from '../features/column-filters/column-filters'
 import { pagination } from '../features/pagination'
 import { search } from '../features/search/search'
+import { withSearchFn } from '../features/search/with-search-fn'
 import { makeSchema } from '../ingest/test-schemas'
 import { withSchema } from '../ingest/with-schema'
 import { defineInterceptor } from '../intercept/define'
@@ -469,7 +470,7 @@ describe("'pending' while time-sliced work runs (§6.6, §9.1; USER DECISION)", 
     const t = createTable({
       data: people(3),
       onDiagnostic: () => {},
-      features: [sliced(), search({ searchFn: () => new Promise<P[]>(() => {}) })],
+      features: [sliced(), search({ searchFn: withSearchFn(() => new Promise<P[]>(() => {})) })],
     })
     t.getRowModel()
     api(t).turnOn?.()

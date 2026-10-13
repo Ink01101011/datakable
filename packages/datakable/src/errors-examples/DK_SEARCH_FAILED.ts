@@ -1,4 +1,5 @@
 import { createTable, search } from '@datakable/core'
+import { withSearchFn } from '@datakable/core/search-async'
 
 type User = { id: number; name: string }
 const users: User[] = [
@@ -12,9 +13,9 @@ const table = createTable({
   features: [
     search<User>({
       // A search service that is down.
-      searchFn: async () => {
+      searchFn: withSearchFn(async () => {
         throw new TypeError('Failed to fetch')
-      },
+      }),
     }),
   ],
 })

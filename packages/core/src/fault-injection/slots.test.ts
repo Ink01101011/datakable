@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { withSearchFn } from '../features/search/with-search-fn'
 import {
   type AnyFeature,
   columnFilters,
@@ -418,7 +419,11 @@ const cases: SlotCase[] = [
         const searchFn =
           inject === 'throw' ? fail : inject === 'reject' ? reject : () => 42 as never
         const t = loose(
-          createTable({ data: people(), features: [search({ searchFn })], onDiagnostic }),
+          createTable({
+            data: people(),
+            features: [search({ searchFn: withSearchFn(searchFn) })],
+            onDiagnostic,
+          }),
         )
         await expect(t.setSearch('ada' as never)).resolves.toEqual({ status: 'error' })
         return t
@@ -699,7 +704,9 @@ describe("a failure that sets 'error' is never silent (§6.6)", () => {
 
   it.each(['throw', 'reject', 'bad return'] as const)('searchFn %s', async (inject) => {
     const searchFn = inject === 'throw' ? fail : inject === 'reject' ? reject : () => 42 as never
-    const t = loose(createTable({ data: people(), features: [search({ searchFn })] }))
+    const t = loose(
+      createTable({ data: people(), features: [search({ searchFn: withSearchFn(searchFn) })] }),
+    )
     const statuses = watch(t)
     await t.setSearch('ada')
     expect(statuses).toContain('searching')

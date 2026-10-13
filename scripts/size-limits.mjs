@@ -42,7 +42,8 @@ export default [
     import: ['createTable', 'columnFilters', 'sorting', 'pagination'],
     ...CORE,
     // F3: 30 → 22 KB (22,198 B). RA merged: 22,394 B; stays 22 KB.
-    limit: 22 * KB,
+    // F4: 22 → 21.5 KB (21,662 B): option schemas and DK_DEP_INCOMPATIBLE in development only.
+    limit: 21.5 * KB,
   },
   {
     name: '@datakable/core: createTable + columnFilters + sorting + pagination + search',
@@ -51,7 +52,8 @@ export default [
     // §9.3 budgets core *without* search only: recorded and ratcheted, no spec budget.
     spec: 'none (§9.3 budgets core without search)',
     // F3: 34.5 → 27 KB (27,205 B). RA merged: 27,465 B; stays 27 KB.
-    limit: 27 * KB,
+    // F4: 27 → 23.5 KB (23,990 B): searchFn opt-in (withSearchFn), dev-only option schemas.
+    limit: 23.5 * KB,
   },
   {
     name: 'datakable: createTable (default preset)',
@@ -59,7 +61,9 @@ export default [
     import: ['createTable'],
     ...PRESET,
     // F3: 34.5 → 27.5 KB (27,697 B). RA merged: 27,966 B; stays 27.5 KB.
-    limit: 27.5 * KB,
+    // F4: 27.5 → 24 KB (24,419 B): searchFn opt-in (withSearchFn), dev-only option schemas,
+    // version registry and DK_DEP_INCOMPATIBLE in development only.
+    limit: 24 * KB,
   },
   {
     name: 'datakable: useDataTable (default preset + react hook)',
@@ -68,7 +72,9 @@ export default [
     ...PRESET,
     // F3: 36.5 → 29 KB (29,436 B). RA merged: 29 → 29.5 KB (29,708 B): F2's lazy `RowModel.rows`
     // + search without a kept projection (§9.3 memory, every 100k-row scenario ≤ 5 MB): +272 B.
-    limit: 29.5 * KB,
+    // F4: 29.5 → 26 KB (26,141 B): as createTable, and createDeferred no longer imports the
+    // request machinery.
+    limit: 26 * KB,
   },
   {
     name: 'datakable: DataTable (default preset + <DataTable />)',
@@ -78,6 +84,7 @@ export default [
     // R11: 39 → 39.5 KB for T34's per-cell error boundaries + the hook's inline-data loop fix.
     // F3: 39.5 → 32 KB (32,675 B). RA merged: 32 → 32.5 KB (32,925 B): F2's lazy `RowModel.rows`
     // (§9.3 memory): +250 B.
-    limit: 32.5 * KB,
+    // F4: 32.5 → 29 KB (29,393 B): as useDataTable.
+    limit: 29 * KB,
   },
 ]

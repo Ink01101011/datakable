@@ -16,6 +16,7 @@ const entries = {
   messages: 'src/messages/index.ts',
   schema: 'src/ingest/schema-entry.ts',
   server: 'src/source/server-entry.ts',
+  'search-async': 'src/features/search/search-async-entry.ts',
 }
 
 export default defineConfig({

@@ -6,6 +6,7 @@ import {
   search,
   sorting,
 } from '@datakable/core'
+import { withSearchFn } from '@datakable/core/search-async'
 import { withFetcher } from '@datakable/core/server'
 import { StrictMode } from 'react'
 import { renderToString } from 'react-dom/server'
@@ -86,7 +87,7 @@ describe('SSR: renderToString (§7.2)', () => {
     const html = renderToString(
       <Names
         data={users}
-        features={[search<User>({ searchFn })]}
+        features={[search<User>({ searchFn: withSearchFn(searchFn) })]}
         initialState={{ search: { input: 'ada', query: 'ada', status: 'idle' } }}
       />,
     )

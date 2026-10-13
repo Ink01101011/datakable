@@ -1,4 +1,5 @@
 import { type Diagnostic, type FetchResult, search, sorting } from '@datakable/core'
+import { withSearchFn } from '@datakable/core/search-async'
 import { withFetcher } from '@datakable/core/server'
 import { act } from '@testing-library/react'
 import { hydrateRoot, type Root } from 'react-dom/client'
@@ -112,7 +113,7 @@ describe('hydration (§7.2)', () => {
     const el = (
       <Names
         data={users}
-        features={[search<User>({ searchFn })]}
+        features={[search<User>({ searchFn: withSearchFn(searchFn) })]}
         initialState={{ search: { input: 'ada', query: 'ada', status: 'idle' } }}
       />
     )

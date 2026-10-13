@@ -1,9 +1,10 @@
 import { ExSearch } from 'ex-search'
+import { DEV } from '../../diagnostics/env'
 import type { Emit } from '../../diagnostics/types'
 import type { RowModelContext } from '../../feature/types'
 import { resolveColumns } from '../../pipeline/columns'
 import { arrayIndex } from '../../pipeline/row'
-import { detectCapability } from '../../versioning/capability'
+import { detectCapability, hasCapability } from '../../versioning/capability'
 
 /** Matcher settings (the client options of `search()`, defaults applied). */
 export interface MatchConfig {
@@ -53,17 +54,20 @@ const hasExSearch = () =>
 
 /** Feature-detects ex-search once (§8.5); `false` → the contains fallback. */
 export function probeExSearch(emit: Emit): boolean {
-  return detectCapability(
-    hasExSearch,
-    {
-      feature: 'search',
-      dependency: 'ex-search',
-      capability: 'ExSearch',
-      supported: '^1.1.1',
-      fallback: 'case-insensitive exact / prefix / substring matching (no fuzzy matching)',
-    },
-    emit,
-  )
+  // DK_DEP_INCOMPATIBLE is a development check (§8.5); the fallback is not.
+  return DEV
+    ? detectCapability(
+        hasExSearch,
+        {
+          feature: 'search',
+          dependency: 'ex-search',
+          capability: 'ExSearch',
+          supported: '^1.1.1',
+          fallback: 'case-insensitive exact / prefix / substring matching (no fuzzy matching)',
+        },
+        emit,
+      )
+    : hasCapability(hasExSearch)
 }
 
 /**

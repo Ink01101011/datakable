@@ -56,6 +56,8 @@ export interface TableExtension {
   sync?(): void
   /** `startTable` (§7.2): starts deferred work; `true` when something was waiting. */
   start?(): boolean
+  /** Every async source deferred since creation (`createDeferred`, `DK_SSR_ASYNC_DEFERRED`). */
+  deferred?(): readonly ('fetcher' | 'searchFn')[]
 }
 
 /** Creates one table's extension; `use` calls it once per table. */
@@ -89,6 +91,8 @@ export interface TableInternals {
   use<E extends TableExtension>(factory: ExtensionFactory<E>): E
   /** The table's extension made by `factory`, if it was created. */
   peek<E extends TableExtension>(factory: ExtensionFactory<E>): E | undefined
+  /** The extensions created so far (SSR reads their deferred sources without importing them). */
+  extensions(): Iterable<TableExtension>
   /** Starts the deferred work (`startTable`); a no-op when not deferred. */
   start(): void
 }

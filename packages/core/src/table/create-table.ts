@@ -877,6 +877,7 @@ export function createTable<T, S extends TableState>(
     emit: hub.emit,
     use,
     peek: (factory) => extensions.get(factory as ExtensionFactory<TableExtension>) as never,
+    extensions: () => extensions.values(),
     start,
     initialRows: () =>
       initialRows !== undefined && initialRows === data ? initialRows : undefined,

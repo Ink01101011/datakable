@@ -817,7 +817,7 @@ prints (development console):
 
 `error` · fault test: [slots.test.ts](../packages/core/src/fault-injection/slots.test.ts)
 
-**Problem.** `search({ searchFn })` rejected or threw, or resolved with something that is neither an array of rows (from `ctx.rows`) nor `{ keys }`. The previous search results are kept (or the rows are shown unsearched if there were none) and the status is `'error'`. `where` is `options.searchFn` (the `searchFn` option of `search()`).
+**Problem.** `search({ searchFn: withSearchFn(fn) })`'s `fn` rejected or threw, or resolved with something that is neither an array of rows (from `ctx.rows`) nor `{ keys }`. The previous search results are kept (or the rows are shown unsearched if there were none) and the status is `'error'`. `where` is `options.searchFn` (the `searchFn` option of `search()`).
 
 **Common causes.**
 
@@ -834,6 +834,7 @@ prints (development console):
 
 ```ts
 import { createTable, search } from '@datakable/core'
+import { withSearchFn } from '@datakable/core/search-async'
 
 type User = { id: number; name: string }
 const users: User[] = [
@@ -847,9 +848,9 @@ const table = createTable({
   features: [
     search<User>({
       // A search service that is down.
-      searchFn: async () => {
+      searchFn: withSearchFn(async () => {
         throw new TypeError('Failed to fetch')
-      },
+      }),
     }),
   ],
 })
