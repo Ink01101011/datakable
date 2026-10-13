@@ -24,8 +24,9 @@ builds report a mismatch as [`DK_VERSION_MISMATCH`](../how-to-fix/errors.md#dk_v
 | `datakable/messages` | A side-effect import: the full diagnostic text in production builds, for core and React codes. |
 | `datakable/styles.css` | The optional stylesheet for `<DataTable />`. |
 
-`datakable` itself carries no `"use client"` directive, so its `createTable` also works in server
-code; render `useDataTable` and `<DataTable />` from a client component in the Next.js app router
+Only the modules of `useDataTable` and `<DataTable />` carry a `"use client"` directive, so
+`createTable` and the rest also work in server code, and a bundle that uses only `createTable`
+contains no React. Call `useDataTable` from a client component in the Next.js app router
 ([Getting started](getting-started.md#nextjs-app-router)).
 
 ## `@datakable/react`
