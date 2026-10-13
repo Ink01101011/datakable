@@ -4,8 +4,12 @@ import { DEV } from '../../diagnostics/env'
 declare module '../../diagnostics/catalog' {
   interface DiagnosticCatalog {
     DK_INVALID_PAGINATION: {
-      /** The API method that received the value, or `'state'` for a slice written to the store. */
-      source: 'setPageIndex' | 'setPageSize' | 'state'
+      /**
+       * The API method that received the value, `'state'` for a slice written to the store, or
+       * `'option'` for `pagination({ pageSize })` (checked here in production, where the option
+       * validator is off).
+       */
+      source: 'setPageIndex' | 'setPageSize' | 'state' | 'option'
       field: 'pageIndex' | 'pageSize'
       /** The value's type only (`describeValue`), plus the number itself when it is one. */
       received: string
@@ -30,23 +34,30 @@ export const paginationMessages: DiagnosticMessages<
 > = {
   DK_INVALID_PAGINATION: {
     problem: (d) =>
-      d.source === 'state'
-        ? `the pagination state has ${d.field} = ${d.received}; it must be ${ACCEPTED[d.field]}`
-        : `${d.source}() received ${d.received}; ${d.field} must be ${ACCEPTED[d.field]}`,
+      d.source === 'option'
+        ? `pagination({ pageSize: ${d.received} }); pageSize must be ${ACCEPTED.pageSize}`
+        : d.source === 'state'
+          ? `the pagination state has ${d.field} = ${d.received}; it must be ${ACCEPTED[d.field]}`
+          : `${d.source}() received ${d.received}; ${d.field} must be ${ACCEPTED[d.field]}`,
     impact: (d) => d.fallback,
     fix: (d) =>
-      d.source === 'state'
+      d.source === 'option'
         ? [
-            `write pagination.${d.field} as ${ACCEPTED[d.field]} (check initialState, setState and ` +
-              'the controlled options.state)',
-            d.field === 'pageIndex'
-              ? 'use table.setPageIndex(i): it clamps to the existing pages'
-              : 'use table.setPageSize(n): it also keeps the first visible row on screen',
+            `pass ${ACCEPTED.pageSize} to pagination({ pageSize }), or leave it out for the ` +
+              'default of 10',
           ]
-        : [
-            `pass ${ACCEPTED[d.field]} to ${d.source}()` +
-              (d.received.startsWith('string') ? ' (convert input values with Number(...))' : ''),
-          ],
+        : d.source === 'state'
+          ? [
+              `write pagination.${d.field} as ${ACCEPTED[d.field]} (check initialState, setState and ` +
+                'the controlled options.state)',
+              d.field === 'pageIndex'
+                ? 'use table.setPageIndex(i): it clamps to the existing pages'
+                : 'use table.setPageSize(n): it also keeps the first visible row on screen',
+            ]
+          : [
+              `pass ${ACCEPTED[d.field]} to ${d.source}()` +
+                (d.received.startsWith('string') ? ' (convert input values with Number(...))' : ''),
+            ],
   },
   DK_ROW_COUNT_MISSING: {
     problem: () =>
@@ -70,9 +81,11 @@ export const paginationDiagnostics = [
       code: 'DK_INVALID_PAGINATION',
       level: 'warn',
       where: (d) =>
-        d.source === 'state'
-          ? { kind: 'option', path: `state.pagination.${d.field}` }
-          : { kind: 'operation', op: `table.${d.source}` },
+        d.source === 'option'
+          ? { kind: 'feature', name: 'pagination' }
+          : d.source === 'state'
+            ? { kind: 'option', path: `state.pagination.${d.field}` }
+            : { kind: 'operation', op: `table.${d.source}` },
     },
     DEV && paginationMessages.DK_INVALID_PAGINATION,
   ),
