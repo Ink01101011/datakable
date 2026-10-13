@@ -43,7 +43,7 @@ export interface BuildInput {
   phase?: Phase
   mode?: Record<string, 'client' | 'server'>
   state?: DiagnosticStateSummary
-  /** Timestamp for `occurrences`. Default `Date.now()`. */
+  /** Timestamp for `occurrences` (epoch ms). Default `wallClock()`. */
   now?: number
   cause?: unknown
   causedBy?: string
@@ -53,6 +53,15 @@ export interface BuildInput {
   /** Redaction policy (§8.2). Default: `'keys'` when `dev`, else `'safe'`. */
   redaction?: Redactor
 }
+
+/**
+ * Epoch ms read through `performance`, never `Date` (#7): Next 16 `cacheComponents` aborts a
+ * prerender that reads `Date.now()` and reserves `performance` for introspection like this.
+ */
+export const wallClock = (): number =>
+  typeof performance === 'object' && performance?.timeOrigin
+    ? Math.floor(performance.timeOrigin + performance.now())
+    : Date.now()
 
 export const defaultPhase = (): Phase => (typeof document === 'undefined' ? 'ssr' : 'client')
 
@@ -143,7 +152,7 @@ export function buildDiagnostic<C extends DiagnosticCode>(
       ? (getDiagnosticText(def.code) as DiagnosticText<'DK_INTERNAL'> | undefined)
       : undefined
   const whereText = formatWhere(where)
-  const now = input.now ?? Date.now()
+  const now = input.now ?? wallClock()
   const context: DiagnosticContext = {
     table: input.table ?? '(global)',
     package: PACKAGE,

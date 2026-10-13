@@ -1,6 +1,6 @@
 import { createContext } from '../intercept/context'
 import type { InterceptorRuntime } from '../intercept/runtime'
-import { buildDiagnostic, DatakableError, defaultPhase, formatWhere } from './build'
+import { buildDiagnostic, DatakableError, defaultPhase, formatWhere, wallClock } from './build'
 import type { DiagnosticCode, DiagnosticDetails } from './catalog'
 import { createConsoleSink } from './console'
 import { DEV } from './env'
@@ -59,6 +59,7 @@ export interface DiagnosticsOptions {
   dedupeLimit?: number
   /** Console rate limit. Default 20 per 1000 ms. */
   rateLimit?: { max: number; windowMs: number }
+  /** Clock (epoch ms) for `occurrences` and the rate limit. Default `wallClock` (never `Date`, #7). */
   now?: () => number
 }
 
@@ -92,7 +93,7 @@ let tableSeq = 0
 export function createDiagnostics(options: DiagnosticsOptions = {}): Diagnostics {
   const table = options.name ?? `table#${++tableSeq}`
   const dev = options.dev ?? DEV
-  const now = options.now ?? Date.now
+  const now = options.now ?? wallClock
   const dedupeLimit = options.dedupeLimit ?? 500
   const buffer = new RingBuffer<Diagnostic>(options.bufferSize ?? 100)
   const seen = new Map<string, Diagnostic>()
