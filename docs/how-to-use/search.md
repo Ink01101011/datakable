@@ -139,8 +139,9 @@ table.cancelSearch() // or drop the waiting query; input and the applied query s
 | `clearSearch()` | Empties `input` and `query`: every row is shown again. |
 
 The promises (`SearchOutcome`) resolve when the query is settled and **never reject**:
-`'applied'` (the row model reflects it), `'superseded'` (a newer query or `destroy()` replaced it)
-or `'error'` (`searchFn` failed). Still mark them handled (`void` or `await`) for your linter.
+`'applied'` (the row model reflects it: on large data, after the time-sliced matching finishes and
+the row model is no longer `'pending'`), `'superseded'` (a newer query, `cancelSearch()` or
+`destroy()` replaced it) or `'error'` (`searchFn` failed). Still mark them handled (`void` or `await`) for your linter.
 
 ## A search input
 
