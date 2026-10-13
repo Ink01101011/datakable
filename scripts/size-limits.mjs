@@ -17,19 +17,30 @@
 
 const KB = 1024
 
+// Every measured bundle is also RUN (`smoke`, #5): a size read off a bundle that throws is not a
+// size. `smoke` is the body of an async function over the entry's imports (and `React`, `server` =
+// react-dom/server); what it returns must equal `expect`. The rows are given unsorted (b, a).
+const rows = `[{ id: 2, n: 'b' }, { id: 1, n: 'a' }]`
+const sorted = `t.toggleSort('n'); return t.getRowModel().rows.map((r) => r.original.id).join(',')`
+const coreFeatures = (extra = '') =>
+  `const t = createTable({ data: ${rows}, rowKey: 'id', features: [columnFilters(), sorting(), pagination()${extra}] }); ${sorted}`
+const initialSort = `initialState: { sorting: { by: [{ id: 'n', desc: false }] } }`
+
 /**
  * §9.3 per-entry budgets (gzip; changed 2026-10-13, user decision after the F2–F4 measured
  * reductions; were core without search ≤ 15 KB for every core entry and preset + react ≤ 20 KB).
  */
 const budget = (kb, what) => ({ budget: kb * KB, spec: `§9.3 ${what} ≤ ${kb} KB` })
 
-/** @type {{ name: string, pkg: 'core' | 'react' | 'datakable', import: string[], budget?: number, spec: string, limit: number }[]} */
+/** @type {{ name: string, pkg: 'core' | 'react' | 'datakable', import: string[], budget?: number, spec: string, limit: number, smoke: string, expect: string }[]} */
 export default [
   {
     name: '@datakable/core: createTable',
     pkg: 'core',
     import: ['createTable'],
     ...budget(15, '@datakable/core createTable'),
+    smoke: `const t = createTable({ data: ${rows}, rowKey: 'id' }); return t.getRowModel().rows.map((r) => r.original.id).join(',')`,
+    expect: '2,1',
     // F3: 23 → 14.5 KB (14,553 B): schema / fetcher opt-in, dev-only option validation, version
     // and data checks, the feature runtime brought by defineFeature (§9.3, 2026-10-13).
     // RA (F1+F2+F3 merged): 14,759 B, F2's lazy `RowModel.rows`; stays 14.5 KB.
@@ -41,6 +52,8 @@ export default [
     name: '@datakable/core: createTable + columnFilters + sorting + pagination',
     pkg: 'core',
     import: ['createTable', 'columnFilters', 'sorting', 'pagination'],
+    smoke: coreFeatures(),
+    expect: '1,2',
     ...budget(22, '@datakable/core createTable + columnFilters + sorting + pagination'),
     // F3: 30 → 22 KB (22,198 B). RA merged: 22,394 B; stays 22 KB.
     // F4: 22 → 21.5 KB (21,662 B): option schemas and DK_DEP_INCOMPATIBLE in development only.
@@ -51,6 +64,8 @@ export default [
     name: '@datakable/core: createTable + columnFilters + sorting + pagination + search',
     pkg: 'core',
     import: ['createTable', 'columnFilters', 'sorting', 'pagination', 'search'],
+    smoke: coreFeatures(', search()'),
+    expect: '1,2',
     // §9.3 budgets core *without* search only: recorded and ratcheted, no spec budget.
     spec: 'none (§9.3 budgets core without search)',
     // F3: 34.5 → 27 KB (27,205 B). RA merged: 27,465 B; stays 27 KB.
@@ -64,6 +79,8 @@ export default [
     pkg: 'datakable',
     import: ['createTable'],
     ...budget(24.5, 'datakable createTable'),
+    smoke: `const t = createTable({ data: ${rows}, rowKey: 'id' }); ${sorted}`,
+    expect: '1,2',
     // F3: 34.5 → 27.5 KB (27,697 B). RA merged: 27,966 B; stays 27.5 KB.
     // F4: 27.5 → 24 KB (24,419 B): searchFn opt-in (withSearchFn), dev-only option schemas,
     // version registry and DK_DEP_INCOMPATIBLE in development only.
@@ -76,6 +93,8 @@ export default [
     pkg: 'datakable',
     import: ['useDataTable'],
     ...budget(26.5, 'datakable useDataTable'),
+    smoke: `const C = () => useDataTable({ data: ${rows}, rowKey: 'id', ${initialSort} }).rowModel.rows.map((r) => r.original.id).join(','); return server.renderToString(React.createElement(C))`,
+    expect: '1,2',
     // F3: 36.5 → 29 KB (29,436 B). RA merged: 29 → 29.5 KB (29,708 B): F2's lazy `RowModel.rows`
     // + search without a kept projection (§9.3 memory, every 100k-row scenario ≤ 5 MB): +272 B.
     // F4: 29.5 → 26 KB (26,141 B): as createTable, and createDeferred no longer imports the
@@ -88,6 +107,8 @@ export default [
     pkg: 'datakable',
     import: ['DataTable'],
     ...budget(29.5, 'datakable DataTable'),
+    smoke: `const html = server.renderToString(React.createElement(DataTable, { data: ${rows}, rowKey: 'id', ${initialSort} })); return html.indexOf('>a<') < html.indexOf('>b<') && html.includes('>b<') ? 'a before b' : html`,
+    expect: 'a before b',
     // R11: 39 → 39.5 KB for T34's per-cell error boundaries + the hook's inline-data loop fix.
     // F3: 39.5 → 32 KB (32,675 B). RA merged: 32 → 32.5 KB (32,925 B): F2's lazy `RowModel.rows`
     // (§9.3 memory): +250 B.
