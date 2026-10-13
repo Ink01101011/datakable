@@ -1,15 +1,30 @@
 import { defineConfig } from 'tsup'
+import { preserveModules } from '../core/scripts/preserve-modules.mjs'
 
-export default defineConfig({
-  entry: ['src/index.ts'],
-  format: ['esm', 'cjs'],
-  // tsup injects `baseUrl` for the dts pass, which TS 6 flags as deprecated.
-  dts: { compilerOptions: { ignoreDeprecations: '6.0' } },
-  clean: true,
-  sourcemap: true,
-  target: 'es2022',
-  external: ['react', 'react/jsx-runtime', '@datakable/core'],
-  // RSC: mark the whole bundle as a client module. (treeshake is off because
-  // rollup would strip the directive.)
-  banner: { js: '"use client";' },
-})
+export default defineConfig([
+  {
+    // One output file per source module, like core (T37): a hook-only import no longer pulls in
+    // `<DataTable />`'s module, whose top-level `keepDiagnostics(...)` a single-file bundle kept.
+    entry: [
+      'src/**/*.{ts,tsx}',
+      '!src/**/*.test.{ts,tsx}',
+      '!src/**/*.test-d.{ts,tsx}',
+      '!src/**/*.bench.{ts,tsx}',
+    ],
+    format: ['esm', 'cjs'],
+    // tsup injects `baseUrl` for the dts pass, which TS 6 flags as deprecated.
+    dts: { entry: { index: 'src/index.ts' }, compilerOptions: { ignoreDeprecations: '6.0' } },
+    // styles.css is written by the config below, in parallel: keep it out of the clean.
+    clean: ['!styles.css'],
+    sourcemap: true,
+    target: 'es2022',
+    splitting: false,
+    external: ['react', 'react/jsx-runtime', '@datakable/core'],
+    esbuildPlugins: [preserveModules],
+    // RSC: mark every module as a client module. (treeshake is off because rollup would strip the
+    // directive.)
+    banner: { js: '"use client";' },
+  },
+  // The optional stylesheet (§10): dist/styles.css, minified. No JS imports it.
+  { entry: { styles: 'src/styles.css' }, minify: true },
+])
