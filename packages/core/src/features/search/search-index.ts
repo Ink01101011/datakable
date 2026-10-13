@@ -1,4 +1,4 @@
-import { ExSearch } from 'ex-search'
+import { ExSearch, Scorer } from 'ex-search'
 import { DEV } from '../../diagnostics/env'
 import type { Emit } from '../../diagnostics/types'
 import type { RowModelContext } from '../../feature/types'
@@ -47,10 +47,11 @@ interface Key {
 /** The formatted value of row `r` of one searchable column. */
 type Read = (r: number) => string
 
+// A throw (no `ExSearch`) counts as missing (hasCapability).
 const hasExSearch = () =>
-  typeof ExSearch === 'function' &&
-  typeof ExSearch.prototype.search === 'function' &&
-  typeof ExSearch.prototype.setData === 'function'
+  [ExSearch.prototype.search, ExSearch.prototype.setData, Scorer.fuzzy].every(
+    (f) => typeof f === 'function',
+  )
 
 /** Feature-detects ex-search once (§8.5); `false` → the contains fallback. */
 export function probeExSearch(emit: Emit): boolean {
@@ -61,7 +62,7 @@ export function probeExSearch(emit: Emit): boolean {
         {
           feature: 'search',
           dependency: 'ex-search',
-          capability: 'ExSearch',
+          capability: 'ExSearch, Scorer.fuzzy',
           supported: '^1.1.1',
           fallback: 'case-insensitive exact / prefix / substring matching (no fuzzy matching)',
         },
@@ -117,20 +118,18 @@ export function* buildIndex(
     yield
   }
   if (keys.length === 0) return null
-  const fold = !config.caseSensitive
-  const at = (k: number, r: number) => {
-    const v = (reads[k] as Read)(r)
-    return fold ? v.toLowerCase() : v
-  }
+  // Values are folded per chunk while matching, and so is the query.
+  const fold = (v: string) => (config.caseSensitive ? v : v.toLowerCase())
+  const at = (k: number, r: number) => fold((reads[k] as Read)(r))
   return useExSearch
-    ? exSearchIndex(ctx.data.length, keys, at, config)
-    : containsIndex(keys, at, config)
+    ? exSearchIndex(ctx.data.length, keys, at, fold, config)
+    : containsIndex(keys, at, fold, config)
 }
 
 /** Matches `rows` chunk by chunk (`score` decides alone, so chunks match like the whole). */
 function* chunked(
   rows: Uint32Array,
-  matchChunk: (chunk: Uint32Array) => readonly Hit[],
+  matchChunk: (chunk: Uint32Array) => Hit[],
 ): Generator<undefined, Uint32Array, undefined> {
   if (rows.length <= CHUNK) return rankHits(matchChunk(rows))
   const hits: Hit[] = []
@@ -159,12 +158,12 @@ function projection(size: number, keys: readonly Key[], at: (k: number, r: numbe
     return o as Item
   }
   const items = new Proxy(target, {
-    get(t, p, receiver) {
+    get(t, p) {
       if (p === 'length') return length()
       const j = arrayIndex(p, length())
-      return j >= 0 ? item(j) : Reflect.get(t, p, receiver)
+      return j >= 0 ? item(j) : t[p as keyof Item[]]
     },
-    has: (t, p) => arrayIndex(p, length()) >= 0 || Reflect.has(t, p),
+    has: (t, p) => arrayIndex(p, length()) >= 0 || p in t,
   })
   return {
     items,
@@ -179,28 +178,52 @@ function exSearchIndex(
   size: number,
   keys: readonly Key[],
   at: (k: number, r: number) => string,
+  fold: (v: string) => string,
   config: MatchConfig,
 ): SearchIndex {
-  // Values are folded per chunk when not case-sensitive (buildIndex), and so is the query below.
+  // Values and query are folded already (buildIndex).
   const engine = new ExSearch<Item>({
-    keys: keys.map((k) => ({ name: k.name, weight: k.weight })),
-    threshold: config.threshold,
-    fuzzyMaxDistance: config.fuzzyMaxDistance,
+    keys: keys as Key[],
+    ...config,
     caseSensitive: true,
     // DataKable re-ranks with exact scores and an index tie-break; tim keeps ex-search's own pass
     // stable and avoids radix's score quantisation.
     sortAlgorithm: 'tim',
   })
-  const view = projection(size, keys, at)
+  // ex-search measures the edit distance to the whole value, so a typo of one word of a multi-word
+  // cell never matched (#10). For a one-word query, a value without it is shown as the best fuzzy
+  // match of itself and its words, or as '' (scores 0, as the value would). A value with the query
+  // stays whole for the exact / prefix / substring scores. Only strings within `max` of the query's
+  // length are measured (an edit distance is at least the length difference).
+  const max = config.fuzzyMaxDistance
+  let q = ''
+  const near = (k: number, r: number) => {
+    const v = at(k, r)
+    if (v.includes(q) || /\s/.test(q)) return v
+    let best = ''
+    let top = 0
+    const words = v.split(/\s+/)
+    for (const w of words[1] ? [v, ...words] : words) {
+      const s = Math.abs(w.length - q.length) > max ? 0 : Scorer.fuzzy(w, q, max, true)
+      if (s > top) {
+        best = w
+        top = s
+      }
+    }
+    return best
+  }
+  const view = projection(size, keys, near)
   engine.setData(view.items)
   return {
     match(rows, query) {
-      const q = config.caseSensitive ? query : query.toLowerCase()
+      const folded = fold(query)
       return chunked(rows, (chunk) => {
+        // Set per chunk, like the view: another job may have matched in between.
+        q = folded
         view.show(chunk)
         try {
           // Results are copies of the items (`Omit<Item, …>` drops `i` from the type, not the value).
-          return engine.search(q) as unknown as readonly Hit[]
+          return engine.search(q) as unknown as Hit[]
         } finally {
           view.show(undefined)
         }
@@ -213,12 +236,12 @@ function exSearchIndex(
 function containsIndex(
   keys: readonly Key[],
   at: (k: number, r: number) => string,
+  fold: (v: string) => string,
   config: MatchConfig,
 ): SearchIndex {
   return {
     match(rows, query) {
-      // Values are folded per chunk (buildIndex).
-      const q = config.caseSensitive ? query : query.toLowerCase()
+      const q = fold(query)
       return chunked(rows, (chunk) => {
         const hits: Hit[] = []
         for (let j = 0; j < chunk.length; j++) {
@@ -240,24 +263,11 @@ function containsIndex(
 
 /**
  * Hits in relevance order (§6.3): score descending, ties by original row index. Enforced here so
- * the order never depends on the matcher's own ranking.
+ * the order never depends on the matcher's own ranking. Sorts `hits` (a fresh array) in place.
  */
-export function rankHits(hits: readonly Hit[]): Uint32Array {
-  const n = hits.length
-  const index = new Uint32Array(n)
-  const score = new Float64Array(n)
-  const order = new Uint32Array(n)
-  for (let k = 0; k < n; k++) {
-    const h = hits[k] as Hit
-    index[k] = h.i
-    score[k] = h.score
-    order[k] = k
-  }
-  order.sort(
-    (a, b) =>
-      (score[b] as number) - (score[a] as number) || (index[a] as number) - (index[b] as number),
+export function rankHits(hits: Hit[]): Uint32Array {
+  return Uint32Array.from(
+    hits.sort((a, b) => b.score - a.score || a.i - b.i),
+    (h) => h.i,
   )
-  const out = new Uint32Array(n)
-  for (let k = 0; k < n; k++) out[k] = index[order[k] as number] as number
-  return out
 }

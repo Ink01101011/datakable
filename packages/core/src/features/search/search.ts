@@ -178,7 +178,7 @@ const searchOptions = {
 
 const settledSuperseded = () => Promise.resolve(SUPERSEDED)
 
-const toText = (q: unknown): string => (typeof q === 'string' ? q : q == null ? '' : String(q))
+const toText = (q: unknown): string => (q == null ? '' : String(q))
 
 /**
  * Global search (§6.3), client mode: fuzzy matching with `ex-search` on the formatted values of the
@@ -256,7 +256,7 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
       indexes.set(ctx.data, byColumns)
     }
     let key = byColumns.get(ctx.columns)
-    if (key === undefined) {
+    if (!key) {
       key = {}
       byColumns.set(ctx.columns, key)
     }
@@ -391,12 +391,6 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
         new Promise<SearchOutcome>((resolve) => {
           waiting.push({ query, resolve })
         })
-      /** Resolves the waiters of `query` with `outcome`, every other one `'superseded'`. */
-      const settleWaiting = (query: string, outcome: SearchOutcome) => {
-        const list = waiting
-        waiting = []
-        for (const w of list) w.resolve(w.query === query ? outcome : SUPERSEDED)
-      }
       /** A newer query replaces the waiting ones that differ from it. */
       const replaceWaiting = (query: string) => {
         if (waiting.length === 0) return
@@ -426,6 +420,12 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
         const list = held
         held = []
         for (const w of list) w.resolve(outcome)
+      }
+      /** Cancel, destroy: every waiter, waiting then held, resolves `'superseded'`. */
+      const supersede = () => {
+        held = [...waiting, ...held]
+        waiting = []
+        release(SUPERSEDED)
       }
       ran.set(table, (w) => {
         busy = w
@@ -471,8 +471,7 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
       instances.set(table, () => {
         timer?.cancel()
         session?.destroy()
-        settleWaiting('\0', SUPERSEDED)
-        release(SUPERSEDED)
+        supersede()
       })
 
       /** Typing: `input` at once; `query` through the strategy (`pending` while scheduled). */
@@ -525,11 +524,10 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
         cancelSearch: () => {
           timer?.cancel()
           session?.abort()
-          settleWaiting('\0', SUPERSEDED)
-          release(SUPERSEDED)
+          supersede()
           const s = ctx.getState()
           if (s?.status === 'pending' || s?.status === 'searching') {
-            ctx.setState({ input: s.input, query: s.query, status: 'idle' })
+            ctx.setState({ ...s, status: 'idle' })
           }
         },
         clearSearch: () => {

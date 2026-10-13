@@ -104,7 +104,8 @@ searched as that text, not as the raw `Date`; an object column is searched throu
 ## The match is too strict
 
 Matching is fuzzy and case-insensitive: a row is kept when its relevance (0–1, weight applied)
-reaches `threshold` (default `0.3`), with up to `fuzzyMaxDistance` (default `3`) edits. A low
+reaches `threshold` (default `0.3`), with up to `fuzzyMaxDistance` (default `3`) edits (per
+word of the cell for a one-word query; against the whole cell for a query with spaces). A low
 weight lowers a column's relevance. `explainRow(key)` prints the threshold the row missed and
 suggests a lower one; `search({ threshold: 0.2 })` keeps weaker matches. `caseSensitive: true`
 makes it stricter.
