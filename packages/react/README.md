@@ -57,15 +57,21 @@ and the same object otherwise, so it works as a `useMemo` dependency.
 
 - The table is created once per component instance (on the first render) and destroyed on
   unmount. Renders read it through `useSyncExternalStore`.
-- **Read once, at creation:** `features`, `schema`, `invalidRows`, `initialState`, `name`,
-  `timeout`, `strict`, `diagnostics`. A new inline `features` array never recreates the table.
+- **Read once, at creation:** `features`, `schema`, `invalidRows`, `initialState`,
+  `initialData`, `name`, `timeout`, `strict`, `diagnostics`. A new inline `features` array never
+  recreates the table. Hoist a `features` array with `as const`: as a plain array type the
+  table's type loses the features' methods and state.
 - **Synced** through `table.setOptions` in a layout effect, never during render: `data`,
   `columns`, `rowKey`, `state`, `onStateChange`, `interceptors`, `onDiagnostic`, `fetcher`,
   `rowCount`.
-- `fetcher`, `onStateChange` and `onDiagnostic` may be inline functions: the table always calls
-  the latest one, and a new reference does not refetch — call `refetch()` when a value the fetcher
-  reads changes. Wrap the fetcher with `withFetcher()` (`@datakable/core/server`, also exported by
-  `datakable`).
+- `onStateChange` and `onDiagnostic` may be inline functions. `fetcher`, `onStateChange` and
+  `onDiagnostic` reach the table as stable wrappers that call the latest prop, so a new reference
+  does not refetch — call `refetch()` when a value the fetcher reads changes. Wrap the fetcher
+  with `withFetcher()` (`@datakable/core/server`, also exported by `datakable`), and keep the
+  function you wrap stable: `withFetcher` returns the same wrapper for the same function, so
+  `fetcher={withFetcher(fetchUsers)}` with a module-level `fetchUsers` is fine, but an inline
+  arrow function is a new fetcher on every render and reports `DK_UNSTABLE_OPTION` in development
+  (hoist it or `useCallback` it).
 - `columns`, `data` and a `rowKey` function are compared by reference. In development,
   `DK_UNSTABLE_COLUMNS` / `DK_UNSTABLE_OPTION` warn when a new same-shape value arrives on every
   render. Structural comparison is not used, because a changed `format` or `accessor` would then

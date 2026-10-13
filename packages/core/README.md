@@ -185,7 +185,7 @@ table.setColumnFilter('name', { type: 'range', value: { min: 1 } })
 
 Other column fields: `cell` (custom render; `R` is `ReactNode` in React), `sortable`, `sortFn`,
 `sortBy`, `invalidCell`. Values without a renderer go through the default formatter (`null` →
-`''`, dates `toLocaleString()`, arrays of primitives joined). [Reading type errors](https://github.com/Ink01101011/datakable/blob/main/docs/reading-type-errors.md)
+`''`, dates `toLocaleString()`, arrays of primitives joined). [Reading type errors](https://github.com/Ink01101011/datakable/blob/main/docs/how-to-fix/reading-type-errors.md)
 explains the compile errors these rules produce.
 
 ## Schema validation
