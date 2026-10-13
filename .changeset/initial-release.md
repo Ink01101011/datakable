@@ -1,10 +1,11 @@
 ---
-'@datakable/core': minor
-'@datakable/react': minor
-'datakable': minor
+'@datakable/core': major
+'@datakable/react': major
+'datakable': major
 ---
 
-First release of the DataKable core API.
+DataKable 1.0.0: the first stable release of the core API. The public API (exports, options,
+`DK_*` codes and their meaning) follows semantic versioning from this version.
 
 - `@datakable/core`: headless table store (`createTable`) with immutable snapshots, controlled
   state slices and isolated listeners; the feature contract (`defineFeature`) and the built-in
@@ -32,7 +33,7 @@ First release of the DataKable core API.
   `datakable/core`, `datakable/messages` and `datakable/styles.css`.
 
 Bundle-size opt-ins (spec §9.3, decided 2026-10-13 — these change the API described in earlier
-drafts and the pre-release branches):
+drafts of the spec):
 
 - `schema` takes only a Standard Schema wrapped with `withSchema()` from `@datakable/core/schema`;
   `fetcher` only a function wrapped with `withFetcher()` from `@datakable/core/server`; `searchFn`
@@ -53,5 +54,7 @@ drafts and the pre-release branches):
   `<DataTable />` ≤ 29.5 KB. Pipeline memory ≤ 5 MB in every 100k-row scenario.
 
 Every `DK_*` code has a section in `docs/errors.md` (problem, common causes, fix, example).
+Documentation starts at `docs/README.md`: guides (how to use), examples and troubleshooting (how to
+fix); every TypeScript block in it is a compiled example.
 
 Core reads `process.env.NODE_ENV`; browser builds need a bundler that replaces it.
