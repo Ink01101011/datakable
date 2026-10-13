@@ -140,7 +140,7 @@ table.toggleSort('nmae')
 table.setColumnFilter('name', { type: 'range', value: { min: 1 } })
 ```
 
-When TypeScript rejects a column, [Reading type errors](../reading-type-errors.md) shows which line
+When TypeScript rejects a column, [Reading type errors](../how-to-fix/reading-type-errors.md) shows which line
 of the message to read.
 
 ## Which package to import
@@ -205,14 +205,14 @@ the server and hydrate it without fetching again, see [Server rendering (SSR)](s
 - **`ReferenceError: process is not defined`** in the browser: your bundler does not replace
   `process.env.NODE_ENV`. Configure it as above.
 - **A new `columns` array on every render** makes the table recompute its columns each time, and
-  development builds warn with [`DK_UNSTABLE_COLUMNS`](../errors.md#dk_unstable_columns). Define
+  development builds warn with [`DK_UNSTABLE_COLUMNS`](../how-to-fix/errors.md#dk_unstable_columns). Define
   columns outside the component or memoise them; see [React](react.md).
 - **`toggleSort` / `setSearch` does not exist on the type**: the feature is not installed. With
   `@datakable/core` or `@datakable/react`, or with your own `features` list, only the features you
   pass are there. See [Features](features.md).
 - **Duplicate or missing row keys** are reported as
-  [`DK_DUPLICATE_ROW_KEY`](../errors.md#dk_duplicate_row_key) /
-  [`DK_MISSING_ROW_KEY`](../errors.md#dk_missing_row_key), and the rows get fallback keys. Pick a
+  [`DK_DUPLICATE_ROW_KEY`](../how-to-fix/errors.md#dk_duplicate_row_key) /
+  [`DK_MISSING_ROW_KEY`](../how-to-fix/errors.md#dk_missing_row_key), and the rows get fallback keys. Pick a
   field that is unique in every row.
 
 ## See also
@@ -220,5 +220,8 @@ the server and hydrate it without fetching again, see [Server rendering (SSR)](s
 - [Core concepts](core-concepts.md) — the table object, the pipeline and the status model.
 - [Columns and row keys](columns-and-row-keys.md) — define columns instead of deriving them.
 - [React](react.md) — `useDataTable` and `<DataTable />` in depth.
+- [A zero-config table](../examples/zero-config.md) — the recipe.
+- [`process is not defined`](../how-to-fix/process-is-not-defined.md) — when the bundler requirement
+  is not met.
 - [Examples](../examples/README.md) — complete recipes.
 - [`datakable` README](../../packages/datakable/README.md) — the package reference.

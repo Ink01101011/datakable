@@ -112,7 +112,7 @@ Without `cell` or `format`, values go through the default formatter:
 
 So the type checker requires `cell` or `format` on a column whose value is an object, a function
 or an array of objects. Primitives, `Date`, arrays of primitives, `unknown` and `any` need neither.
-[Reading type errors](../reading-type-errors.md) explains the error messages these rules produce:
+[Reading type errors](../how-to-fix/reading-type-errors.md) explains the error messages these rules produce:
 
 ```ts
 import { createTable } from '@datakable/core'
@@ -253,22 +253,22 @@ with a schema ([Schema validation](schema-validation.md)), whose output becomes 
 
 ## Pitfalls
 
-- **A key that no row has** is [`DK_COLUMN_PATH_NOT_FOUND`](../errors.md#dk_column_path_not_found)
+- **A key that no row has** is [`DK_COLUMN_PATH_NOT_FOUND`](../how-to-fix/errors.md#dk_column_path_not_found)
   (with a did-you-mean); a key missing in some rows is
-  [`DK_COLUMN_PATH_PARTIAL`](../errors.md#dk_column_path_partial). Both are development checks over
+  [`DK_COLUMN_PATH_PARTIAL`](../how-to-fix/errors.md#dk_column_path_partial). Both are development checks over
   the first 50 rows.
 - **An object value without `cell` or `format`** is a compile error
-  ([object column](../reading-type-errors.md#4-object-column-without-cell-or-format)); untyped data
+  ([object column](../how-to-fix/reading-type-errors.md#4-object-column-without-cell-or-format)); untyped data
   that reaches the default formatter renders `''` and reports
-  [`DK_UNRENDERABLE_VALUE`](../errors.md#dk_unrenderable_value).
+  [`DK_UNRENDERABLE_VALUE`](../how-to-fix/errors.md#dk_unrenderable_value).
 - **Duplicate or missing keys** fall back to `key#n` / `#index`:
-  [`DK_DUPLICATE_ROW_KEY`](../errors.md#dk_duplicate_row_key),
-  [`DK_MISSING_ROW_KEY`](../errors.md#dk_missing_row_key).
+  [`DK_DUPLICATE_ROW_KEY`](../how-to-fix/errors.md#dk_duplicate_row_key),
+  [`DK_MISSING_ROW_KEY`](../how-to-fix/errors.md#dk_missing_row_key).
 - **A `format` that returns a non-string** or a `cell` that returns a Promise:
-  [`DK_CALLBACK_BAD_RETURN`](../errors.md#dk_callback_bad_return) (development). A callback that
-  throws: [`DK_CALLBACK_FAILED`](../errors.md#dk_callback_failed).
+  [`DK_CALLBACK_BAD_RETURN`](../how-to-fix/errors.md#dk_callback_bad_return) (development). A callback that
+  throws: [`DK_CALLBACK_FAILED`](../how-to-fix/errors.md#dk_callback_failed).
 - **A new `columns` array on every render** in React:
-  [`DK_UNSTABLE_COLUMNS`](../errors.md#dk_unstable_columns).
+  [`DK_UNSTABLE_COLUMNS`](../how-to-fix/errors.md#dk_unstable_columns).
 - **Sorting a derived column with the typed API** does not compile: use a key column with
   `sortBy` (above).
 
@@ -278,6 +278,7 @@ with a schema ([Schema validation](schema-validation.md)), whose output becomes 
   features read columns.
 - [Schema validation](schema-validation.md) — `invalidCell` and cell issues.
 - [Diagnostics](diagnostics.md) — redaction and `sensitive` columns.
-- [Reading type errors](../reading-type-errors.md)
+- [Reading type errors](../how-to-fix/reading-type-errors.md)
 - [`@datakable/core` columns](../../packages/core/README.md#columns)
+- [Custom columns](../examples/custom-columns.md) — the recipe.
 - [Examples](../examples/README.md)

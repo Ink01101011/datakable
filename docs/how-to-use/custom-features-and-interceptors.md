@@ -369,24 +369,24 @@ createTable({
 ## Pitfalls
 
 - **A slice or method name taken twice** throws at creation:
-  [`DK_FEATURE_DUPLICATE`](../errors.md#dk_feature_duplicate),
-  [`DK_FEATURE_API_CONFLICT`](../errors.md#dk_feature_api_conflict).
+  [`DK_FEATURE_DUPLICATE`](../how-to-fix/errors.md#dk_feature_duplicate),
+  [`DK_FEATURE_API_CONFLICT`](../how-to-fix/errors.md#dk_feature_api_conflict).
 - **Mutating `indices`** or returning a plain array from `rowModel`:
-  [`DK_FEATURE_MUTATED_INPUT`](../errors.md#dk_feature_mutated_input),
-  [`DK_FEATURE_BAD_OUTPUT`](../errors.md#dk_feature_bad_output) (development); the step passes its
+  [`DK_FEATURE_MUTATED_INPUT`](../how-to-fix/errors.md#dk_feature_mutated_input),
+  [`DK_FEATURE_BAD_OUTPUT`](../how-to-fix/errors.md#dk_feature_bad_output) (development); the step passes its
   input through.
 - **A throwing `createApi`** leaves the feature's methods missing:
-  [`DK_FEATURE_FAILED`](../errors.md#dk_feature_failed).
+  [`DK_FEATURE_FAILED`](../how-to-fix/errors.md#dk_feature_failed).
 - **`this` inside a nested object type** in a `FeatureTypes` interface is TS2526: hoist the state
   and API into generic types, as above.
 - **`createTable<Item>({ features })` with only the row type given** turns off the inference of the
   features: let `T` be inferred from `data`, or spell out the feature tuple as the third type
   argument.
 - **An interceptor on a hot operation** without `hot: true`:
-  [`DK_HOT_INTERCEPTOR`](../errors.md#dk_hot_interceptor). A throwing one:
-  [`DK_INTERCEPTOR_FAILED`](../errors.md#dk_interceptor_failed).
+  [`DK_HOT_INTERCEPTOR`](../how-to-fix/errors.md#dk_hot_interceptor). A throwing one:
+  [`DK_INTERCEPTOR_FAILED`](../how-to-fix/errors.md#dk_interceptor_failed).
 - **Emitting your own codes** needs a `defineDiagnostic` entry first; see
-  [for plugin authors](../errors.md#for-plugin-authors).
+  [for plugin authors](../how-to-fix/errors.md#for-plugin-authors).
 
 ## See also
 
@@ -395,4 +395,6 @@ createTable({
 - [Diagnostics](diagnostics.md) — sinks, redaction and `explain()`.
 - [Performance](performance.md) — why cell work goes through `column:batch`.
 - [`@datakable/core` features](../../packages/core/README.md#features)
+- [A custom feature: row selection](../examples/row-selection-feature.md) and [a logging
+  interceptor](../examples/logging-interceptor.md) — recipes.
 - [Examples](../examples/README.md)

@@ -13,7 +13,7 @@ schema validation, the server source and async search.
 | `@datakable/core` | no React, or your own bindings | none |
 
 The three are released together with one version; install versions that match (development
-builds report a mismatch as [`DK_VERSION_MISMATCH`](../errors.md#dk_version_mismatch)).
+builds report a mismatch as [`DK_VERSION_MISMATCH`](../how-to-fix/errors.md#dk_version_mismatch)).
 
 ## `datakable`
 
@@ -89,13 +89,13 @@ machinery the option needs, so a table that does not use the option does not bun
 | `search({ searchFn })` | `withSearchFn(searchUsers)` | `@datakable/core/search-async` |
 
 Each wrapper is also exported by `@datakable/core` and `datakable`. An unwrapped value is a compile
-error, and throws [`DK_INVALID_OPTION`](../errors.md#dk_invalid_option) in every build.
+error, and throws [`DK_INVALID_OPTION`](../how-to-fix/errors.md#dk_invalid_option) in every build.
 
 ## Pitfalls
 
 - **Two copies of `@datakable/core`** in one bundle (for example, mismatched versions installed
   side by side) break the shared registry and double the size; development builds report
-  [`DK_DUPLICATE_CORE`](../errors.md#dk_duplicate_core). Deduplicate the dependency.
+  [`DK_DUPLICATE_CORE`](../how-to-fix/errors.md#dk_duplicate_core). Deduplicate the dependency.
 - **`createTable` from `@datakable/core` or `datakable/core` has no features**: `toggleSort` and the
   other feature methods do not exist until you pass `features` (or `defaultFeatures`).
 - **Importing `datakable/messages` everywhere** adds the full message text to your production
@@ -107,3 +107,5 @@ error, and throws [`DK_INVALID_OPTION`](../errors.md#dk_invalid_option) in every
 - [Features](features.md) — choosing features.
 - [Performance](performance.md) — bundle budgets and keeping bundles small.
 - [`datakable` README: entry points](../../packages/datakable/README.md#entry-points)
+- [The bundle is too big](../how-to-fix/bundle-too-big.md) and [`process is not
+  defined`](../how-to-fix/process-is-not-defined.md) — troubleshooting.

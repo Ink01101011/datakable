@@ -178,16 +178,16 @@ The full list of import paths is on [Entry points](entry-points.md).
 ## Pitfalls
 
 - **A new `columns` or `data` array on every render** rebuilds the caches each time:
-  [`DK_UNSTABLE_COLUMNS`](../errors.md#dk_unstable_columns),
-  [`DK_UNSTABLE_OPTION`](../errors.md#dk_unstable_option).
+  [`DK_UNSTABLE_COLUMNS`](../how-to-fix/errors.md#dk_unstable_columns),
+  [`DK_UNSTABLE_OPTION`](../how-to-fix/errors.md#dk_unstable_option).
 - **Mutating `data` in place** leaves the table on stale rows:
-  [`DK_DATA_MUTATED`](../errors.md#dk_data_mutated).
-- **A slow step** (a heavy `format`, a big client search): [`DK_PERF_HINT`](../errors.md#dk_perf_hint)
+  [`DK_DATA_MUTATED`](../how-to-fix/errors.md#dk_data_mutated).
+- **A slow step** (a heavy `format`, a big client search): [`DK_PERF_HINT`](../how-to-fix/errors.md#dk_perf_hint)
   names it; consider server mode or fewer searchable columns.
 - **`status: 'pending'` after a big change** is time-sliced work in progress, not a hang; the
   previous rows stay on screen until it finishes.
 - **`scheduler.yield` missing** in an older browser falls back to `setTimeout`:
-  [`DK_ENV_FALLBACK`](../errors.md#dk_env_fallback).
+  [`DK_ENV_FALLBACK`](../how-to-fix/errors.md#dk_env_fallback).
 - **No bundler replacement for `process.env.NODE_ENV`**: unbundled browser code throws
   `ReferenceError: process is not defined`, and a build that does not set it to `"production"`
   ships the development checks.
@@ -200,3 +200,6 @@ The full list of import paths is on [Entry points](entry-points.md).
 - [Entry points](entry-points.md) — what each import path brings.
 - [Diagnostics](diagnostics.md) — `explain()`, the tracer and `DK_PERF_HINT`.
 - [`@datakable/core` features](../../packages/core/README.md#features)
+- [Large data](../examples/large-data.md) — the recipe.
+- [Memory and speed with many rows](../how-to-fix/large-data.md) and [the bundle is too
+  big](../how-to-fix/bundle-too-big.md) — troubleshooting.

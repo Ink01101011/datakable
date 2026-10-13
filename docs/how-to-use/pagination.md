@@ -164,10 +164,10 @@ With a `fetcher`, `pageIndex` and `pageSize` go to it and each page change fetch
 
 - **Invalid values are ignored, not applied.** `setPageIndex(1.5)`, `setPageSize(0)` or a
   `pagination` slice with a non-integer field (from `setState`, `initialState` or controlled
-  state) report [DK_INVALID_PAGINATION](../errors.md#dk_invalid_pagination): the call is ignored,
+  state) report [DK_INVALID_PAGINATION](../how-to-fix/errors.md#dk_invalid_pagination): the call is ignored,
   or the bad field is replaced (`pageIndex` by 0, `pageSize` by the previous valid size).
 - **Server paging without a total.** Server-mode pagination with no fetcher and no `rowCount`
-  reports [DK_ROW_COUNT_MISSING](../errors.md#dk_row_count_missing) and treats `data.length` as
+  reports [DK_ROW_COUNT_MISSING](../how-to-fix/errors.md#dk_row_count_missing) and treats `data.length` as
   the total: one page, `canNextPage()` is `false`. Pass `rowCount`.
 - **Counting rows with `rows.length`.** It is the size of the current page; use
   `rowModel.filteredCount` for "N results".
@@ -182,4 +182,6 @@ With a `fetcher`, `pageIndex` and `pageSize` go to it and each page change fetch
 - [Server mode](server-mode.md) — `fetcher` and `rowCount`.
 - [React](react.md) — `<DataTable />` and `components.Pagination`.
 - [`@datakable/core` features](../../packages/core/README.md#features)
+- [A server-side table](../examples/server-side-table.md) and [a headless
+  table](../examples/headless-table.md) — recipes.
 - [Examples](../examples/README.md)

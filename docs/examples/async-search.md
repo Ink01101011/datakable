@@ -75,7 +75,7 @@ export function ProductSearch({ products }: { products: Product[] }) {
 - Under 2 characters no request is sent and every product shows. Enter searches at once; Esc
   clears the search.
 - A newer query aborts the request in flight (`signal`). A failed request keeps the previous
-  results, sets `status: 'error'` ("Search failed; …") and reports `DK_SEARCH_FAILED`.
+  results, sets `status: 'error'` ("Search failed; …") and reports [`DK_SEARCH_FAILED`](../how-to-fix/errors.md#dk_search_failed).
 
 ## Variations
 
@@ -93,4 +93,8 @@ export function ProductSearch({ products }: { products: Product[] }) {
 
 - [Features](../../packages/core/README.md#features) — the `search()` options.
 - [Status model](../../packages/core/README.md#status-model) — `pending` and `searching`.
+- [Your own matching: `searchFn`](../how-to-use/search.md#your-own-matching-searchfn) and [server
+  mode](../how-to-use/server-mode.md) — the guides.
+- [Search finds nothing, or is slow](../how-to-fix/search-finds-nothing-or-is-slow.md) —
+  troubleshooting.
 - [Examples](README.md)

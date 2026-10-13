@@ -5,7 +5,7 @@ stable `DK_*` code, the exact place in your code or data, what the table did ins
 fix. This page explains where diagnostics go and how to route them (`onDiagnostic`, the console,
 `getDiagnostics()`), what they may contain (redaction), what production builds keep, and the two
 debugging tools that answer "where did my rows go?": `explain()` and `explainRow()`. The meaning of
-each code is in the [diagnostics reference](../errors.md).
+each code is in the [diagnostics reference](../how-to-fix/errors.md).
 
 ## Two kinds of problems
 
@@ -64,7 +64,7 @@ for (const d of table.getDiagnostics()) {
 | `where` | `Location` | where in your code or data (below) |
 | `impact` | `string` | the consequence and the fallback the table applied |
 | `fix` | `string[]` | concrete fixes, best first, computed from your data |
-| `docs` | `string` | its section of the [diagnostics reference](../errors.md) |
+| `docs` | `string` | its section of the [diagnostics reference](../how-to-fix/errors.md) |
 | `details` | `Record<string, unknown>` | the code's details, already redacted |
 | `context` | `DiagnosticContext` | table, trigger, run, phase, … (below) |
 | `fingerprint` | `string` | `code@where`: a grouping key for dedupe or an error tracker |
@@ -278,7 +278,7 @@ console.log(String(why))
 ```
 
 `String(…)` of either result is the console report in development (examples in the
-[diagnostics reference](../errors.md#debugging-tools-explain-and-explainrow)) and the JSON of the
+[diagnostics reference](../how-to-fix/errors.md#debugging-tools-explain-and-explainrow)) and the JSON of the
 same object in production.
 
 `table.explain()` returns a `TableExplanation`, the last pipeline run:
@@ -342,25 +342,29 @@ console.log(table.explain().traced, table.explain().ms)
 ## Pitfalls
 
 - **Empty `problem` / `fix` in production.** The text is stripped; read `code` and `docs`, or
-  import `datakable/messages`. See [production builds](../errors.md#production-builds).
+  import `datakable/messages`. See [production builds](../how-to-fix/errors.md#production-builds).
 - **A diagnostic shows up once.** Repeats for the same data are aggregated in
   `context.occurrences`, not delivered again; pass a new array to see them reported again.
 - **Cell values missing from a report.** That is redaction working: values are logged as their
   type unless `redact: 'full'`, and never for `sensitive` columns. See
-  [redaction](../errors.md#redaction) and [`DK_UNSAFE_REDACTION`](../errors.md#dk_unsafe_redaction).
+  [redaction](../how-to-fix/errors.md#redaction) and [`DK_UNSAFE_REDACTION`](../how-to-fix/errors.md#dk_unsafe_redaction).
 - **`strict: true` in the app.** It turns recoverable data problems into exceptions; keep it for
   tests.
 - **`explain()` without timings in production.** Install `tracer()` to get them
-  ([`DK_PERF_HINT`](../errors.md#dk_perf_hint)).
+  ([`DK_PERF_HINT`](../how-to-fix/errors.md#dk_perf_hint)).
 - **A throwing `onDiagnostic`** is reported once on the console and then silenced; keep the sink
   simple and catch inside it.
 
 ## See also
 
-- [Diagnostics reference](../errors.md) — every `DK_*` code: problem, causes, fix, example.
+- [Diagnostics reference](../how-to-fix/errors.md) — every `DK_*` code: problem, causes, fix, example.
 - [Core concepts](core-concepts.md) — the status model and what sets `'error'`.
 - [Custom features and interceptors](custom-features-and-interceptors.md) — `diagnostic:emit`
   interceptors and emitting your own codes.
 - [Columns and row keys](columns-and-row-keys.md) — `sensitive` columns and `rowKey`.
 - [Performance](performance.md) — `DK_PERF_HINT` and the tracer's cost.
 - [`@datakable/core` diagnostics](../../packages/core/README.md#diagnostics)
+- [Report diagnostics to an error tracker](../examples/error-reporting.md) and [a logging
+  interceptor](../examples/logging-interceptor.md) — recipes.
+- [Diagnostics have no text in production](../how-to-fix/diagnostics-without-text-in-production.md)
+  — troubleshooting.

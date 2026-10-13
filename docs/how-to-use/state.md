@@ -70,10 +70,10 @@ How notifications work:
 - **The row model is ready.** When a listener runs, `getRowModel()` already reflects the state it
   receives.
 - **Listeners are isolated.** A listener that throws is reported as
-  [`DK_LISTENER_FAILED`](../errors.md#dk_listener_failed); the other listeners still run.
+  [`DK_LISTENER_FAILED`](../how-to-fix/errors.md#dk_listener_failed); the other listeners still run.
 - **Updates from listeners are allowed.** A listener may call `setState` or a feature method; the
   change is committed at once and notified in the next round. A chain of more than 50 such rounds
-  is stopped and reported as [`DK_UPDATE_LOOP`](../errors.md#dk_update_loop).
+  is stopped and reported as [`DK_UPDATE_LOOP`](../how-to-fix/errors.md#dk_update_loop).
 - **Status changes notify too.** A change of the row model's `status` or `isInitialLoad` (a
   request starting or finishing, for example) notifies even when the state did not change.
 
@@ -217,19 +217,22 @@ console.log(filters, validity, search.query, sorting.by, pagination.pageSize)
 
 - **A controlled slice without `onStateChange`** freezes the interactions that change it: the
   updates are dropped and reported as
-  [`DK_CONTROLLED_WITHOUT_HANDLER`](../errors.md#dk_controlled_without_handler). Pass
+  [`DK_CONTROLLED_WITHOUT_HANDLER`](../how-to-fix/errors.md#dk_controlled_without_handler). Pass
   `onStateChange`, or move the slice to `initialState` so the table owns it.
-- **Not feeding the value back** with `createTable`: `onStateChange` alone does not change what the
-  table shows. Call `setOptions({ state })` with the new value.
+- **Not feeding the value back**: `onStateChange` alone does not change what the table shows. With
+  `createTable`, call `setOptions({ state })` with the new value; in React, set the state you pass
+  as `state`. An `onStateChange` that does not feed the value back freezes the slice **without
+  any diagnostic** — see
+  [Sorting or filtering does nothing](../how-to-fix/sorting-or-filtering-does-nothing.md#the-state-is-controlled-and-not-fed-back).
 - **A listener that always changes state** loops until the depth limit and reports
-  [`DK_UPDATE_LOOP`](../errors.md#dk_update_loop). Compare `state` with `prev` before updating.
+  [`DK_UPDATE_LOOP`](../how-to-fix/errors.md#dk_update_loop). Compare `state` with `prev` before updating.
 - **A filter on a column that does not exist** (in `initialState`, controlled state or
   `setColumnFilter`) is ignored and reported as
-  [`DK_STATE_UNKNOWN_KEY`](../errors.md#dk_state_unknown_key).
+  [`DK_STATE_UNKNOWN_KEY`](../how-to-fix/errors.md#dk_state_unknown_key).
 - **Invalid slice values** written with `setState` are not trusted: an invalid pagination or
   validity value is replaced or ignored and reported
-  ([`DK_INVALID_PAGINATION`](../errors.md#dk_invalid_pagination),
-  [`DK_INVALID_VALIDITY`](../errors.md#dk_invalid_validity)).
+  ([`DK_INVALID_PAGINATION`](../how-to-fix/errors.md#dk_invalid_pagination),
+  [`DK_INVALID_VALIDITY`](../how-to-fix/errors.md#dk_invalid_validity)).
 
 ## See also
 
@@ -237,3 +240,6 @@ console.log(filters, validity, search.query, sorting.by, pagination.pageSize)
 - [Features](features.md) — the slices and methods each feature adds.
 - [React](react.md) — which `useDataTable` options are synced on every render.
 - [`datakable` README: controlled state](../../packages/datakable/README.md#controlled-state)
+- [Keep the table's state in the URL](../examples/url-state.md) — the recipe.
+- [Sorting or filtering does nothing](../how-to-fix/sorting-or-filtering-does-nothing.md) and
+  [endless re-renders](../how-to-fix/endless-re-renders.md) — troubleshooting controlled state.

@@ -108,4 +108,5 @@ in your app entry), then sets the theme:
 - [Entry points of `datakable`](../../packages/datakable/README.md#entry-points) — including
   `datakable/styles.css`.
 - [`@datakable/react`](../../packages/react/README.md#datatable) — the `data-*` hooks.
+- [Styling `<DataTable />`](../how-to-use/react.md#styling) — `styles.css` and the `data-*` hooks.
 - [Examples](README.md)

@@ -99,4 +99,7 @@ With two customers sharing `id: 1`, the tracker receives one message:
   and redaction.
 - [Diagnostics in production](../../packages/datakable/README.md#diagnostics-in-production).
 - [How to fix](../how-to-fix/README.md) — what each `DK_*` code means.
+- [Diagnostics](../how-to-use/diagnostics.md) — the guide: sinks, redaction, production text.
+- [Diagnostics have no text in production](../how-to-fix/diagnostics-without-text-in-production.md)
+  — troubleshooting.
 - [Examples](README.md)

@@ -157,16 +157,16 @@ options, initialState, createApi, rowModel, interceptors })`. See
 ## Pitfalls
 
 - **Two features with the same name**, or two that expose the same method, throw at creation:
-  [`DK_FEATURE_DUPLICATE`](../errors.md#dk_feature_duplicate),
-  [`DK_FEATURE_API_CONFLICT`](../errors.md#dk_feature_api_conflict).
+  [`DK_FEATURE_DUPLICATE`](../how-to-fix/errors.md#dk_feature_duplicate),
+  [`DK_FEATURE_API_CONFLICT`](../how-to-fix/errors.md#dk_feature_api_conflict).
 - **A client step before a server step** throws
-  [`DK_MODE_ORDER`](../errors.md#dk_mode_order) (a development check).
+  [`DK_MODE_ORDER`](../how-to-fix/errors.md#dk_mode_order) (a development check).
 - **Changing `features` after creation** does nothing; in development `setOptions` reports
-  [`DK_OPTION_NO_EFFECT`](../errors.md#dk_option_no_effect). Create a new table instead (in React,
+  [`DK_OPTION_NO_EFFECT`](../how-to-fix/errors.md#dk_option_no_effect). Create a new table instead (in React,
   remount the component with a new `key`).
 - **A misspelt or invalid feature option** is
-  [`DK_UNKNOWN_OPTION`](../errors.md#dk_unknown_option) /
-  [`DK_INVALID_OPTION`](../errors.md#dk_invalid_option).
+  [`DK_UNKNOWN_OPTION`](../how-to-fix/errors.md#dk_unknown_option) /
+  [`DK_INVALID_OPTION`](../how-to-fix/errors.md#dk_invalid_option).
 
 ## See also
 
@@ -174,4 +174,8 @@ options, initialState, createApi, rowModel, interceptors })`. See
 - [State](state.md) — the feature slices in the table state.
 - [Entry points](entry-points.md) — every import path.
 - [`@datakable/core` features](../../packages/core/README.md#features)
+- [A zero-config table](../examples/zero-config.md) and [a custom feature: row
+  selection](../examples/row-selection-feature.md) — recipes.
+- [Sorting or filtering does nothing](../how-to-fix/sorting-or-filtering-does-nothing.md) —
+  troubleshooting.
 - [Examples](../examples/README.md)

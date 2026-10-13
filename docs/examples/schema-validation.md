@@ -108,7 +108,7 @@ export function AccountsTable({ json }: { json: unknown[] }) {
   tooltip (`not-an-email ⚠`, "Expected an email").
 - The checkbox label counts the invalid rows (`getInvalidRows()`); checking it calls
   `setValidity('invalid')` and only the flagged rows remain, unchecking shows all of them again.
-- `DK_SCHEMA_INVALID_ROW` is reported (console in development, and `onDiagnostic`), naming the
+- [`DK_SCHEMA_INVALID_ROW`](../how-to-fix/errors.md#dk_schema_invalid_row) is reported (console in development, and `onDiagnostic`), naming the
   rows and the columns their issues map to.
 - In your code, `row.valid` narrows the row: `row.original` is an `Account` when it is `true`, and
   `unknown` (the raw input) when it is `false`.
@@ -128,5 +128,7 @@ export function AccountsTable({ json }: { json: unknown[] }) {
 ## See also
 
 - [Schema validation](../../packages/core/README.md#schema-validation) in `@datakable/core`.
-- [How to fix](../how-to-fix/README.md) — `DK_SCHEMA_INVALID_ROW`, `DK_SCHEMA_CRASHED`.
+- [How to fix](../how-to-fix/README.md) — `DK_SCHEMA_INVALID_ROW`, [`DK_SCHEMA_CRASHED`](../how-to-fix/errors.md#dk_schema_crashed).
+- [Schema validation](../how-to-use/schema-validation.md) and [Validity](../how-to-use/validity.md)
+  — the guides.
 - [Examples](README.md)

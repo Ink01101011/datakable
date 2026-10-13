@@ -122,4 +122,7 @@ export function UsersTable({ users }: { users: User[] }) {
 - [Controlled state](../../packages/datakable/README.md#controlled-state) in `datakable`.
 - [`@datakable/react`](../../packages/react/README.md#usedatatable) — `state` and
   `onStateChange` are synced on every render.
+- [Controlled state](../how-to-use/state.md#controlled-state) — the guide.
+- [Sorting or filtering does nothing](../how-to-fix/sorting-or-filtering-does-nothing.md) — when a
+  controlled slice is not fed back.
 - [Examples](README.md)

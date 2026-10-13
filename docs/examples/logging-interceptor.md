@@ -104,14 +104,14 @@ console.log(events) // [['table_action', { action: 'toggleSort' }], ['table_acti
 - With `timeRequests`, a `table_request` event per `fetcher` or `searchFn` request with its
   duration, also when the request fails or is aborted (`finally`).
 - The table works the same: each interceptor calls `next()` and returns its result. One that
-  throws is skipped for that call and reported as `DK_INTERCEPTOR_FAILED`.
+  throws is skipped for that call and reported as [`DK_INTERCEPTOR_FAILED`](../how-to-fix/errors.md#dk_interceptor_failed).
 
 ## Variations
 
 - **Other operations:** `on` takes any of `table:init`, `table:setOptions`, `table:destroy`,
   `state:dispatch`, `data:ingest`, `pipeline:run`, `pipeline:step`, `async:request`,
   `diagnostic:emit`, or `'*'`. `column:batch` runs once per column per pipeline run and needs
-  `hot: true` (else `DK_HOT_INTERCEPTOR` in development).
+  `hot: true` (else [`DK_HOT_INTERCEPTOR`](../how-to-fix/errors.md#dk_hot_interceptor) in development).
 - **Per-step timings:** `pipeline:step` gives `ctx.input.feature` and `ctx.input.stage`, for a
   breakdown of where the time goes; `table.explain()` shows the same in development.
 - **Rewrite or drop diagnostics:** an interceptor on `diagnostic:emit` receives
@@ -124,4 +124,6 @@ console.log(events) // [['table_action', { action: 'toggleSort' }], ['table_acti
 - [Diagnostics](../../packages/core/README.md#diagnostics) and
   [explain()](../../packages/core/README.md#explain-and-explainrow) in `@datakable/core`.
 - [Error reporting](error-reporting.md) — `onDiagnostic` for problems rather than events.
+- [Custom features and interceptors](../how-to-use/custom-features-and-interceptors.md) and
+  [Diagnostics](../how-to-use/diagnostics.md) — the guides.
 - [Examples](README.md)

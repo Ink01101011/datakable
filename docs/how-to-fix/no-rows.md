@@ -171,4 +171,8 @@ createTable({ data: users }) // the rows go in `data`
 
 - [Debugging tools: `explain()` and `explainRow()`](errors.md#debugging-tools-explain-and-explainrow)
 - [Sorting or filtering does nothing](sorting-or-filtering-does-nothing.md)
+- Guides: [the row model](../how-to-use/core-concepts.md#the-row-model), [column
+  filters](../how-to-use/column-filters.md), [how search
+  works](../how-to-use/search.md#how-it-works), [schema
+  validation](../how-to-use/schema-validation.md).
 - [How to fix](README.md) — every symptom.

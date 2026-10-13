@@ -64,6 +64,24 @@ Both pages moved here from `docs/`; their old addresses, [`docs/errors.md`](../e
 the diagnostics' `docs` URLs point) and [`docs/reading-type-errors.md`](../reading-type-errors.md),
 keep every anchor and link to the sections here.
 
+## Working recipes to compare with
+
+When a fix is unclear, compare your code with a recipe that does the same thing and works (each
+one is compiled and run by a test):
+
+| Problem area | Recipe |
+|---|---|
+| Server data, loading, errors and retries | [A server-side table](../examples/server-side-table.md) |
+| Search through an API (`searchFn`) | [Search through an API](../examples/async-search.md) |
+| SSR and hydration | [Server rendering with Next.js](../examples/nextjs-ssr.md) |
+| Controlled state that is fed back | [Keep the table's state in the URL](../examples/url-state.md) |
+| Schema validation and invalid rows | [Validate rows with a schema](../examples/schema-validation.md) |
+| Many rows, speed and memory | [Large data](../examples/large-data.md) |
+| Columns, renderers and type errors | [Custom columns](../examples/custom-columns.md) |
+| Custom features (`DK_FEATURE_*`) | [A custom feature: row selection](../examples/row-selection-feature.md) |
+| Interceptors (`DK_INTERCEPTOR_FAILED`, `DK_HOT_INTERCEPTOR`) | [A logging and analytics interceptor](../examples/logging-interceptor.md) |
+| Reporting diagnostics in production | [Report diagnostics to an error tracker](../examples/error-reporting.md) |
+
 ## See also
 
 - [How to use](../how-to-use/README.md) — the guides.

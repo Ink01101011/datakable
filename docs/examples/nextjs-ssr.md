@@ -90,7 +90,7 @@ export default async function UsersPage(props: { searchParams: Promise<{ page?: 
 ## Variations
 
 - **No `initialData`:** the server renders the Loading state (`status: 'pending'`, reported as
-  `DK_SSR_ASYNC_DEFERRED`) and the browser fetches right after hydration. Fine for data that must
+  [`DK_SSR_ASYNC_DEFERRED`](../how-to-fix/errors.md#dk_ssr_async_deferred)) and the browser fetches right after hydration. Fine for data that must
   not be in the HTML; worse for first paint.
 - **Client-side data:** pass the whole array as `data` instead of `fetcher` and `initialData`;
   `initialState` (parsed from `searchParams`) then filters, searches and sorts the server HTML.
@@ -108,5 +108,7 @@ export default async function UsersPage(props: { searchParams: Promise<{ page?: 
 
 - [SSR](../../packages/datakable/README.md#ssr) in `datakable` and in
   [`@datakable/react`](../../packages/react/README.md#ssr).
-- [How to fix](../how-to-fix/README.md) — `DK_SSR_ASYNC_DEFERRED`, `DK_HYDRATION_MISMATCH`.
+- [How to fix](../how-to-fix/README.md) — `DK_SSR_ASYNC_DEFERRED`, [`DK_HYDRATION_MISMATCH`](../how-to-fix/errors.md#dk_hydration_mismatch).
+- [Server rendering (SSR)](../how-to-use/ssr.md) — the guide.
+- [SSR and hydration problems](../how-to-fix/ssr-and-hydration.md) — troubleshooting.
 - [Examples](README.md)

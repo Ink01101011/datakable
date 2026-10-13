@@ -43,4 +43,5 @@ as configured, but nothing is removed from what the browser downloads:
 
 - [The bundle is too big](bundle-too-big.md) — what a production build removes.
 - [Diagnostics have no text in production](diagnostics-without-text-in-production.md)
+- Guide: [the bundler requirement](../how-to-use/getting-started.md#bundler-requirement).
 - [How to fix](README.md) — every symptom.

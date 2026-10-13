@@ -106,4 +106,7 @@ attempt. Await the promise `refetch()` returns to follow the retry (`{ status: '
 
 - [Fetch errors and retries](fetch-errors-and-retries.md)
 - [SSR and hydration problems](ssr-and-hydration.md)
+- Guides: [status](../how-to-use/core-concepts.md#status), [statuses: loading, refreshing,
+  failing](../how-to-use/server-mode.md#statuses-loading-refreshing-failing).
+- [A server-side table](../examples/server-side-table.md) — loading, error and retry UI in a recipe.
 - [How to fix](README.md) — every symptom.

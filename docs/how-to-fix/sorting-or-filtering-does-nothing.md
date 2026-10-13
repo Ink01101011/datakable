@@ -22,8 +22,13 @@ Read the state right after the call, and the last pipeline run:
 `state: { sorting }` makes you the owner of that slice: the table asks for a change through
 `onStateChange` and shows only what you pass back in `state`. Without `onStateChange` the table
 reports [`DK_CONTROLLED_WITHOUT_HANDLER`](errors.md#dk_controlled_without_handler) and drops every
-update to the slice; with an `onStateChange` that does not update what you pass in `state`, the
-update is dropped silently.
+update to the slice. With an `onStateChange` that does not update what you pass in `state` (it
+only logs, writes somewhere the component does not read, or the `if` around the setter never
+matches), the update is dropped **with no diagnostic at all**: no console warning, nothing in
+`onDiagnostic`, and `explain()` shows a normal pipeline. The only sign is that the slice in
+`table.getState()` never changes. To confirm, log `updater({ sorting })` inside your
+`onStateChange` and check that the value you pass back in `state` on the next render is that
+result.
 
 **Fix:** feed the result back — or, to only set a starting value (restoring a saved view), use
 `initialState` instead and let the table own the slice.
@@ -141,4 +146,9 @@ table.setColumnFilter('city', { type: 'equals', value: 'Paris' })
 - [The table shows no rows](no-rows.md)
 - [Search finds nothing, or is slow](search-finds-nothing-or-is-slow.md)
 - [`@datakable/core` server mode](../../packages/core/README.md#server-mode)
+- Guides: [column filters](../how-to-use/column-filters.md), [sorting](../how-to-use/sorting.md),
+  [controlled state](../how-to-use/state.md#controlled-state), [core
+  concepts](../how-to-use/core-concepts.md).
+- [Keep the table's state in the URL](../examples/url-state.md) — a controlled slice that is fed
+  back correctly.
 - [How to fix](README.md) — every symptom.

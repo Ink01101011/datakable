@@ -206,16 +206,16 @@ table.setColumnFilter('city', { type: 'equals', value: 'Bangkok' }) // fetches a
 ## Pitfalls
 
 - **Nothing matches after binding a numeric input**: the bound is a string. Convert it; the table
-  reports [`DK_FILTER_TYPE_MISMATCH`](../errors.md#dk_filter_type_mismatch).
+  reports [`DK_FILTER_TYPE_MISMATCH`](../how-to-fix/errors.md#dk_filter_type_mismatch).
 - **Some rows disappear unexpectedly**: their cells are `null` or of another runtime type. Check
   `table.explainRow(key)` ([Diagnostics](diagnostics.md)) and
-  [`DK_FILTER_TYPE_MISMATCH`](../errors.md#dk_filter_type_mismatch).
+  [`DK_FILTER_TYPE_MISMATCH`](../how-to-fix/errors.md#dk_filter_type_mismatch).
 - **A filter from saved state, or on a nested path of a zero-config table, does nothing**: the id
   is not a column (renamed, or never listed in `columns`) —
-  [`DK_STATE_UNKNOWN_KEY`](../errors.md#dk_state_unknown_key).
-- **A `custom` fn throws**: [`DK_CALLBACK_FAILED`](../errors.md#dk_callback_failed).
+  [`DK_STATE_UNKNOWN_KEY`](../how-to-fix/errors.md#dk_state_unknown_key).
+- **A `custom` fn throws**: [`DK_CALLBACK_FAILED`](../how-to-fix/errors.md#dk_callback_failed).
 - **`range` on a string column does not compile**:
-  [filter kind not allowed](../reading-type-errors.md#3-filter-kind-not-allowed-for-the-value-type).
+  [filter kind not allowed](../how-to-fix/reading-type-errors.md#3-filter-kind-not-allowed-for-the-value-type).
 
 ## See also
 
@@ -224,4 +224,7 @@ table.setColumnFilter('city', { type: 'equals', value: 'Bangkok' }) // fetches a
 - [Search](search.md) — fuzzy search across columns.
 - [State](state.md) — controlled filters, e.g. synced with the URL.
 - [`@datakable/core` features](../../packages/core/README.md#features)
+- [A headless table](../examples/headless-table.md) — a column filter in a recipe.
+- [Sorting or filtering does nothing](../how-to-fix/sorting-or-filtering-does-nothing.md) and [the
+  table shows no rows](../how-to-fix/no-rows.md) — troubleshooting.
 - [Examples](../examples/README.md)

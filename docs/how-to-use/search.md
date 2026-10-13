@@ -261,14 +261,14 @@ void table.setSearch('mali') // fetches once the debounce applies the query
 
 - **Nothing is searched.** When columns declare `search` weights but none is above 0, no column is
   searchable: every row is kept and `DK_OPTION_NO_EFFECT` is reported
-  ([DK_OPTION_NO_EFFECT](../errors.md#dk_option_no_effect)). Give the columns to search a weight,
+  ([DK_OPTION_NO_EFFECT](../how-to-fix/errors.md#dk_option_no_effect)). Give the columns to search a weight,
   or remove every weight.
 - **A raw function as `searchFn`.** It must be wrapped: `searchFn: withSearchFn(fn)`. An
   unwrapped one is a compile error and throws `DK_INVALID_OPTION` at `createTable()` in every
-  build ([DK_INVALID_OPTION](../errors.md#dk_invalid_option)).
+  build ([DK_INVALID_OPTION](../how-to-fix/errors.md#dk_invalid_option)).
 - **`searchFn` failures** keep the old results; show `state.search.error` or watch for
-  [DK_SEARCH_FAILED](../errors.md#dk_search_failed) and
-  [DK_ASYNC_TIMEOUT](../errors.md#dk_async_timeout).
+  [DK_SEARCH_FAILED](../how-to-fix/errors.md#dk_search_failed) and
+  [DK_ASYNC_TIMEOUT](../how-to-fix/errors.md#dk_async_timeout).
 - **Binding the input to `query`.** With a debounce the input would lag or reset; bind it to
   `input`.
 - **Expecting relevance order with a sort active.** Sorting runs after search; call
@@ -282,4 +282,8 @@ void table.setSearch('mali') // fetches once the debounce applies the query
 - [Server mode](server-mode.md) — `fetcher` and the async statuses.
 - [Core concepts](core-concepts.md) — the row model and `status`.
 - [`@datakable/core` features](../../packages/core/README.md#features)
+- [A headless table](../examples/headless-table.md) and [search through an
+  API](../examples/async-search.md) — recipes.
+- [Search finds nothing, or is slow](../how-to-fix/search-finds-nothing-or-is-slow.md) —
+  troubleshooting.
 - [Examples](../examples/README.md)

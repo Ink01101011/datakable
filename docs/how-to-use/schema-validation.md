@@ -202,17 +202,17 @@ working.
 ## Pitfalls
 
 - **A schema passed without `withSchema()`** does not compile and throws
-  [`DK_INVALID_OPTION`](../errors.md#dk_invalid_option).
+  [`DK_INVALID_OPTION`](../how-to-fix/errors.md#dk_invalid_option).
 - **Rows disappear** with the default `'drop'`: they are reported as
-  [`DK_SCHEMA_INVALID_ROW`](../errors.md#dk_schema_invalid_row) and listed in `getInvalidRows()`.
+  [`DK_SCHEMA_INVALID_ROW`](../how-to-fix/errors.md#dk_schema_invalid_row) and listed in `getInvalidRows()`.
   Use `'flag'` to show them.
-- **A throwing validator** is [`DK_SCHEMA_CRASHED`](../errors.md#dk_schema_crashed): every row it
+- **A throwing validator** is [`DK_SCHEMA_CRASHED`](../how-to-fix/errors.md#dk_schema_crashed): every row it
   crashed on counts as invalid.
 - **`invalidRows: 'flag'` (or `'throw'`) without `schema`** does nothing:
-  [`DK_OPTION_NO_EFFECT`](../errors.md#dk_option_no_effect). So does `setValidity('invalid')` when
+  [`DK_OPTION_NO_EFFECT`](../how-to-fix/errors.md#dk_option_no_effect). So does `setValidity('invalid')` when
   the table is not in `'flag'` mode.
 - **Changing `schema` or `invalidRows` later** has no effect: both are read once, at creation
-  ([`DK_OPTION_NO_EFFECT`](../errors.md#dk_option_no_effect) in development). Create a new table.
+  ([`DK_OPTION_NO_EFFECT`](../how-to-fix/errors.md#dk_option_no_effect) in development). Create a new table.
 - **A `cell` reading `row` fields of a flagged row:** with `'flag'`, `cell` only runs for cells
   without issues, but `row` there is the raw value of a flagged row; narrow before you trust it, or
   render issues with `invalidCell`.
@@ -224,4 +224,7 @@ working.
 - [Server mode](server-mode.md) — fetched rows are validated too.
 - [Diagnostics](diagnostics.md) — schema messages are redacted under `'safe'` and `'keys'`.
 - [`@datakable/core` schema validation](../../packages/core/README.md#schema-validation)
+- [Validate rows with a schema](../examples/schema-validation.md) — the recipe.
+- [`DK_INVALID_OPTION` for `schema`](../how-to-fix/unwrapped-schema-fetcher-or-searchfn.md) — a
+  schema passed without `withSchema`.
 - [Examples](../examples/README.md)

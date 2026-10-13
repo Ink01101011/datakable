@@ -67,4 +67,6 @@ Every code: see the [diagnostics reference](errors.md#index).
 
 - [Where diagnostics go](errors.md#where-diagnostics-go) — sinks, redaction, rate limits.
 - [`process is not defined`](process-is-not-defined.md) — how a build becomes a production build.
+- Guide: [diagnostics](../how-to-use/diagnostics.md).
+- [Report diagnostics to an error tracker](../examples/error-reporting.md) — the recipe.
 - [How to fix](README.md) — every symptom.

@@ -107,10 +107,10 @@ dropped rows without `validity()`.
 
 - **`setValidity('invalid')` shows every row**: the table is not in flag mode (no `schema`, or
   `invalidRows` is not `'flag'`) —
-  [`DK_OPTION_NO_EFFECT`](../errors.md#dk_option_no_effect).
+  [`DK_OPTION_NO_EFFECT`](../how-to-fix/errors.md#dk_option_no_effect).
 - **A value other than the three**, e.g. from a URL parameter: `setValidity` ignores the call, and
   a slice holding it reads as `'all'` —
-  [`DK_INVALID_VALIDITY`](../errors.md#dk_invalid_validity). Check the value before setting it.
+  [`DK_INVALID_VALIDITY`](../how-to-fix/errors.md#dk_invalid_validity). Check the value before setting it.
 - **Flagged rows render with their raw values**: narrow on `row.valid` before reading
   `row.original` as your row type, and give columns an `invalidCell` for broken cells
   ([Schema validation](schema-validation.md)).
@@ -122,4 +122,6 @@ dropped rows without `validity()`.
 - [Column filters](column-filters.md) — the other `filter`-stage feature.
 - [Features](features.md) — the preset and pipeline order.
 - [`@datakable/core` schema validation](../../packages/core/README.md#schema-validation)
+- [Validate rows with a schema](../examples/schema-validation.md) — a "show invalid" toggle in a
+  recipe.
 - [Examples](../examples/README.md)

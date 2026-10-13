@@ -73,4 +73,6 @@ console.log(table.getRowModel().rows.length, table.getRowModel().filteredCount)
 
 - [Search finds nothing, or is slow](search-finds-nothing-or-is-slow.md)
 - [`@datakable/core` server mode](../../packages/core/README.md#server-mode)
+- Guide: [performance](../how-to-use/performance.md).
+- [Large data](../examples/large-data.md) — the recipe.
 - [How to fix](README.md) — every symptom.

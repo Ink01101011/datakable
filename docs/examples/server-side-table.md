@@ -132,7 +132,7 @@ export function UsersTable() {
 - If the first request fails, the alert "Could not load users." with Retry. If a later one fails,
   the previous rows stay with "Could not refresh; showing the previous results." and Retry, which
   calls `refetch()` with the current state.
-- The failures are also reported as `DK_FETCH_FAILED` (or `DK_ASYNC_TIMEOUT` after 30 s).
+- The failures are also reported as [`DK_FETCH_FAILED`](../how-to-fix/errors.md#dk_fetch_failed) (or [`DK_ASYNC_TIMEOUT`](../how-to-fix/errors.md#dk_async_timeout) after 30 s).
 
 ## Variations
 
@@ -140,7 +140,7 @@ export function UsersTable() {
   with a retry, a refresh indicator over stale rows); replace any of them with `components`.
 - **Mix modes:** server steps must come first in the pipeline (filter → search → sort →
   paginate). Server search with client sorting and pagination is fine; client search before
-  server pagination throws `DK_MODE_ORDER` at creation (a development check).
+  server pagination throws [`DK_MODE_ORDER`](../how-to-fix/errors.md#dk_mode_order) at creation (a development check).
 - **Timeout:** `useDataTable({ …, timeout: 10_000 })`, read once at creation.
 - **No fetcher:** fetch in your own code and pass each page as `data` with `rowCount`; the table
   only holds the server-mode state ([server mode](../../packages/core/README.md#server-mode)).
@@ -151,6 +151,10 @@ export function UsersTable() {
 
 - [Server mode](../../packages/core/README.md#server-mode) and the
   [status model](../../packages/core/README.md#status-model) in `@datakable/core`.
-- [How to fix](../how-to-fix/README.md) — `DK_FETCH_FAILED`, `DK_FETCH_BAD_RESPONSE`,
-  `DK_FETCHER_WITHOUT_SERVER_MODE`.
+- [How to fix](../how-to-fix/README.md) — `DK_FETCH_FAILED`, [`DK_FETCH_BAD_RESPONSE`](../how-to-fix/errors.md#dk_fetch_bad_response),
+  [`DK_FETCHER_WITHOUT_SERVER_MODE`](../how-to-fix/errors.md#dk_fetcher_without_server_mode).
+- [Server mode](../how-to-use/server-mode.md) and [paging on the
+  server](../how-to-use/pagination.md#paging-on-the-server) — the guides.
+- [Fetch errors and retries](../how-to-fix/fetch-errors-and-retries.md) and [the loading state never
+  ends](../how-to-fix/loading-never-ends.md) — troubleshooting.
 - [Examples](README.md)

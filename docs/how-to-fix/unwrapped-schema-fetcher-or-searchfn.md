@@ -100,4 +100,7 @@ is memoised per function.
 - [`@datakable/core` schema validation](../../packages/core/README.md#schema-validation) and
   [server mode](../../packages/core/README.md#server-mode)
 - [The bundle is too big](bundle-too-big.md)
+- Guides: [opt-in wrappers](../how-to-use/entry-points.md#opt-in-wrappers), [schema
+  validation](../how-to-use/schema-validation.md), [server mode](../how-to-use/server-mode.md),
+  [`searchFn`](../how-to-use/search.md#your-own-matching-searchfn).
 - [How to fix](README.md) — every symptom.

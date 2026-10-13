@@ -329,21 +329,21 @@ the server matches the query. Details in [Search](search.md).
 ## Pitfalls
 
 - **A client step before a server step** throws at creation:
-  [`DK_MODE_ORDER`](../errors.md#dk_mode_order). Put the server-mode features first in the
+  [`DK_MODE_ORDER`](../how-to-fix/errors.md#dk_mode_order). Put the server-mode features first in the
   pipeline order, or switch the earlier step to `'server'` too.
 - **A fetcher with every feature in client mode** throws:
-  [`DK_FETCHER_WITHOUT_SERVER_MODE`](../errors.md#dk_fetcher_without_server_mode).
+  [`DK_FETCHER_WITHOUT_SERVER_MODE`](../how-to-fix/errors.md#dk_fetcher_without_server_mode).
 - **A fetcher passed without `withFetcher()`** throws
-  [`DK_INVALID_OPTION`](../errors.md#dk_invalid_option) in every build (and does not compile).
+  [`DK_INVALID_OPTION`](../how-to-fix/errors.md#dk_invalid_option) in every build (and does not compile).
 - **No `rowCount` in the result with server-mode pagination** keeps the previous rows:
-  [`DK_FETCH_BAD_RESPONSE`](../errors.md#dk_fetch_bad_response).
-- **A slow endpoint** is aborted after 30 s: [`DK_ASYNC_TIMEOUT`](../errors.md#dk_async_timeout).
+  [`DK_FETCH_BAD_RESPONSE`](../how-to-fix/errors.md#dk_fetch_bad_response).
+- **A slow endpoint** is aborted after 30 s: [`DK_ASYNC_TIMEOUT`](../how-to-fix/errors.md#dk_async_timeout).
   Raise `timeout`, or pass `Infinity`.
 - **A failing request** keeps the previous rows with `status: 'error'`:
-  [`DK_FETCH_FAILED`](../errors.md#dk_fetch_failed). Show a retry that calls `refetch()`.
+  [`DK_FETCH_FAILED`](../how-to-fix/errors.md#dk_fetch_failed). Show a retry that calls `refetch()`.
 - **Server-mode pagination without a fetcher and without `rowCount`** shows one page:
-  [`DK_ROW_COUNT_MISSING`](../errors.md#dk_row_count_missing).
-- **Superseded requests** are reported as [`DK_FETCH_ABORTED`](../errors.md#dk_fetch_aborted)
+  [`DK_ROW_COUNT_MISSING`](../how-to-fix/errors.md#dk_row_count_missing).
+- **Superseded requests** are reported as [`DK_FETCH_ABORTED`](../how-to-fix/errors.md#dk_fetch_aborted)
   (info): a newer request replaced them, which is expected while the user types or pages quickly.
 
 ## See also
@@ -354,4 +354,8 @@ the server matches the query. Details in [Search](search.md).
 - [Server rendering (SSR)](ssr.md) — `initialData`: fetch the first page on the server.
 - [React](react.md) — `useDataTable` with a fetcher.
 - [`@datakable/core` server mode](../../packages/core/README.md#server-mode)
+- [A server-side table](../examples/server-side-table.md) and [search through an
+  API](../examples/async-search.md) — recipes.
+- [Fetch errors and retries](../how-to-fix/fetch-errors-and-retries.md) and [the loading state never
+  ends](../how-to-fix/loading-never-ends.md) — troubleshooting.
 - [Examples](../examples/README.md)

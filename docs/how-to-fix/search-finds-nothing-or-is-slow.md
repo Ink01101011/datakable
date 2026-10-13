@@ -138,4 +138,7 @@ responsive. When a step still takes longer than one task (50 ms), development bu
 - [The table shows no rows](no-rows.md)
 - [Memory and speed with many rows](large-data.md)
 - [`@datakable/core` features](../../packages/core/README.md#features) — the `search()` options.
+- Guides: [how search works](../how-to-use/search.md#how-it-works), [your own matching:
+  `searchFn`](../how-to-use/search.md#your-own-matching-searchfn).
+- [Search through an API](../examples/async-search.md) — the recipe.
 - [How to fix](README.md) — every symptom.

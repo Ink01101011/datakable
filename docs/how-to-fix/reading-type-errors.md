@@ -231,5 +231,7 @@ On object, function and array-of-objects columns TypeScript shows only the signa
 
 - [Diagnostics reference](errors.md) — the runtime side: every `DK_*` code.
 - [How to fix](README.md) — troubleshooting by symptom.
+- [Columns and row keys](../how-to-use/columns-and-row-keys.md) — the guide to dot-path keys,
+  `cell` / `format` and `rowKey`; [Custom columns](../examples/custom-columns.md) — a recipe.
 - [`@datakable/core` columns](../../packages/core/README.md#columns) — what each column field
   takes.

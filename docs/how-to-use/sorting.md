@@ -218,7 +218,7 @@ and fetch yourself. Server steps must come first; see [Server mode](server-mode.
 
 - **Typos and object columns are compile errors.** `toggleSort('nmae')` does not compile, and
   neither does `sortable: true` on an object column without `sortFn` / `sortBy`
-  ([Reading type errors](../reading-type-errors.md)).
+  ([Reading type errors](../how-to-fix/reading-type-errors.md)).
 
 ```ts
 import { createTable } from '@datakable/core'
@@ -243,13 +243,13 @@ table.toggleSort('nmae')
 
 - **An inconsistent `sortFn`.** In development, a sample of values is checked: a `sortFn` that
   returns `NaN`, a non-number, or disagrees with itself when the arguments swap is reported as
-  [DK_SORT_COMPARATOR_INVALID](../errors.md#dk_sort_comparator_invalid) and the column falls back
+  [DK_SORT_COMPARATOR_INVALID](../how-to-fix/errors.md#dk_sort_comparator_invalid) and the column falls back
   to the default comparator.
 - **A throwing `sortFn` or `sortBy`.** Reported as
-  [DK_CALLBACK_FAILED](../errors.md#dk_callback_failed): a throwing `sortFn` falls back to the
+  [DK_CALLBACK_FAILED](../how-to-fix/errors.md#dk_callback_failed): a throwing `sortFn` falls back to the
   default comparator, a row whose `sortBy` throws sorts last.
 - **Why this algorithm?** Turn on `sorting({ debug: true })` and read
-  [DK_SORT_STRATEGY](../errors.md#dk_sort_strategy).
+  [DK_SORT_STRATEGY](../how-to-fix/errors.md#dk_sort_strategy).
 - **Sort seems to do nothing in server mode.** Core does not sort there: your fetcher (or your own
   request) must apply `sort`.
 
@@ -262,4 +262,8 @@ table.toggleSort('nmae')
 - [Server mode](server-mode.md)
 - [Performance](performance.md) — sorting large data.
 - [`@datakable/core` features](../../packages/core/README.md#features)
+- [A headless table](../examples/headless-table.md) and [state in the URL](../examples/url-state.md)
+  — recipes.
+- [Sorting or filtering does nothing](../how-to-fix/sorting-or-filtering-does-nothing.md) —
+  troubleshooting.
 - [Examples](../examples/README.md)

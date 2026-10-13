@@ -90,4 +90,6 @@ export const table = createTable({
 
 - [`datakable` entry points](../../packages/datakable/README.md#entry-points)
 - [`@datakable/core` features](../../packages/core/README.md#features)
+- Guides: [entry points](../how-to-use/entry-points.md),
+  [performance](../how-to-use/performance.md).
 - [How to fix](README.md) — every symptom.

@@ -201,7 +201,7 @@ table (in React, change the component's `key`). `features` cannot be passed to `
 all.
 
 Mutating the array you passed (`users.push(…)`) is not a change the table can see; development
-builds report it as [`DK_DATA_MUTATED`](../errors.md#dk_data_mutated).
+builds report it as [`DK_DATA_MUTATED`](../how-to-fix/errors.md#dk_data_mutated).
 
 ## When something goes wrong
 
@@ -289,18 +289,18 @@ a new prop).
 | `name` | `string` | `table#n` | Names the table in diagnostics. Read once. |
 
 In development, an unknown option is reported with a did-you-mean
-([`DK_UNKNOWN_OPTION`](../errors.md#dk_unknown_option)), and a value of the wrong type or range
-throws ([`DK_INVALID_OPTION`](../errors.md#dk_invalid_option)) naming the accepted values.
+([`DK_UNKNOWN_OPTION`](../how-to-fix/errors.md#dk_unknown_option)), and a value of the wrong type or range
+throws ([`DK_INVALID_OPTION`](../how-to-fix/errors.md#dk_invalid_option)) naming the accepted values.
 
 ## Pitfalls
 
 - **Mutating `data` in place** — the same array reference means "no change". Pass a new array;
-  development builds report [`DK_DATA_MUTATED`](../errors.md#dk_data_mutated).
+  development builds report [`DK_DATA_MUTATED`](../how-to-fix/errors.md#dk_data_mutated).
 - **Changing a read-once option** with `setOptions` (or a new prop in React) is ignored and
-  reported as [`DK_OPTION_NO_EFFECT`](../errors.md#dk_option_no_effect). Create a new table
+  reported as [`DK_OPTION_NO_EFFECT`](../how-to-fix/errors.md#dk_option_no_effect). Create a new table
   instead.
 - **Using a table after `destroy()`** — calls are no-ops that report
-  [`DK_TABLE_DESTROYED`](../errors.md#dk_table_destroyed). Unsubscribe and cancel timers in your
+  [`DK_TABLE_DESTROYED`](../how-to-fix/errors.md#dk_table_destroyed). Unsubscribe and cancel timers in your
   cleanup.
 - **Treating `status: 'error'` as "no rows"** — the rows on screen are the last good ones. Only
   `isInitialLoad && status === 'error'` means nothing could be shown.
@@ -313,3 +313,4 @@ throws ([`DK_INVALID_OPTION`](../errors.md#dk_invalid_option)) naming the accept
 - [Features](features.md) — the methods features add to the table.
 - [Diagnostics](diagnostics.md) — sinks, redaction and `explain()`.
 - [`@datakable/core` README](../../packages/core/README.md#table-api) — the table API reference.
+- [The table shows no rows](../how-to-fix/no-rows.md) — reading the row model when rows go missing.

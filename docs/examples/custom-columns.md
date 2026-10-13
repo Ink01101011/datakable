@@ -83,4 +83,5 @@ export function OrdersTable({ orders }: { orders: Order[] }) {
 
 - [Columns](../../packages/core/README.md#columns) — every column field.
 - [How to fix](../how-to-fix/README.md) — the type errors a wrong column produces.
+- [Columns and row keys](../how-to-use/columns-and-row-keys.md) — the guide to every column field.
 - [Examples](README.md)

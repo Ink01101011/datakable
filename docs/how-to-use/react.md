@@ -359,18 +359,18 @@ on `[data-datakable]`: `--dk-font-size`, `--dk-fg`, `--dk-muted`, `--dk-bg`, `--
 ## Pitfalls
 
 - **Columns defined inline in the component** are a new array on every render:
-  [`DK_UNSTABLE_COLUMNS`](../errors.md#dk_unstable_columns). Hoist or `useMemo` them.
+  [`DK_UNSTABLE_COLUMNS`](../how-to-fix/errors.md#dk_unstable_columns). Hoist or `useMemo` them.
 - **A new `data` array, `rowKey` function or `fetcher` on every render**:
-  [`DK_UNSTABLE_OPTION`](../errors.md#dk_unstable_option). Memoise them; for a fetcher, hoist
+  [`DK_UNSTABLE_OPTION`](../how-to-fix/errors.md#dk_unstable_option). Memoise them; for a fetcher, hoist
   `withFetcher(fetchUsers)` or wrap a `useCallback`.
 - **Changing `features`, `schema`, `initialState` and the other read-once options** after the first
   render has no effect; remount the component (a new `key`) to start over.
 - **Controlled `state` without `onStateChange`** freezes those slices:
-  [`DK_CONTROLLED_WITHOUT_HANDLER`](../errors.md#dk_controlled_without_handler).
-- **A cell that throws** renders `⚠`: [`DK_CALLBACK_FAILED`](../errors.md#dk_callback_failed); a
-  component inside a cell that throws: [`DK_RENDER_FAILED`](../errors.md#dk_render_failed).
+  [`DK_CONTROLLED_WITHOUT_HANDLER`](../how-to-fix/errors.md#dk_controlled_without_handler).
+- **A cell that throws** renders `⚠`: [`DK_CALLBACK_FAILED`](../how-to-fix/errors.md#dk_callback_failed); a
+  component inside a cell that throws: [`DK_RENDER_FAILED`](../how-to-fix/errors.md#dk_render_failed).
 - **`format` returning a number** or `cell` returning a promise:
-  [`DK_CALLBACK_BAD_RETURN`](../errors.md#dk_callback_bad_return).
+  [`DK_CALLBACK_BAD_RETURN`](../how-to-fix/errors.md#dk_callback_bad_return).
 - **`process is not defined` in the browser:** your bundler does not replace
   `process.env.NODE_ENV`; see [Getting started](getting-started.md).
 
@@ -382,4 +382,6 @@ on `[data-datakable]`: `--dk-font-size`, `--dk-fg`, `--dk-muted`, `--dk-bg`, `--
 - [Server mode](server-mode.md) — a fetcher with `useDataTable`.
 - [`@datakable/react` README](../../packages/react/README.md#usedatatable)
 - [`datakable` README](../../packages/datakable/README.md) — `<DataTable />` and controlled state.
+- [A headless table](../examples/headless-table.md) and [theming](../examples/theming.md) — recipes.
+- [Endless re-renders or a frozen page](../how-to-fix/endless-re-renders.md) — troubleshooting.
 - [Examples](../examples/README.md)

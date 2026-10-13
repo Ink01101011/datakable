@@ -87,4 +87,6 @@ console.log(`${filteredCount} of ${totalCount}`) // '2 of 4'
 - [`datakable` README](../../packages/datakable/README.md) — `useDataTable`, `createTable`,
   `<DataTable />`.
 - [Features](../../packages/core/README.md#features) — what the default preset installs.
+- [Getting started](../how-to-use/getting-started.md) — the zero-config table step by step.
+- [Features](../how-to-use/features.md) — the default preset and how to choose features.
 - [Examples](README.md)

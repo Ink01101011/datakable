@@ -103,7 +103,7 @@ export function UsersTable({ users }: { users: User[] }) {
   paths), declare a `FeatureTypes` interface and pass it as a type argument:
   `defineFeature<'rowSelection', SelectionTypes>(…)`.
 - **Name clashes:** a method name another feature or the table already has is reported as
-  `DK_FEATURE_API_CONFLICT`; two features with the same `name` as `DK_FEATURE_DUPLICATE`.
+  [`DK_FEATURE_API_CONFLICT`](../how-to-fix/errors.md#dk_feature_api_conflict); two features with the same `name` as [`DK_FEATURE_DUPLICATE`](../how-to-fix/errors.md#dk_feature_duplicate).
 - **Interceptors:** a feature can bring `interceptors` (for example to clear the selection when the
   data changes): see [A logging interceptor](logging-interceptor.md) for the shape.
 
@@ -112,4 +112,6 @@ export function UsersTable({ users }: { users: User[] }) {
 - [Features](../../packages/core/README.md#features) in `@datakable/core` — the built-ins and
   the feature contract.
 - [How to fix](../how-to-fix/README.md) — `DK_FEATURE_*` diagnostics.
+- [Custom features and interceptors](../how-to-use/custom-features-and-interceptors.md) and
+  [Features](../how-to-use/features.md) — the guides.
 - [Examples](README.md)

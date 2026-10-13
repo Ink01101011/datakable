@@ -134,4 +134,6 @@ changes.
 - [`@datakable/react`](../../packages/react/README.md#usedatatable) — which options are read once
   and which are synced.
 - [Sorting or filtering does nothing](sorting-or-filtering-does-nothing.md) — controlled state.
+- Guides: [options read once and synced](../how-to-use/react.md#options-read-once-and-synced),
+  [state](../how-to-use/state.md).
 - [How to fix](README.md) — every symptom.

@@ -202,15 +202,15 @@ startTable(table)
 ## Pitfalls
 
 - **The server HTML shows Loading** with a fetcher: that is
-  [`DK_SSR_ASYNC_DEFERRED`](../errors.md#dk_ssr_async_deferred). Fetch on the server and pass
+  [`DK_SSR_ASYNC_DEFERRED`](../how-to-fix/errors.md#dk_ssr_async_deferred). Fetch on the server and pass
   `initialData` (and `rowCount`) to render rows.
 - **The server and client render different data or state**:
-  [`DK_HYDRATION_MISMATCH`](../errors.md#dk_hydration_mismatch). Pass the same props on both sides
+  [`DK_HYDRATION_MISMATCH`](../how-to-fix/errors.md#dk_hydration_mismatch). Pass the same props on both sides
   (serialize the server's rows, parse the same URL), and do not change the table before hydration.
 - **`initialData` together with `data`**: `initialData` is ignored
-  ([`DK_OPTION_NO_EFFECT`](../errors.md#dk_option_no_effect)).
+  ([`DK_OPTION_NO_EFFECT`](../how-to-fix/errors.md#dk_option_no_effect)).
 - **`initialState` naming a column that does not exist** (an old URL): the filter is ignored with
-  [`DK_STATE_UNKNOWN_KEY`](../errors.md#dk_state_unknown_key).
+  [`DK_STATE_UNKNOWN_KEY`](../how-to-fix/errors.md#dk_state_unknown_key).
 - **Server-mode pagination with `initialData` but no `rowCount`** shows one page until the first
   fetch: pass the server's total.
 - **`useDataTable` imported in a server component** (Next.js app router): import it, or
@@ -222,4 +222,6 @@ startTable(table)
 - [React](react.md) — `useDataTable` and `<DataTable />`.
 - [State](state.md) — `initialState` and controlled slices.
 - [`datakable` SSR](../../packages/datakable/README.md#ssr)
+- [Server rendering with Next.js](../examples/nextjs-ssr.md) — the recipe.
+- [SSR and hydration problems](../how-to-fix/ssr-and-hydration.md) — troubleshooting.
 - [Examples](../examples/README.md)

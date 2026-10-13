@@ -139,4 +139,6 @@ exists)
 - [`datakable` SSR](../../packages/datakable/README.md#ssr) — the full server-mode example, and
   `createDeferred` / `startTable` for your own bindings.
 - [The loading state never ends](loading-never-ends.md)
+- Guide: [server rendering (SSR)](../how-to-use/ssr.md).
+- [Server rendering with Next.js](../examples/nextjs-ssr.md) — the recipe.
 - [How to fix](README.md) — every symptom.

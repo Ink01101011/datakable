@@ -128,4 +128,9 @@ export function UsersTable({ users, cities }: { users: User[]; cities: string[] 
 - [`@datakable/react`](../../packages/react/README.md#usedatatable) — which options are read once
   and which are synced.
 - [Features](../../packages/core/README.md#features) — the state and API of each feature.
+- [React](../how-to-use/react.md) — `useDataTable` in depth.
+- [A search input](../how-to-use/search.md#a-search-input), [sorting state and
+  API](../how-to-use/sorting.md#state-and-api), [pagination state and
+  API](../how-to-use/pagination.md#state-and-api) and [column
+  filters](../how-to-use/column-filters.md) — the methods this recipe calls.
 - [Examples](README.md)

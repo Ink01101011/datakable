@@ -155,4 +155,7 @@ isInitialLoad` is "nothing loaded yet"; `status === 'error'` otherwise is "showi
 
 - [The loading state never ends](loading-never-ends.md)
 - [`@datakable/core` server mode](../../packages/core/README.md#server-mode)
+- Guides: [server mode](../how-to-use/server-mode.md), [statuses: loading, refreshing,
+  failing](../how-to-use/server-mode.md#statuses-loading-refreshing-failing).
+- [A server-side table](../examples/server-side-table.md) — the recipe.
 - [How to fix](README.md) — every symptom.

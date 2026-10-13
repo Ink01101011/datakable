@@ -53,9 +53,9 @@ export function TradesTable({ trades }: { trades: Trade[] }) {
 
 - **Keep references stable.** `data`, `columns` and `features` are compared by reference: a new
   array on every render re-ingests the data or rebuilds the column cache. In development,
-  `DK_UNSTABLE_COLUMNS` / `DK_UNSTABLE_OPTION` warn when that happens. Memoise derived data
+  [`DK_UNSTABLE_COLUMNS`](../how-to-fix/errors.md#dk_unstable_columns) / [`DK_UNSTABLE_OPTION`](../how-to-fix/errors.md#dk_unstable_option) warn when that happens. Memoise derived data
   (`useMemo(() => trades.filter(…), [trades])`), and to change the data pass a new array: mutating
-  it in place is not seen (`DK_DATA_MUTATED`).
+  it in place is not seen ([`DK_DATA_MUTATED`](../how-to-fix/errors.md#dk_data_mutated)).
 - **Search fewer columns.** Give `search` weights to the columns worth searching; the others are not
   indexed. Debounce typing (`typing: { strategy: 'debounce' }`) so one search runs per pause, not
   per keystroke.
@@ -66,9 +66,9 @@ export function TradesTable({ trades }: { trades: Trade[] }) {
   really codes or categories, `sortBy: (t) => rank[t.symbol]` gives a numeric key.
   `sorting({ algorithm })` or a column's `sortAlgorithm` forces an algorithm when the automatic
   choice is slower for your data; `sorting({ debug: true })` reports the choice
-  (`DK_SORT_STRATEGY`).
+  ([`DK_SORT_STRATEGY`](../how-to-fix/errors.md#dk_sort_strategy)).
 - **Measure.** `String(table.explain())` shows rows and time per step of the last run (traced in
-  development), and in development a step over 50 ms is reported as `DK_PERF_HINT`.
+  development), and in development a step over 50 ms is reported as [`DK_PERF_HINT`](../how-to-fix/errors.md#dk_perf_hint).
 - **Past the client's limits** (millions of rows, or data you should not ship): move the work to
   the server with `mode: 'server'` and a `fetcher` ([Server-side table](server-side-table.md)).
 
@@ -76,4 +76,7 @@ export function TradesTable({ trades }: { trades: Trade[] }) {
 
 - [Status model](../../packages/core/README.md#status-model) — what `pending` means.
 - [explain()](../../packages/core/README.md#explain-and-explainrow) in `@datakable/core`.
+- [Performance](../how-to-use/performance.md) and [Diagnostics](../how-to-use/diagnostics.md) — the
+  guides.
+- [Memory and speed with many rows](../how-to-fix/large-data.md) — troubleshooting.
 - [Examples](README.md)
