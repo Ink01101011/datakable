@@ -7,8 +7,8 @@ import type { orderFeatures } from './order'
 /**
  * What features bring to the table they are installed in (§3.3, changed 2026-10-13 for §9.3): the
  * stage ordering and API install, the column cache and time-slicing of the pipeline steps, and the
- * step details of `explainRow`. `defineFeature` (every built-in feature uses it) loads it, so a
- * table without features does not bundle it.
+ * step details of `explainRow`. Calling `defineFeature` (every built-in feature does) installs it,
+ * so a table without features does not bundle it.
  */
 export interface FeatureRuntime {
   readonly orderFeatures: typeof orderFeatures
@@ -19,7 +19,7 @@ export interface FeatureRuntime {
   readonly explainDetail: typeof explainDetail
 }
 
-/** Set when `feature/define.ts` is loaded (the same module-scoped registry as the catalogs). */
+/** Set by `defineFeature` and when `feature/define.ts` loads (module-scoped, as the catalogs). */
 export const featureRuntime: { current?: FeatureRuntime | undefined } = {}
 
 /** The runtime for `features`: `undefined` without features; throws when none was loaded. */

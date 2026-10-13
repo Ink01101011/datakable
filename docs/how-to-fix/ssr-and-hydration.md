@@ -13,7 +13,8 @@ DataKable reports [`DK_HYDRATION_MISMATCH`](errors.md#dk_hydration_mismatch) /
 - **React's hydration error:** the server and the browser rendered different text. The usual
   sources are state only the browser has
   ([browser-only state](#browser-only-state-while-rendering)) and
-  [dates](#dates-formatted-differently).
+  [dates](#dates-formatted-differently). Rows in a different order after hydration:
+  [text sorted differently](#text-sorted-differently).
 - **`DK_HYDRATION_MISMATCH`:** the table changed between the browser creating it and React
   finishing hydration; the diagnostic names the state slices (`"sorting" differ…`).
 
@@ -126,6 +127,17 @@ export const columns: ColumnDef<Order, ReactNode>[] = [
   { key: 'placed', format: (placed) => dateTime.format(placed) },
 ]
 ```
+
+## Text sorted differently
+
+In `@datakable/core` 1.0.0, `sorting()` without `locale` compared strings with the runtime's default
+locale: the server's on the server, the user's in the browser (for instance `'Ärla'` after `'Zoë'`
+in Swedish). The sorted rows differed and React reported a hydration error. Now the default is
+`'en'` on both sides.
+
+**Fix:** update `@datakable/core`. To sort in your users' language, pass the same locale to
+`sorting({ locale })` on the server and in the browser (for instance from the request's
+`Accept-Language`, passed down as a prop), never the browser's default.
 
 ## Related codes
 

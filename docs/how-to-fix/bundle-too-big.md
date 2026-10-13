@@ -23,10 +23,10 @@ dependencies and React) to these budgets:
 | Import | Budget |
 |---|---|
 | `@datakable/core`: `createTable` | ≤ 15 KB |
-| `@datakable/core`: `createTable` + `columnFilters` + `sorting` + `pagination` | ≤ 22 KB |
-| `datakable`: `createTable` (default preset) | ≤ 24.5 KB |
-| `datakable`: `useDataTable` (default preset) | ≤ 26.5 KB |
-| `datakable`: `<DataTable />` (default preset) | ≤ 29.5 KB |
+| `@datakable/core`: `createTable` + `columnFilters` + `sorting` + `pagination` | ≤ 24 KB |
+| `datakable`: `createTable` (default preset) | ≤ 27 KB |
+| `datakable`: `useDataTable` (default preset) | ≤ 28.5 KB |
+| `datakable`: `<DataTable />` (default preset) | ≤ 31.5 KB |
 
 The dependencies add about 3.7 KB for search (`ex-search`), 0.8 KB for search typing
 (`kk-debounce`) and 1.2–2.4 KB for sorting (`exsorted`), gzip.

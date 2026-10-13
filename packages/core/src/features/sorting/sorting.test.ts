@@ -216,6 +216,36 @@ describe('sorting — comparator', () => {
     expect(t.getRowModel().rows.map((r) => r.original.name)).toEqual(['a', 'z', 'ä'])
   })
 
+  it('the default collation does not follow the runtime locale (SSR = hydration, #12)', () => {
+    // Simulates a browser whose default locale is sv-SE while the server's was en-US.
+    const Real = Intl.Collator
+    class SvCollator extends Real {
+      constructor(l?: string | string[], o?: Intl.CollatorOptions) {
+        super(l ?? 'sv-SE', o)
+      }
+    }
+    const spy = vi.spyOn(Intl, 'Collator').mockImplementation(SvCollator as never)
+    try {
+      const names = ['Zoë', 'Ångström', 'Bjørn', 'Øst', 'Ärla', 'Adam']
+      const t = createTable({
+        data: names.map((name, id) => ({ id, name })),
+        columns: [{ key: 'name' }],
+        features: [sorting()],
+      })
+      t.toggleSort('name')
+      expect(t.getRowModel().rows.map((r) => r.original.name)).toEqual([
+        'Adam',
+        'Ångström',
+        'Ärla',
+        'Bjørn',
+        'Øst',
+        'Zoë',
+      ])
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it('an invalid locale is a config error', () => {
     expect(() => createTable({ data: people, features: [sorting({ locale: '!!' })] })).toThrow(
       /DK_INVALID_OPTION/,

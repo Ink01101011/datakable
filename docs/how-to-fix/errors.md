@@ -880,7 +880,7 @@ prints (development console):
 
 `warn` · fault test: [pagination.test.ts](../../packages/core/src/features/pagination/pagination.test.ts)
 
-**Problem.** `setPageIndex()` / `setPageSize()`, or the pagination state (from `initialState`, `setState` or a controlled `state`), got a value that is not an integer in range (`pageIndex` ≥ 0, `pageSize` > 0). A method call is ignored; a bad state slice is replaced with a valid one.
+**Problem.** `setPageIndex()` / `setPageSize()`, or the pagination state (from `initialState`, `setState` or a controlled `state`), got a value that is not an integer in range (`pageIndex` ≥ 0, `pageSize` > 0). A method call is ignored; a bad state slice is replaced with a valid one. In a production build, an invalid `pagination({ pageSize })` option is reported here too (`where: { kind: 'feature', name: 'pagination' }`) and replaced with the default of 10; development builds throw `DK_INVALID_OPTION` at creation instead.
 
 **Common causes.**
 
