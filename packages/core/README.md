@@ -5,7 +5,8 @@ features (column filters, validity, search, sorting, pagination), data modes, sc
 diagnostics and `explain()`. No React. For React, use [`datakable`](https://github.com/Ink01101011/datakable/tree/main/packages/datakable) or
 [`@datakable/react`](https://github.com/Ink01101011/datakable/tree/main/packages/react).
 
-> Pre-release (`0.x`): the API may still change before 1.0.
+> Version 1.0: the public API is stable and follows semantic versioning from here. Guides,
+> examples and troubleshooting: the [documentation](https://github.com/Ink01101011/datakable/blob/main/docs/README.md).
 
 ```bash
 npm install @datakable/core

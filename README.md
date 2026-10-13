@@ -12,8 +12,9 @@ Type-safe generic data table for React: zero-config by default, headless when yo
 - **Pay for what you use.** One entry per feature, an index-based pipeline, and development-only
   checks and message text stripped from production builds.
 
-> Pre-release (`0.x`). The API follows the [design spec](docs/superpowers/specs/2026-10-12-core-api-design.md)
-> and may still change before 1.0.
+> Version 1.0: the public API is stable and follows semantic versioning from here. Guides,
+> examples and troubleshooting live in the [documentation](docs/README.md); the design is in the
+> [design spec](docs/superpowers/specs/2026-10-12-core-api-design.md).
 
 ## Quick start
 

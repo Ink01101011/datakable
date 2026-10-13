@@ -7,7 +7,8 @@ This is the batteries-included entry. It re-exports [`@datakable/react`](https:/
 preset — `columnFilters()`, `validity()`, `search()`, `sorting()`, `pagination()` — when you pass no
 `features`.
 
-> Pre-release (`0.x`): the API may still change before 1.0.
+> Version 1.0: the public API is stable and follows semantic versioning from here. Guides,
+> examples and troubleshooting: the [documentation](https://github.com/Ink01101011/datakable/blob/main/docs/README.md).
 
 ## Install
 
