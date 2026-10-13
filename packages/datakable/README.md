@@ -16,8 +16,8 @@ preset — `columnFilters()`, `validity()`, `search()`, `sorting()`, `pagination
 npm install datakable react
 ```
 
-React `>=18`. The package is ESM + CJS with types. `@datakable/react` (which it re-exports) is
-marked `"use client"`; `datakable` itself is not, so its `createTable` also works on the server.
+React `>=18`. The package is ESM + CJS with types. `@datakable/react` (which it re-exports)
+marks `<DataTable />` and `useDataTable` `"use client"`; `datakable` itself is not, so its `createTable` also works on the server.
 With the Next.js app router, import `<DataTable />` / `useDataTable` from a client component (a
 `'use client'` file), or from `@datakable/react`.
 

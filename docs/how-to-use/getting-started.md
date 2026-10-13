@@ -178,7 +178,8 @@ builds keep the diagnostics themselves but drop their text unless you opt in; se
 
 ## Next.js app router
 
-`@datakable/react` marks every module `"use client"`. `datakable` does not, so its `createTable`
+`@datakable/react` marks `<DataTable />` and `useDataTable` `"use client"`. `datakable` does not,
+so its `createTable`
 also works in server code. Render `<DataTable />` and `useDataTable` from a client component (or
 import them from `@datakable/react`):
 
