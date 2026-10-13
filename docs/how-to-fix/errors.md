@@ -2,12 +2,14 @@
 
 Every problem DataKable detects is reported as a **diagnostic** with a stable code (`DK_*`). Codes
 are public API: a code is never reused or given another meaning, and a retired code stays on this
-page with the version that removed it. Every diagnostic links to its section here
-(`docs/errors.md#<code in lower case>`).
+page with the version that removed it. Every diagnostic links to its section: the `docs` URL is
+`docs/errors.md#<code in lower case>`, the page's [old address](../errors.md), which keeps every
+anchor and forwards here. To start from what you see rather than from a code, use
+[troubleshooting by symptom](README.md).
 
 Each section below has the same four parts: **Problem** (what the code means), **Common causes**,
 **Fix**, and an **Example**. Every example is real: the TypeScript blocks are files of
-[`packages/datakable/src/errors-examples/`](../packages/datakable/src/errors-examples/), which CI
+[`packages/datakable/src/errors-examples/`](../../packages/datakable/src/errors-examples/), which CI
 compiles and runs, and the output block under each one must be exactly what DataKable printed
 (`packages/datakable/src/errors-doc.test.tsx`). A few codes cannot be produced by a snippet (a
 second copy of core, a production build, a bug in DataKable): their output is built from the
@@ -230,14 +232,14 @@ To trace a production table, install it: `createTable({ interceptors: [tracer()]
   definitions (`pnpm check:catalog` checks the built packages and consumer bundles).
 - Deprecate your own API with `defineDeprecation` + `warnDeprecated` ([`DK_DEPRECATED`](#dk_deprecated)).
 - A code added to DataKable itself needs a section on this page (with a runnable example), an entry
-  in [`fault-injection/injected-by.ts`](../packages/core/src/fault-injection/injected-by.ts) naming
+  in [`fault-injection/injected-by.ts`](../../packages/core/src/fault-injection/injected-by.ts) naming
   its fault-injection test, and a row in the spec's catalog table; CI fails otherwise.
 
 ## Keys and data
 
 ### DK_DUPLICATE_ROW_KEY
 
-`error` · fault test: [row-key.test.ts](../packages/core/src/ingest/row-key.test.ts)
+`error` · fault test: [row-key.test.ts](../../packages/core/src/ingest/row-key.test.ts)
 
 **Problem.** Two or more rows have the same `rowKey` value. Row keys identify rows across updates (React keys, `explainRow(key)`, state that refers to rows), so each must be unique. The later rows get fallback keys `key#1`, `key#2`, … (the first keeps its key), in data order.
 
@@ -282,7 +284,7 @@ prints (development console):
 
 ### DK_MISSING_ROW_KEY
 
-`error` · fault test: [row-key.test.ts](../packages/core/src/ingest/row-key.test.ts)
+`error` · fault test: [row-key.test.ts](../../packages/core/src/ingest/row-key.test.ts)
 
 **Problem.** Some rows have no usable key at the `rowKey` path (`undefined`, `null`, an object, `NaN`), or the `rowKey` function returned none. Those rows get the fallback key `#<index>`, which changes when rows are added or removed.
 
@@ -329,7 +331,7 @@ prints (development console):
 
 ### DK_COLUMN_PATH_NOT_FOUND
 
-`warn` · development only · fault test: [data-checks.test.ts](../packages/core/src/ingest/data-checks.test.ts)
+`warn` · development only · fault test: [data-checks.test.ts](../../packages/core/src/ingest/data-checks.test.ts)
 
 **Problem.** A column's `key` path exists in none of the first 50 rows (`INGEST_SAMPLE`). The column reads `undefined` in every row and renders `''`. The fix suggests the closest existing paths (did-you-mean).
 
@@ -374,7 +376,7 @@ prints (development console):
 
 ### DK_COLUMN_PATH_PARTIAL
 
-`info` · development only · fault test: [data-checks.test.ts](../packages/core/src/ingest/data-checks.test.ts)
+`info` · development only · fault test: [data-checks.test.ts](../../packages/core/src/ingest/data-checks.test.ts)
 
 **Problem.** A column's `key` path is missing in some of the first 50 rows (`INGEST_SAMPLE`). Those cells read `undefined` and the default formatter renders `''`. Reported with the count and the first row indices.
 
@@ -418,7 +420,7 @@ prints (development console):
 
 ### DK_INCONSISTENT_ROW_SHAPE
 
-`info` · development only · fault test: [data-checks.test.ts](../packages/core/src/ingest/data-checks.test.ts)
+`info` · development only · fault test: [data-checks.test.ts](../../packages/core/src/ingest/data-checks.test.ts)
 
 **Problem.** Zero-config columns (no `columns` option) are derived from the rows' keys, and the first 50 rows (`INGEST_SAMPLE`) do not all have the same keys. The columns are the union of the keys; missing cells render `''`.
 
@@ -461,7 +463,7 @@ prints (development console):
 
 ### DK_UNRENDERABLE_VALUE
 
-`warn` · fault test: [pipeline.test.ts](../packages/core/src/pipeline/pipeline.test.ts)
+`warn` · fault test: [pipeline.test.ts](../../packages/core/src/pipeline/pipeline.test.ts)
 
 **Problem.** Cells of a column hold objects, arrays or functions, which the default formatter cannot turn into text. Those cells render `''` and match no search.
 
@@ -510,7 +512,7 @@ prints (development console):
 
 ### DK_DATA_MUTATED
 
-`warn` · development only · fault test: [data-mutation.test.ts](../packages/core/src/table/data-mutation.test.ts)
+`warn` · development only · fault test: [data-mutation.test.ts](../../packages/core/src/table/data-mutation.test.ts)
 
 **Problem.** `options.data` was passed again as the same array, but its contents changed since it was ingested. DataKable re-reads data only when the array reference changes, so the table keeps showing the previous rows. A sample of rows is compared (bounded cost).
 
@@ -555,7 +557,7 @@ prints (development console):
 
 ### DK_SCHEMA_INVALID_ROW
 
-`error` · fault test: [schema.test.ts](../packages/core/src/ingest/schema.test.ts)
+`error` · fault test: [schema.test.ts](../../packages/core/src/ingest/schema.test.ts)
 
 **Problem.** Rows failed `options.schema` (any Standard Schema v1: zod, valibot, arktype, …). What happens to them depends on `invalidRows`: `'drop'` (default) removes them, `'flag'` keeps them with `row.valid === false` and `row.issues`, `'throw'` throws `DatakableSchemaError` and keeps the previous data. `where` is `options.schema`; the fix maps each issue path to the column that shows it (the same matching as `row.getCellIssues`).
 
@@ -619,7 +621,7 @@ prints (development console):
 
 ### DK_SCHEMA_CRASHED
 
-`error` · fault test: [slots.test.ts](../packages/core/src/fault-injection/slots.test.ts)
+`error` · fault test: [slots.test.ts](../../packages/core/src/fault-injection/slots.test.ts)
 
 **Problem.** The schema threw (or its promise rejected) instead of returning issues. Each such row gets a synthetic issue and is handled per `invalidRows`. `where` is `options.schema`; the original error is `context.cause`.
 
@@ -676,7 +678,7 @@ prints (development console):
 
 ### DK_FILTER_TYPE_MISMATCH
 
-`warn` · fault test: [column-filters.test.ts](../packages/core/src/features/column-filters/column-filters.test.ts)
+`warn` · fault test: [column-filters.test.ts](../../packages/core/src/features/column-filters/column-filters.test.ts)
 
 **Problem.** A column filter compares values of one type, but the cells or the filter value have another. With `source: 'cell'`, the cells of the wrong type are treated as non-matching and the other rows are filtered normally; with `source: 'filter'`, the filter value itself is malformed (or the filter kind is unknown) and the filter matches no rows until it is fixed.
 
@@ -724,7 +726,7 @@ prints (development console):
 
 ### DK_SORT_COMPARATOR_INVALID
 
-`warn` · development only · fault test: [slots.test.ts](../packages/core/src/fault-injection/slots.test.ts)
+`warn` · development only · fault test: [slots.test.ts](../../packages/core/src/fault-injection/slots.test.ts)
 
 **Problem.** A column's `sortFn` returned `NaN` or a non-number, or is inconsistent (`sortFn(a, b)` and `sortFn(b, a)` do not have opposite signs). The column is sorted with the default comparator instead. Checked on a sample of pairs, in development.
 
@@ -778,7 +780,7 @@ prints (development console):
 
 ### DK_SORT_STRATEGY
 
-`info` · fault test: [strategy.test.ts](../packages/core/src/features/sorting/strategy.test.ts)
+`info` · fault test: [strategy.test.ts](../../packages/core/src/features/sorting/strategy.test.ts)
 
 **Problem.** Information, reported only with `sorting({ debug: true })`: which algorithm sorted the rows (`tim`, `radix`, `counting`, `native` or `custom`), why it was chosen, and how long it took.
 
@@ -817,7 +819,7 @@ prints (development console):
 
 ### DK_SEARCH_FAILED
 
-`error` · fault test: [slots.test.ts](../packages/core/src/fault-injection/slots.test.ts)
+`error` · fault test: [slots.test.ts](../../packages/core/src/fault-injection/slots.test.ts)
 
 **Problem.** `search({ searchFn: withSearchFn(fn) })`'s `fn` rejected or threw, or resolved with something that is neither an array of rows (from `ctx.rows`) nor `{ keys }`. The previous search results are kept (or the rows are shown unsearched if there were none) and the status is `'error'`. `where` is `options.searchFn` (the `searchFn` option of `search()`).
 
@@ -873,7 +875,7 @@ prints (development console):
 
 ### DK_INVALID_PAGINATION
 
-`warn` · fault test: [pagination.test.ts](../packages/core/src/features/pagination/pagination.test.ts)
+`warn` · fault test: [pagination.test.ts](../../packages/core/src/features/pagination/pagination.test.ts)
 
 **Problem.** `setPageIndex()` / `setPageSize()`, or the pagination state (from `initialState`, `setState` or a controlled `state`), got a value that is not an integer in range (`pageIndex` ≥ 0, `pageSize` > 0). A method call is ignored; a bad state slice is replaced with a valid one.
 
@@ -912,7 +914,7 @@ prints (development console):
 
 ### DK_INVALID_VALIDITY
 
-`warn` · fault test: [validity.test.ts](../packages/core/src/features/validity/validity.test.ts)
+`warn` · fault test: [validity.test.ts](../../packages/core/src/features/validity/validity.test.ts)
 
 **Problem.** `setValidity()`, or the validity state, got a value other than `'all' | 'valid' | 'invalid'`. A method call is ignored; a bad state reads as `'all'`.
 
@@ -970,7 +972,7 @@ prints (development console):
 
 ### DK_FETCH_FAILED
 
-`error` · fault test: [slots.test.ts](../packages/core/src/fault-injection/slots.test.ts)
+`error` · fault test: [slots.test.ts](../../packages/core/src/fault-injection/slots.test.ts)
 
 **Problem.** The `fetcher` rejected or threw. The previous rows are kept (`status: 'error'`); on the first request nothing is shown yet (`status: 'error'`, `isInitialLoad: true`). Only `error.name` is logged; the error itself is `context.cause`.
 
@@ -1015,7 +1017,7 @@ prints (development console):
 
 ### DK_FETCH_ABORTED
 
-`info` · fault test: [fetcher.test.ts](../packages/core/src/source/fetcher.test.ts)
+`info` · fault test: [fetcher.test.ts](../../packages/core/src/source/fetcher.test.ts)
 
 **Problem.** Information: a fetcher request was superseded by a newer one (latest wins). Its result is ignored and its `signal` was aborted. Info level: printed in development, kept in `getDiagnostics()` in production.
 
@@ -1062,7 +1064,7 @@ prints (development console):
 
 ### DK_FETCH_BAD_RESPONSE
 
-`error` · fault test: [slots.test.ts](../packages/core/src/fault-injection/slots.test.ts)
+`error` · fault test: [slots.test.ts](../../packages/core/src/fault-injection/slots.test.ts)
 
 **Problem.** The `fetcher` resolved with something other than `{ rows: T[], rowCount: number }`, or `rowCount` is missing (server pagination needs the total), not an integer ≥ 0, or smaller than `rows.length`. The result is ignored and the previous rows are kept (`status: 'error'`). In server mode `filteredCount` is the number of rows on the current page and `rowCount` is the server total.
 
@@ -1108,7 +1110,7 @@ prints (development console):
 
 ### DK_ASYNC_TIMEOUT
 
-`error` · fault test: [async-control.test.ts](../packages/core/src/source/async-control.test.ts)
+`error` · fault test: [async-control.test.ts](../../packages/core/src/source/async-control.test.ts)
 
 **Problem.** An async operation (`fetcher`, `searchFn`) did not settle within `timeout` (default 30 s). The request is aborted through its `signal`, a late result is ignored, and the previous results are kept (`status: 'error'`).
 
@@ -1150,7 +1152,7 @@ prints (development console):
 
 ### DK_ROW_COUNT_MISSING
 
-`warn` · fault test: [pagination.test.ts](../packages/core/src/features/pagination/pagination.test.ts)
+`warn` · fault test: [pagination.test.ts](../../packages/core/src/features/pagination/pagination.test.ts)
 
 **Problem.** `pagination({ mode: 'server' })` without a `fetcher` (you pass each page as `data`) and without a `rowCount` option: the total number of rows is unknown. The page count falls back to `data.length` (one page) and `canNextPage()` is `false`.
 
@@ -1194,7 +1196,7 @@ prints (development console):
 
 ### DK_CALLBACK_FAILED
 
-`error` · fault test: [slots.test.ts](../packages/core/src/fault-injection/slots.test.ts)
+`error` · fault test: [slots.test.ts](../../packages/core/src/fault-injection/slots.test.ts)
 
 **Problem.** A callback you passed threw: a column `accessor` / `format` / `sortBy` / `sortFn` / `cell` / filter `fn`, `rowKey`, `fetcher`, `searchFn`, an updater passed to `setState`, … `where` names the slot (`options.columns[1].accessor`, or `operation table.setState at updater`). The slot's fallback is applied (`undefined` for an accessor, `''` for a format, non-matching for a filter, `#index` for a row key, `⚠` for a cell) and the rest of the table keeps working.
 
@@ -1244,7 +1246,7 @@ prints (development console):
 
 ### DK_CALLBACK_BAD_RETURN
 
-`warn` · development only · fault test: [slots.test.ts](../packages/core/src/fault-injection/slots.test.ts)
+`warn` · development only · fault test: [slots.test.ts](../../packages/core/src/fault-injection/slots.test.ts)
 
 **Problem.** A callback broke its return contract (`defineSlot`): `format` returned a non-string, `cell` / `invalidCell` returned a Promise, `sortAlgorithm` returned something that is not an algorithm, … The value is coerced, or the slot's fallback is used. Checked per column batch, in development.
 
@@ -1291,7 +1293,7 @@ prints (development console):
 
 ### DK_FEATURE_FAILED
 
-`error` · fault test: [slots.test.ts](../packages/core/src/fault-injection/slots.test.ts)
+`error` · fault test: [slots.test.ts](../../packages/core/src/fault-injection/slots.test.ts)
 
 **Problem.** A feature's `rowModel()`, `createApi()` or `initialState()` threw. `rowModel`: the step passes its input through (the feature has no effect this run). `createApi`: the feature's methods are missing from the table. `initialState`: its state slice starts `undefined`. Calling a missing method later reports `DK_FEATURE_FAILED` again in development (naming the method); in production it is a plain `TypeError` (`table.x is not a function`).
 
@@ -1339,7 +1341,7 @@ prints (development console):
 
 ### DK_FEATURE_BAD_OUTPUT
 
-`error` · development only · fault test: [slots.test.ts](../packages/core/src/fault-injection/slots.test.ts)
+`error` · development only · fault test: [slots.test.ts](../../packages/core/src/fault-injection/slots.test.ts)
 
 **Problem.** A feature's `rowModel()` returned something other than a `Uint32Array` of row indices, or an index out of range. The step passes its input through. Checked in development.
 
@@ -1391,7 +1393,7 @@ prints (development console):
 
 ### DK_FEATURE_MUTATED_INPUT
 
-`warn` · development only · fault test: [dev-checks.test.ts](../packages/core/src/pipeline/dev-checks.test.ts)
+`warn` · development only · fault test: [dev-checks.test.ts](../../packages/core/src/pipeline/dev-checks.test.ts)
 
 **Problem.** A feature's `rowModel()` wrote to its input indices. The input is the previous step's memoised output, so later runs can show rows in the wrong order or the wrong rows. The output is still used. Checked on a sample of positions, in development.
 
@@ -1434,7 +1436,7 @@ prints (development console):
 
 ### DK_INTERCEPTOR_FAILED
 
-`error` · fault test: [slots.test.ts](../packages/core/src/fault-injection/slots.test.ts)
+`error` · fault test: [slots.test.ts](../../packages/core/src/fault-injection/slots.test.ts)
 
 **Problem.** An interceptor threw. It is skipped for that call (its `next` is called directly), so the operation still runs; the original error is `context.cause`.
 
@@ -1486,7 +1488,7 @@ prints (development console):
 
 ### DK_HOT_INTERCEPTOR
 
-`warn` · development only · fault test: [runtime.test.ts](../packages/core/src/intercept/runtime.test.ts)
+`warn` · development only · fault test: [runtime.test.ts](../../packages/core/src/intercept/runtime.test.ts)
 
 **Problem.** An interceptor is attached to a hot operation (`column:batch`, also through `on: '*'`) without `hot: true`. It still runs, once per column per pipeline run; the warning states the measured cost. Development only.
 
@@ -1534,7 +1536,7 @@ prints (development console):
 
 ### DK_OPERATION_CONFLICT
 
-`error` · config: thrown at creation · fault test: [boundary.test.ts](../packages/core/src/intercept/boundary.test.ts)
+`error` · config: thrown at creation · fault test: [boundary.test.ts](../../packages/core/src/intercept/boundary.test.ts)
 
 **Problem.** `registerOperation(name, …)` was called for a name already registered with another `kind` or `hot` flag. The registration is rejected (`DatakableConfigError`); the first one stays in effect. The operation registry is process-wide.
 
@@ -1576,7 +1578,7 @@ DatakableConfigError: DK_OPERATION_CONFLICT: operation "export:csv" is already r
 
 ### DK_LISTENER_FAILED
 
-`error` · fault test: [slots.test.ts](../packages/core/src/fault-injection/slots.test.ts)
+`error` · fault test: [slots.test.ts](../../packages/core/src/fault-injection/slots.test.ts)
 
 **Problem.** A `table.subscribe(listener)` listener threw while being notified. The other listeners still run and the state change is committed.
 
@@ -1621,7 +1623,7 @@ prints (development console):
 
 ### DK_UNKNOWN_OPTION
 
-`warn` · development only · fault test: [options.test.ts](../packages/core/src/catalog/options.test.ts)
+`warn` · development only · fault test: [options.test.ts](../../packages/core/src/catalog/options.test.ts)
 
 **Problem.** An option key is not an option of the table (or of the feature it was passed to). It is ignored. The fix suggests the closest name, and names the feature that owns the option when it was passed to the table instead.
 
@@ -1660,7 +1662,7 @@ prints (development console):
 
 ### DK_INVALID_OPTION
 
-`error` · development only, except the unwrapped `schema` / `fetcher` / `searchFn` guard (every build) · config: thrown at creation · fault test: [options.test.ts](../packages/core/src/catalog/options.test.ts), [options.prod.test.ts](../packages/core/src/table/options.prod.test.ts)
+`error` · development only, except the unwrapped `schema` / `fetcher` / `searchFn` guard (every build) · config: thrown at creation · fault test: [options.test.ts](../../packages/core/src/catalog/options.test.ts), [options.prod.test.ts](../../packages/core/src/table/options.prod.test.ts)
 
 **Problem.** An option has the wrong runtime type or is out of range. At creation the table is not created (`DatakableConfigError`); in `setOptions()` the call is rejected and the previous options are kept. The fix names the accepted values (and the closest one, for enums).
 
@@ -1697,7 +1699,7 @@ DatakableConfigError: DK_INVALID_OPTION: options.timeout must be a number of mil
 
 ### DK_OPTION_NO_EFFECT
 
-`warn` · fault test: [options.test.ts](../packages/core/src/catalog/options.test.ts)
+`warn` · fault test: [options.test.ts](../../packages/core/src/catalog/options.test.ts)
 
 **Problem.** An option is valid but ignored in this configuration (`invalidRows` without `schema`, `rowCount` with a `fetcher` or without server pagination, `initialData` with `data`, …). Also reported when `setOptions()` changes a read-once option: `name`, `schema`, `invalidRows`, `features`, `initialState`, `timeout`, `initialData`, `strict` and `diagnostics` keep the value the table was created with. The option validator's reports are development only; a feature's own (a `search` with no searchable column, `validity` outside flag mode) are reported in every build, and a production `setOptions` still keeps the read-once values.
 
@@ -1735,7 +1737,7 @@ prints (development console):
 
 ### DK_MODE_ORDER
 
-`error` · development only · config: thrown at creation · fault test: [fetcher.test.ts](../packages/core/src/source/fetcher.test.ts)
+`error` · development only · config: thrown at creation · fault test: [fetcher.test.ts](../../packages/core/src/source/fetcher.test.ts)
 
 **Problem.** A client-mode feature runs before a server-mode one in the pipeline (filter → search → sort → paginate). The client step would only see the rows the server returned, so the table is not created.
 
@@ -1773,7 +1775,7 @@ DatakableConfigError: DK_MODE_ORDER: feature "pagination" (paginate) is in serve
 
 ### DK_FETCHER_WITHOUT_SERVER_MODE
 
-`error` · config: thrown at creation · fault test: [fetcher.test.ts](../packages/core/src/source/fetcher.test.ts)
+`error` · config: thrown at creation · fault test: [fetcher.test.ts](../../packages/core/src/source/fetcher.test.ts)
 
 **Problem.** `options.fetcher` is set, but no feature is in server mode: nothing would tell the fetcher what to load. The table is not created (in `setOptions()`, the call is rejected).
 
@@ -1811,7 +1813,7 @@ DatakableConfigError: DK_FETCHER_WITHOUT_SERVER_MODE: options.fetcher is set, bu
 
 ### DK_FEATURE_DUPLICATE
 
-`error` · config: thrown at creation · fault test: [feature.test.ts](../packages/core/src/feature/feature.test.ts)
+`error` · config: thrown at creation · fault test: [feature.test.ts](../../packages/core/src/feature/feature.test.ts)
 
 **Problem.** Two features with the same `name` are installed. A feature's name is its state slice key, so it must be unique per table; the table is not created.
 
@@ -1849,7 +1851,7 @@ DatakableConfigError: DK_FEATURE_DUPLICATE: feature "sorting" is installed twice
 
 ### DK_FEATURE_API_CONFLICT
 
-`error` · config: thrown at creation · fault test: [feature.test.ts](../packages/core/src/feature/feature.test.ts)
+`error` · config: thrown at creation · fault test: [feature.test.ts](../../packages/core/src/feature/feature.test.ts)
 
 **Problem.** Two features expose a method with the same name, or a feature exposes a name the table already has. One of them would be unreachable, so the table is not created.
 
@@ -1891,7 +1893,7 @@ DatakableConfigError: DK_FEATURE_API_CONFLICT: feature "quickSort" exposes "togg
 
 ### DK_FEATURE_INCOMPATIBLE
 
-`error` · development only · config: thrown at creation · fault test: [versioning.test.ts](../packages/core/src/versioning/versioning.test.ts)
+`error` · development only · config: thrown at creation · fault test: [versioning.test.ts](../../packages/core/src/versioning/versioning.test.ts)
 
 **Problem.** A feature declares `requires: { core: '<range>' }` and the installed core does not satisfy it (or the range is not valid semver). The table is not created.
 
@@ -1934,7 +1936,7 @@ DatakableConfigError: DK_FEATURE_INCOMPATIBLE: feature "heatmap" requires @datak
 
 ### DK_CONTROLLED_WITHOUT_HANDLER
 
-`warn` · fault test: [create-table.test.ts](../packages/core/src/table/create-table.test.ts)
+`warn` · fault test: [create-table.test.ts](../../packages/core/src/table/create-table.test.ts)
 
 **Problem.** `options.state` controls some slices, but there is no `onStateChange`: updates to those slices are dropped, so interactions that change them (sorting, paging, …) are frozen.
 
@@ -1980,7 +1982,7 @@ prints (development console):
 
 ### DK_UNSTABLE_COLUMNS
 
-`warn` · `@datakable/react` · development only · fault test: [use-data-table.test.tsx](../packages/react/src/use-data-table.test.tsx)
+`warn` · `@datakable/react` · development only · fault test: [use-data-table.test.tsx](../../packages/react/src/use-data-table.test.tsx)
 
 **Problem.** `useDataTable` received a new `columns` array with the same shape on consecutive renders. Columns are compared by reference: each new array rebuilds the column cache and re-runs the pipeline. (In a re-render caused by the table itself, the columns it already has are kept, so this never loops.)
 
@@ -2024,7 +2026,7 @@ prints (development console):
 
 ### DK_UNSTABLE_OPTION
 
-`warn` · `@datakable/react` · development only · fault test: [use-data-table.test.tsx](../packages/react/src/use-data-table.test.tsx)
+`warn` · `@datakable/react` · development only · fault test: [use-data-table.test.tsx](../../packages/react/src/use-data-table.test.tsx)
 
 **Problem.** `useDataTable` received a new `data`, `fetcher`, `rowKey` function or feature function option (`features[0].searchFn`) reference on consecutive renders. New data is ingested again; a new fetcher does not refetch; features are read once, so a new feature function is ignored (the first one keeps running, a stale closure).
 
@@ -2071,7 +2073,7 @@ prints (development console):
 
 ### DK_STATE_UNKNOWN_KEY
 
-`warn` · fault test: [column-filters.test.ts](../packages/core/src/features/column-filters/column-filters.test.ts)
+`warn` · fault test: [column-filters.test.ts](../../packages/core/src/features/column-filters/column-filters.test.ts)
 
 **Problem.** A state slice (from `initialState`, `state` or `setState`) has an entry for a column that does not exist, e.g. a filter on a renamed column. The entry is ignored; the other entries still apply.
 
@@ -2118,7 +2120,7 @@ prints (development console):
 
 ### DK_TABLE_DESTROYED
 
-`warn` · fault test: [create-table.test.ts](../packages/core/src/table/create-table.test.ts)
+`warn` · fault test: [create-table.test.ts](../../packages/core/src/table/create-table.test.ts)
 
 **Problem.** A table method was called after `table.destroy()`. The call is ignored.
 
@@ -2157,7 +2159,7 @@ prints (development console):
 
 ### DK_UPDATE_LOOP
 
-`error` · fault test: [create-table.test.ts](../packages/core/src/table/create-table.test.ts)
+`error` · fault test: [create-table.test.ts](../../packages/core/src/table/create-table.test.ts)
 
 **Problem.** State updates re-entered from listeners too many rounds in a row (50). The update is dropped to break the loop; the state is unchanged by it.
 
@@ -2200,7 +2202,7 @@ prints (development console):
 
 ### DK_HYDRATION_MISMATCH
 
-`warn` · emitted by `@datakable/react` · fault test: [hydrate.test.tsx](../packages/react/src/hydrate.test.tsx)
+`warn` · emitted by `@datakable/react` · fault test: [hydrate.test.tsx](../../packages/react/src/hydrate.test.tsx)
 
 **Problem.** The table changed between the server render and React's hydration commit: the named state slices (or `rows`, when the data or columns differ) are not what the server rendered. React hydrated with the server snapshot and re-renders with the live one at once, so the server HTML is replaced (a visible flash).
 
@@ -2216,7 +2218,7 @@ prints (development console):
 
 **Example.**
 
-Needs a server render, then a hydration that differs from it; the injecting test is [hydrate.test.tsx](../packages/react/src/hydrate.test.tsx). Built from its details:
+Needs a server render, then a hydration that differs from it; the injecting test is [hydrate.test.tsx](../../packages/react/src/hydrate.test.tsx). Built from its details:
 
 ```text
 ⚠ [DataKable table#1] DK_HYDRATION_MISMATCH: the table changed while React hydrated it: "sorting" differ from the server snapshot
@@ -2230,7 +2232,7 @@ Needs a server render, then a hydration that differs from it; the injecting test
 
 ### DK_SSR_ASYNC_DEFERRED
 
-`info` · fault test: [ssr.test.ts](../packages/core/src/table/ssr.test.ts)
+`info` · fault test: [ssr.test.ts](../../packages/core/src/table/ssr.test.ts)
 
 **Problem.** Information: async work (the `fetcher`, or a `searchFn` for an initial query) does not run during a server render; it starts on the client after hydration. The server HTML has `status: 'pending'` (`<DataTable />` renders its Loading state).
 
@@ -2282,7 +2284,7 @@ prints (development console):
 
 ### DK_RENDER_FAILED
 
-`error` · `@datakable/react` · fault test: [data-table.fault.test.tsx](../packages/react/src/data-table.fault.test.tsx)
+`error` · `@datakable/react` · fault test: [data-table.fault.test.tsx](../../packages/react/src/data-table.fault.test.tsx)
 
 **Problem.** A React component rendered by the table threw. Inside a cell (a component returned by `cell` / `invalidCell`), only that cell renders `⚠` and everything else keeps working; outside the cells (a `components.Empty` / `Loading` / `Error` part), the body shows the Error state. (A throw in the `cell` function itself is [`DK_CALLBACK_FAILED`](#dk_callback_failed).)
 
@@ -2339,7 +2341,7 @@ prints (development console):
 
 ### DK_DEPRECATED
 
-`warn` · fault test: [versioning.test.ts](../packages/core/src/versioning/versioning.test.ts)
+`warn` · fault test: [versioning.test.ts](../../packages/core/src/versioning/versioning.test.ts)
 
 **Problem.** A deprecated API was used. It still works in this version and is removed in the version named; reported once per API per session (across every copy of core). DataKable deprecates for at least one minor version before removing.
 
@@ -2383,7 +2385,7 @@ prints (development console):
 
 ### DK_DUPLICATE_CORE
 
-`error` · development only · fault test: [versioning.test.ts](../packages/core/src/versioning/versioning.test.ts)
+`error` · development only · fault test: [versioning.test.ts](../../packages/core/src/versioning/versioning.test.ts)
 
 **Problem.** Two copies of `@datakable/core` are loaded in one page (detected through a global registry). Each table works with its own copy, but plugins built against the other copy may be ignored or fail registry checks, and the bundle ships core twice. One known false positive: a dev server's hot module reload that re-runs core reports it once.
 
@@ -2414,7 +2416,7 @@ Needs two copies of core in one bundle (the test loads core twice). Built from i
 
 ### DK_VERSION_MISMATCH
 
-`warn` · development only · fault test: [versioning.test.ts](../packages/core/src/versioning/versioning.test.ts)
+`warn` · development only · fault test: [versioning.test.ts](../../packages/core/src/versioning/versioning.test.ts)
 
 **Problem.** `@datakable/core`, `@datakable/react` and `datakable` are released together with one version, and the installed ones differ. It may work, but APIs and types between them can disagree.
 
@@ -2442,7 +2444,7 @@ Needs two installed versions of the release group. Built from its details:
 
 ### DK_DEP_INCOMPATIBLE
 
-`warn` · fault test: [versioning.test.ts](../packages/core/src/versioning/versioning.test.ts)
+`warn` · fault test: [versioning.test.ts](../../packages/core/src/versioning/versioning.test.ts)
 
 **Problem.** A dependency (`exsorted`, `ex-search`, `kk-debounce`) lacks a capability DataKable uses, probably because it was overridden to a version outside the supported range. The feature uses a correct fallback instead (native sort, substring matching, …).
 
@@ -2472,7 +2474,7 @@ Needs the dependency overridden at install time. Built from its details:
 
 ### DK_ENV_FALLBACK
 
-`info` · fault test: [env.test.ts](../packages/core/src/pipeline/env.test.ts)
+`info` · fault test: [env.test.ts](../../packages/core/src/pipeline/env.test.ts)
 
 **Problem.** Information: a runtime capability is missing (an `Intl.Collator` locale for sorting, or `scheduler.yield` for time-sliced work) and DataKable uses a fallback; results are the same.
 
@@ -2516,7 +2518,7 @@ prints (development console):
 
 ### DK_PERF_HINT
 
-`info` · fault test: [env.test.ts](../packages/core/src/pipeline/env.test.ts)
+`info` · fault test: [env.test.ts](../../packages/core/src/pipeline/env.test.ts)
 
 **Problem.** Information from the tracer: a pipeline step took longer than one task's budget (50 ms), so the page could not respond to input while it ran. Reported with the step, the time and the row count.
 
@@ -2568,7 +2570,7 @@ prints (development console):
 
 ### DK_UNSAFE_REDACTION
 
-`warn` · production only · fault test: [redact.test.ts](../packages/core/src/diagnostics/redact.test.ts)
+`warn` · production only · fault test: [redact.test.ts](../../packages/core/src/diagnostics/redact.test.ts)
 
 **Problem.** `diagnostics: { redact: 'full' }` in a production build: raw row keys and cell values (except `sensitive` columns) reach `onDiagnostic`, `getDiagnostics()` and the console. The setting is still applied.
 
@@ -2600,7 +2602,7 @@ Emitted only by a production build, which prints no text; this is the text `data
 
 ### DK_INTERNAL
 
-`error` · fault test: [boundary.test.ts](../packages/core/src/intercept/boundary.test.ts)
+`error` · fault test: [boundary.test.ts](../../packages/core/src/intercept/boundary.test.ts)
 
 **Problem.** An error was thrown from DataKable's own code: likely a DataKable bug (or a plugin wired incorrectly). The operation's fallback is applied and the table keeps working. The fix carries a prefilled GitHub issue link (version, operation, slot, error name; never values). The classifier reads the top stack frame: when DataKable is inlined into an app bundle (or a shared Vite chunk) its frames cannot be attributed, so a bundled production build reports these as [`DK_UNKNOWN`](#dk_unknown). The error message is redacted as a value (`string(N)` under `'safe'` / `'keys'`).
 
@@ -2631,7 +2633,7 @@ A bug in DataKable cannot be produced on purpose (the test injects a throw from 
 
 ### DK_UNKNOWN
 
-`error` · fault test: [boundary.test.ts](../packages/core/src/intercept/boundary.test.ts)
+`error` · fault test: [boundary.test.ts](../../packages/core/src/intercept/boundary.test.ts)
 
 **Problem.** Something was thrown that DataKable could not classify: not a user callback it called (that is `DK_CALLBACK_FAILED`) and not from its own code (`DK_INTERNAL`), e.g. a throwing getter or Proxy in your data, or a non-Error value. The operation's fallback is applied and the table keeps working. In bundled production builds, DataKable's own errors are reported here too (see `DK_INTERNAL`).
 
