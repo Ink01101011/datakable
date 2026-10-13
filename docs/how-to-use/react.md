@@ -8,19 +8,19 @@ renders, replacing parts of `<DataTable />`, and styling it.
 
 | Import from | `useDataTable` / `<DataTable />` with no `features` | `"use client"` |
 | --- | --- | --- |
-| `datakable` | install the default preset: `columnFilters`, `validity`, `search`, `sorting`, `pagination` | no (its `createTable` also runs on the server) |
-| `@datakable/react` | install **no** features | yes, on every module |
+| `datakable` | install the default preset: `columnFilters`, `validity`, `search`, `sorting`, `pagination` | on the `useDataTable` and `<DataTable />` modules only (`createTable` also runs on the server) |
+| `@datakable/react` | install **no** features | on the `useDataTable` and `<DataTable />` modules only |
 
 Both take the same options and return the same types; passing `features` replaces the preset
-entirely. Most apps import from `datakable`. With the Next.js app router, call `useDataTable` or
-render `<DataTable />` from a client component (a file starting with `'use client'`), or import
-them from `@datakable/react`:
+entirely. Most apps import from `datakable`. With the Next.js app router, a server component can
+render `<DataTable />` with plain data props; call `useDataTable`, or pass functions (cell
+components, features, a fetcher), from a client component (a file starting with `'use client'`):
 
 ```tsx
 'use client'
-// app/users/users-table.tsx — a client component of the Next.js app router. `datakable` has no
-// "use client" directive (its createTable also runs on the server), so the file that renders
-// <DataTable /> or calls useDataTable is the client boundary.
+// app/users/users-table.tsx — a client component of the Next.js app router. Only the modules of
+// <DataTable /> and useDataTable are "use client" (createTable also runs on the server); call the
+// hook, or pass functions such as cell components, features or a fetcher, from a file like this.
 import { DataTable } from 'datakable'
 
 type User = { id: number; name: string }

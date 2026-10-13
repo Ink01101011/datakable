@@ -213,8 +213,9 @@ startTable(table)
   [`DK_STATE_UNKNOWN_KEY`](../how-to-fix/errors.md#dk_state_unknown_key).
 - **Server-mode pagination with `initialData` but no `rowCount`** shows one page until the first
   fetch: pass the server's total.
-- **`useDataTable` imported in a server component** (Next.js app router): import it, or
-  `<DataTable />`, in a `'use client'` file (see [React](react.md#which-package)).
+- **`useDataTable` called in a server component** (Next.js app router): Next reports `Attempted to
+  call useDataTable() from the server`. Call it in a `'use client'` file (see
+  [React](react.md#which-package)).
 
 ## See also
 

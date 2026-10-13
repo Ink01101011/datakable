@@ -1,3 +1,5 @@
+'use client'
+
 import type { InvalidRowsMode, TableSchema } from '@datakable/core'
 import {
   DataTable as BareDataTable,

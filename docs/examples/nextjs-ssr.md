@@ -97,10 +97,10 @@ export default async function UsersPage(props: { searchParams: Promise<{ page?: 
 - **Keep the page in the URL:** control `pagination` and `sorting` and write them back with the
   router ([Keep the table's state in the URL](url-state.md)); on the server, parse them into
   `initialState`.
-- **Import from `@datakable/react`:** its `<DataTable />` module is marked `'use client'`, so `<DataTable />`
-  imported from there can be rendered directly by a server component. The features and the fetcher
-  are functions, though, which cannot be passed from a server component; keep them in a client
-  file as here.
+- **Render `<DataTable />` from the server component:** its module is marked `'use client'` (in
+  `datakable` and in `@datakable/react`), so a server component can render it directly. The
+  features and the fetcher are functions, though, which cannot be passed from a server component;
+  keep them in a client file as here.
 - **Without React:** `createDeferred` / `startTable` give your own bindings the same deferral
   ([SSR](../../packages/datakable/README.md#ssr)).
 
