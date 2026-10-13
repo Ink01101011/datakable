@@ -212,6 +212,10 @@ Moved: [DK_FEATURE_INCOMPATIBLE](how-to-fix/errors.md#dk_feature_incompatible).
 
 Moved: [DK_CONTROLLED_WITHOUT_HANDLER](how-to-fix/errors.md#dk_controlled_without_handler).
 
+### DK_CONTROLLED_NOT_FED_BACK
+
+Moved: [DK_CONTROLLED_NOT_FED_BACK](how-to-fix/errors.md#dk_controlled_not_fed_back).
+
 ### DK_UNSTABLE_COLUMNS
 
 Moved: [DK_UNSTABLE_COLUMNS](how-to-fix/errors.md#dk_unstable_columns).

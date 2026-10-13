@@ -189,7 +189,8 @@ describe('sorting-or-filtering-does-nothing.md', () => {
     expect(s.codes()).toContain('DK_CONTROLLED_WITHOUT_HANDLER')
   })
 
-  it('an onStateChange that does not feed the state back: frozen, silently', () => {
+  it('an onStateChange that does not feed the state back: frozen, DK_CONTROLLED_NOT_FED_BACK', () => {
+    vi.useFakeTimers()
     const s = sink()
     const t = createTable({
       data: users,
@@ -201,6 +202,9 @@ describe('sorting-or-filtering-does-nothing.md', () => {
     t.toggleSort('age')
     expect(names(t)).toEqual(['Ada', 'Grace', 'Linus'])
     expect(s.codes()).toEqual([])
+    vi.advanceTimersByTime(1000)
+    vi.useRealTimers()
+    expect(s.codes()).toEqual(['DK_CONTROLLED_NOT_FED_BACK'])
   })
 
   it('the fix: controlled state fed back sorts', async () => {

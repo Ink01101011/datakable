@@ -24,11 +24,11 @@ Read the state right after the call, and the last pipeline run:
 reports [`DK_CONTROLLED_WITHOUT_HANDLER`](errors.md#dk_controlled_without_handler) and drops every
 update to the slice. With an `onStateChange` that does not update what you pass in `state` (it
 only logs, writes somewhere the component does not read, or the `if` around the setter never
-matches), the update is dropped **with no diagnostic at all**: no console warning, nothing in
-`onDiagnostic`, and `explain()` shows a normal pipeline. The only sign is that the slice in
-`table.getState()` never changes. To confirm, log `updater({ sorting })` inside your
-`onStateChange` and check that the value you pass back in `state` on the next render is that
-result.
+matches), the update is dropped. In development the table reports
+[`DK_CONTROLLED_NOT_FED_BACK`](errors.md#dk_controlled_not_fed_back) one second later, once the
+value in `state` is still the old one; in production nothing is reported, and `explain()` shows a
+normal pipeline. To confirm, log `updater({ sorting })` inside your `onStateChange` and check that
+the value you pass back in `state` on the next render is that result.
 
 **Fix:** feed the result back — or, to only set a starting value (restoring a saved view), use
 `initialState` instead and let the table own the slice.
@@ -136,6 +136,7 @@ table.setColumnFilter('city', { type: 'equals', value: 'Paris' })
 ## Related codes
 
 [`DK_CONTROLLED_WITHOUT_HANDLER`](errors.md#dk_controlled_without_handler) ·
+[`DK_CONTROLLED_NOT_FED_BACK`](errors.md#dk_controlled_not_fed_back) ·
 [`DK_FILTER_TYPE_MISMATCH`](errors.md#dk_filter_type_mismatch) ·
 [`DK_OPTION_NO_EFFECT`](errors.md#dk_option_no_effect) ·
 [`DK_MODE_ORDER`](errors.md#dk_mode_order) ·

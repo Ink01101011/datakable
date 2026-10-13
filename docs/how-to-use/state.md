@@ -221,8 +221,9 @@ console.log(filters, validity, search.query, sorting.by, pagination.pageSize)
   `onStateChange`, or move the slice to `initialState` so the table owns it.
 - **Not feeding the value back**: `onStateChange` alone does not change what the table shows. With
   `createTable`, call `setOptions({ state })` with the new value; in React, set the state you pass
-  as `state`. An `onStateChange` that does not feed the value back freezes the slice **without
-  any diagnostic** — see
+  as `state`. An `onStateChange` that does not feed the value back freezes the slice; in
+  development it is reported as
+  [`DK_CONTROLLED_NOT_FED_BACK`](../how-to-fix/errors.md#dk_controlled_not_fed_back) — see
   [Sorting or filtering does nothing](../how-to-fix/sorting-or-filtering-does-nothing.md#the-state-is-controlled-and-not-fed-back).
 - **A listener that always changes state** loops until the depth limit and reports
   [`DK_UPDATE_LOOP`](../how-to-fix/errors.md#dk_update_loop). Compare `state` with `prev` before updating.
