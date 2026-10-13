@@ -7,7 +7,8 @@ This is the batteries-included entry. It re-exports [`@datakable/react`](https:/
 preset — `columnFilters()`, `validity()`, `search()`, `sorting()`, `pagination()` — when you pass no
 `features`.
 
-> Pre-release (`0.x`): the API may still change before 1.0.
+> Version 1.0: the public API is stable and follows semantic versioning from here. Guides,
+> examples and troubleshooting: the [documentation](https://github.com/Ink01101011/datakable/blob/main/docs/README.md).
 
 ## Install
 
@@ -80,7 +81,9 @@ export function Users({ users }: { users: User[] }) {
 `useDataTable` returns the table (its methods plus every installed feature's API) with `state` and
 `rowModel` for the current render. Everything is typed against the row type: `toggleSort('nmae')`
 or `setColumnFilter('name', { type: 'range', … })` do not compile. Passing `features` replaces the
-preset entirely, and only the installed features' state and methods exist on the type.
+preset entirely, and only the installed features' state and methods exist on the type. `features`
+is read once, so hoist the array out of the component with `as const`: a plain array type loses
+which features it holds, and the table's type loses their methods (TS2339).
 
 How options are synced, which ones are read once, and why `columns` must be stable:
 [`@datakable/react`](https://github.com/Ink01101011/datakable/tree/main/packages/react).
@@ -187,7 +190,7 @@ import 'datakable/messages'
 Redaction, `onDiagnostic` (e.g. Sentry), `strict` and `explain()`:
 [`@datakable/core` diagnostics](https://github.com/Ink01101011/datakable/tree/main/packages/core#diagnostics).
 
-## `<DataTable />`
+## DataTable
 
 ```tsx
 import { DataTable, type DataTableComponents, useDataTable } from 'datakable'
@@ -256,8 +259,12 @@ async function fetchUsers({ sort, pageIndex, pageSize, signal }: FetchParams) {
   return (await res.json()) as FetchResult<User> // { rows, rowCount }
 }
 
-// Read once, at creation: define features outside the component.
-const features = [sorting({ mode: 'server' }), pagination({ mode: 'server', pageSize: 20 })]
+// Read once, at creation: define features outside the component. `as const` keeps the tuple
+// type, so a `useDataTable` result would keep each feature's methods (here <DataTable /> needs none).
+const features = [
+  sorting({ mode: 'server' }),
+  pagination({ mode: 'server', pageSize: 20 }),
+] as const
 
 // Rendered on the server, then hydrated. `firstPage` / `rowCount` were fetched on the server
 // for the same initial state (e.g. parsed from the URL and passed as `initialState`).

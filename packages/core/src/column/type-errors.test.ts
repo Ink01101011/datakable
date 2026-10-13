@@ -7,7 +7,7 @@ import { beforeAll, describe, expect, test } from 'vitest'
 // file is compiled in memory with packages/core/tsconfig.json, and each diagnostic is matched to
 // its `[E<n>]` marker. Fragments are asserted rather than full strings: the full text embeds the
 // whole `Path<User>` union, whose member order is a TypeScript implementation detail.
-// If a TypeScript upgrade breaks this, update docs/reading-type-errors.md with the new wording.
+// If a TypeScript upgrade breaks this, update docs/how-to-fix/reading-type-errors.md with the new wording.
 
 const here = decodeURIComponent(new URL('.', import.meta.url).pathname)
 const fixture = `${here}type-errors.test-d.ts`
@@ -73,7 +73,7 @@ function expectError(marker: string, code: number, fragments: string[]) {
   for (const fragment of fragments) expect(error?.text).toContain(fragment)
 }
 
-describe('pinned type-error messages (docs/reading-type-errors.md)', () => {
+describe('pinned type-error messages (docs/how-to-fix/reading-type-errors.md)', () => {
   test('the fixture has no errors outside the marked lines', () => {
     const file = service.getProgram()?.getSourceFile(fixture)
     const lines = source.split('\n')

@@ -5,7 +5,8 @@ features (column filters, validity, search, sorting, pagination), data modes, sc
 diagnostics and `explain()`. No React. For React, use [`datakable`](https://github.com/Ink01101011/datakable/tree/main/packages/datakable) or
 [`@datakable/react`](https://github.com/Ink01101011/datakable/tree/main/packages/react).
 
-> Pre-release (`0.x`): the API may still change before 1.0.
+> Version 1.0: the public API is stable and follows semantic versioning from here. Guides,
+> examples and troubleshooting: the [documentation](https://github.com/Ink01101011/datakable/blob/main/docs/README.md).
 
 ```bash
 npm install @datakable/core
@@ -184,7 +185,7 @@ table.setColumnFilter('name', { type: 'range', value: { min: 1 } })
 
 Other column fields: `cell` (custom render; `R` is `ReactNode` in React), `sortable`, `sortFn`,
 `sortBy`, `invalidCell`. Values without a renderer go through the default formatter (`null` →
-`''`, dates `toLocaleString()`, arrays of primitives joined). [Reading type errors](https://github.com/Ink01101011/datakable/blob/main/docs/reading-type-errors.md)
+`''`, dates `toLocaleString()`, arrays of primitives joined). [Reading type errors](https://github.com/Ink01101011/datakable/blob/main/docs/how-to-fix/reading-type-errors.md)
 explains the compile errors these rules produce.
 
 ## Schema validation

@@ -16,8 +16,12 @@ async function fetchUsers({ sort, pageIndex, pageSize, signal }: FetchParams) {
   return (await res.json()) as FetchResult<User> // { rows, rowCount }
 }
 
-// Read once, at creation: define features outside the component.
-const features = [sorting({ mode: 'server' }), pagination({ mode: 'server', pageSize: 20 })]
+// Read once, at creation: define features outside the component. `as const` keeps the tuple
+// type, so a `useDataTable` result would keep each feature's methods (here <DataTable /> needs none).
+const features = [
+  sorting({ mode: 'server' }),
+  pagination({ mode: 'server', pageSize: 20 }),
+] as const
 
 // Rendered on the server, then hydrated. `firstPage` / `rowCount` were fetched on the server
 // for the same initial state (e.g. parsed from the URL and passed as `initialState`).

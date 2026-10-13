@@ -6,7 +6,7 @@ import { injectedBy, REACT_TESTS } from './injected-by'
  * Catalog completeness (§8.3, §11; R6 carry-over): every code registered through the public index
  * has a full definition and at least one test that injects it (`injected-by.ts`: the suites here
  * check the real diagnostic; other codes point at the unit test that triggers them, and that file
- * must name the code). A new code with no entry fails this test. `docs/errors.md` (one section and
+ * must name the code). A new code with no entry fails this test. `docs/how-to-fix/errors.md` (one section and
  * anchor per code, with a verified example) is checked by `packages/datakable/src/errors-doc.test.tsx`
  * against the full registry, core + `@datakable/react` (DK_RENDER_FAILED, DK_UNSTABLE_COLUMNS,
  * DK_UNSTABLE_OPTION are registered there; DK_HYDRATION_MISMATCH is defined in core and emitted by

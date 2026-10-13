@@ -15,7 +15,8 @@ import {
 } from './index'
 
 /**
- * `docs/errors.md` (T38, §8.3, §11). The codes come from the real registries: `datakable` loads
+ * `docs/how-to-fix/errors.md` (T38, §8.3, §11; moved from `docs/errors.md` by D3, which keeps a
+ * stub there for the published docs URLs). The codes come from the real registries: `datakable` loads
  * `@datakable/core` and `@datakable/react`, which register every code they can emit. For each code
  * CI fails without:
  * - a `## DK_*` section whose GitHub anchor is the one the diagnostic's `docs` URL links to, with
@@ -44,7 +45,7 @@ declare global {
   }
 }
 
-const page = fs.readFileSync(`${import.meta.dirname}/../../../docs/errors.md`, 'utf8')
+const page = fs.readFileSync(`${import.meta.dirname}/../../../docs/how-to-fix/errors.md`, 'utf8')
 const sections = parseErrorsDoc(page)
 /** The ```text blocks of the page's `## <heading>` section. */
 const textBlocks = (heading: string) => {
@@ -54,14 +55,14 @@ const textBlocks = (heading: string) => {
 }
 const section = (code: string) => sections.find((s) => s.code === code)
 
-/** `packages/core/src/../../react/src/x` → `../packages/react/src/x` (relative to docs/). */
+/** `packages/core/src/../../react/src/x` → `../../packages/react/src/x` (relative to docs/how-to-fix/). */
 function repoPath(path: string): string {
   const out: string[] = []
   for (const part of path.split('/')) {
     if (part === '..') out.pop()
     else out.push(part)
   }
-  return `../${out.join('/')}`
+  return `../../${out.join('/')}`
 }
 
 const codes = listDiagnosticCodes()
@@ -121,7 +122,7 @@ function built(code: string): string {
   return `${header}\n${body}`
 }
 
-describe('docs/errors.md', () => {
+describe('docs/how-to-fix/errors.md', () => {
   it('has a section for every registered code, and none for unknown codes', () => {
     expect(codes.length).toBeGreaterThan(50)
     expect(codes.filter((c) => !section(c))).toEqual([])
@@ -187,6 +188,23 @@ describe('docs/errors.md', () => {
       expect(getDiagnosticDefinition(code)?.docs).toBeUndefined()
     },
   )
+
+  it('the old address docs/errors.md (the docs URL diagnostics print) forwards every code here', () => {
+    // Diagnostics link to `…/docs/errors.md#<code>` (diagnostics/build.ts): that page is a stub
+    // whose `### DK_*` heading per code keeps the anchor and links to the section on this page.
+    const stub = parseErrorsDoc(
+      fs.readFileSync(`${import.meta.dirname}/../../../docs/errors.md`, 'utf8'),
+    )
+    const forwarded = (code: string) => {
+      const s = stub.find((x) => x.code === code)
+      const anchor = section(code)?.anchor
+      return s?.body.includes(`](how-to-fix/errors.md#${anchor})`) === true
+    }
+    expect(codes.filter((c) => !forwarded(c))).toEqual([])
+    expect(stub.map((s) => s.code).filter((c) => !codes.includes(c))).toEqual([])
+    // A stub only: no examples or outputs left behind to drift.
+    expect(stub.filter((s) => s.code_block || s.output).map((s) => s.code)).toEqual([])
+  })
 
   it('the console format shown in "Reading a diagnostic" is DK_DUPLICATE_ROW_KEY\'s real output', () => {
     const [shown] = textBlocks('Reading a diagnostic')
