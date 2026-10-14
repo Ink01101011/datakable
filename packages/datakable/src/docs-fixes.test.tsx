@@ -37,3 +37,13 @@ describe('#15: datakable/messages in the Next.js app router', () => {
     expect(DatakableMessages()).toBe(null)
   })
 })
+
+describe('#17: the app-router pages await nothing outside <Suspense> (Next 16 cacheComponents)', () => {
+  it('ssr.md: the page renders a Suspense boundary and loads inside it', async () => {
+    const { Suspense } = await import('react')
+    const { default: Page } = await import('./docs-examples/how-to-use/ssr/3-page')
+    const element = Page() as unknown as { type: unknown }
+    expect(element).not.toBeInstanceOf(Promise)
+    expect(element.type).toBe(Suspense)
+  })
+})
