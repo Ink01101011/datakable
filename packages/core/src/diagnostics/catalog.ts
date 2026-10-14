@@ -78,8 +78,8 @@ export function defineDiagnostic<const C extends DiagnosticCode>(
   text?: DiagnosticText<C> | false,
 ): DiagnosticDefinition<C> {
   const definition = (text ? { ...meta, ...text } : meta) as DiagnosticDefinition<C>
-  const prev = registry.get(definition.code)
   // Development check: codes are fixed at build time, a production bundle skips it.
+  const prev = DEV ? registry.get(definition.code) : undefined
   if (DEV && prev && prev.level !== definition.level) {
     throw new Error(
       `[DataKable] diagnostic code ${definition.code} is already defined as level ` +
