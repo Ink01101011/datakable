@@ -21,6 +21,11 @@ server render, starting state from the URL with `initialState`, server-fetched r
 - **Time-sliced work never runs** on the server or for the first row model (building a search
   index, ranking strings for a large sort), so it cannot make the two renders differ.
 
+The server's build mode comes from `process.env.NODE_ENV` when the server runs, unless the server
+code is bundled with it replaced. Start a production server that is not bundled (Node, a Nuxt /
+Nitro `node-server` build) with `NODE_ENV=production`, or it reports in development mode, with raw
+row keys ([Bundler requirement](getting-started.md#bundler-requirement)).
+
 ## Starting state from the URL
 
 `initialState` gives the starting value of any slice — for example parsed from the query string.

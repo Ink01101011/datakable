@@ -69,3 +69,24 @@ describe('#31: server mode — filteredCount / totalCount count the loaded page'
     )
   })
 })
+
+describe('#47: code that is not bundled reads NODE_ENV when it runs', () => {
+  it('core reads process.env.NODE_ENV at load time, so a server must set it', async () => {
+    const load = async (env: string | undefined) => {
+      vi.resetModules()
+      vi.stubEnv('NODE_ENV', env)
+      try {
+        return (await import('../../core/src/diagnostics/env')).DEV
+      } finally {
+        vi.unstubAllEnvs()
+      }
+    }
+    expect(await load(undefined)).toBe(true) // e.g. `node .output/server/index.mjs`
+    expect(await load('production')).toBe(false)
+    const text = prose('docs/how-to-use/getting-started.md')
+    expect(text).not.toContain('Node needs nothing')
+    expect(page('docs/how-to-use/getting-started.md')).toContain(
+      'NODE_ENV=production node .output/server/index.mjs',
+    )
+  })
+})
