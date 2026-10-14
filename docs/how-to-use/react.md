@@ -361,8 +361,8 @@ For a default look, import `datakable/styles.css` (or `@datakable/react/styles.c
 app entry: `import 'datakable/styles.css'`. It styles only these hooks; every selector sits in
 `:where()`, so it has zero specificity and any rule of yours wins. Theme it with custom properties
 on `[data-datakable]`: `--dk-font-size`, `--dk-fg`, `--dk-muted`, `--dk-bg`, `--dk-subtle`,
-`--dk-border`, `--dk-accent`, `--dk-danger`, `--dk-danger-bg`, `--dk-radius`, `--dk-cell-py`,
-`--dk-cell-px`. A dark set applies under `prefers-color-scheme: dark`.
+`--dk-border`, `--dk-control-border` (the search input's border, ≥ 3:1 against `--dk-bg`),
+`--dk-accent`, `--dk-danger`, `--dk-danger-bg`, `--dk-radius`, `--dk-cell-py`, `--dk-cell-px`. A dark set applies under `prefers-color-scheme: dark`.
 
 ```css
 [data-datakable] {

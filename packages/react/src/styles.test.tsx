@@ -278,4 +278,16 @@ describe('styles.css contrast (WCAG 2.1 AA)', () => {
       }
     },
   )
+
+  it.each(['light', 'dark'])(
+    '%s: the search input border is ≥ 3:1 against the background (#58)',
+    (t) => {
+      const v = themes[t] as Record<string, string>
+      const border = /border\s*:[^;]*var\((--dk-[a-z-]+)\)/.exec(
+        rule('[data-dk-search] input'),
+      )?.[1]
+      const r = ratio(rgb(v[border as string] as string), rgb(v['--dk-bg'] as string))
+      expect(r, `${border} on --dk-bg`).toBeGreaterThanOrEqual(3)
+    },
+  )
 })
