@@ -98,34 +98,26 @@ export const proseMessages: Readonly<Record<string, string>> = {
  * neither has the key.
  */
 export function expandProse(v: string, dev: boolean): string {
-  const i = v.indexOf('|')
-  const key = i < 0 ? v : v.slice(0, i)
+  const [key, ...args] = v.split('|') as [string, ...string[]]
   const text = (DEV && dev ? proseMessages[key] : undefined) ?? installedText(key)
-  if (typeof text !== 'string' || i < 0) return typeof text === 'string' ? text : v
   // An argument may be a key itself (`'ranks|custom-threw'`).
-  const args = v
-    .slice(i + 1)
-    .split('|')
-    .map((a) => expandProse(a, dev))
-  return text.replace(/\{(\d)\}/g, (_, n: string) => args[Number(n)] as string)
+  return typeof text === 'string'
+    ? text.replace(/\{(\d)\}/g, (_, n: string) => expandProse(args[+n] as string, dev))
+    : v
 }
 
 /** The detail fields that may hold a prose key. */
 const FIELDS = ['fallback', 'reason', 'problem', 'expected'] as const
 
-/** `details` with its prose keys expanded (a copy; `details` itself when there are none). */
+/** A copy of `details` with its prose keys expanded. */
 export function expandDetails(
   details: Record<string, unknown>,
   dev: boolean,
 ): Record<string, unknown> {
-  let out: Record<string, unknown> | undefined
+  const out = { ...details }
   for (const f of FIELDS) {
     const v = details[f]
-    if (typeof v !== 'string') continue
-    const x = expandProse(v, dev)
-    if (x === v) continue
-    out ??= { ...details }
-    out[f] = x
+    if (typeof v === 'string') out[f] = expandProse(v, dev)
   }
-  return out ?? details
+  return out
 }
