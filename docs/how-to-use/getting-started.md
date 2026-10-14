@@ -10,7 +10,8 @@ bundler setting DataKable needs. Every later guide builds on what is here.
 npm install datakable react
 ```
 
-`datakable` needs React `>=18` and ships ESM and CJS with types. It depends on
+`datakable` needs React `>=18` and ships ESM and CJS with types. Where it runs in Node.js (SSR,
+tests, scripts), it needs Node.js `>=18.18`. It depends on
 [`@datakable/react`](../../packages/react/README.md) and
 [`@datakable/core`](../../packages/core/README.md), which are installed with it and always share
 its version.

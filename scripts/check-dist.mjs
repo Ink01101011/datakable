@@ -1,6 +1,6 @@
 // Package-contents guard for the BUILT packages: every emitted .js / .cjs file carries exactly one
 // `//# sourceMappingURL=` comment (#35: a rollup treeshake pass over esbuild output appended a
-// second one). Run after `pnpm build`.
+// second one), and every package declares `engines.node` (#37). Run after `pnpm build`.
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -29,8 +29,40 @@ for (const pkg of packages) {
   }
 }
 
+// Every package declares `engines.node` (#37), and no lower than what its runtime dependencies
+// declare: a consumer on an older Node would install a dependency that does not support it.
+const manifest = (dir) => JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'))
+const minVersion = (range) => /^>=\s*(\d+)(?:\.(\d+))?(?:\.(\d+))?$/.exec(range ?? '')?.slice(1)
+const below = (a, b) => {
+  for (let i = 0; i < 3; i++) {
+    const d = Number(a[i] ?? 0) - Number(b[i] ?? 0)
+    if (d !== 0) return d < 0
+  }
+  return false
+}
+for (const pkg of packages) {
+  const dir = join(root, 'packages', pkg)
+  const { name, engines, dependencies = {} } = manifest(dir)
+  const own = minVersion(engines?.node)
+  if (!own) {
+    errors.push(
+      `${name}: package.json needs "engines": { "node": ">=x.y.z" } (got ${JSON.stringify(engines?.node)})`,
+    )
+    continue
+  }
+  for (const dep of Object.keys(dependencies)) {
+    const required = minVersion(manifest(join(dir, 'node_modules', dep)).engines?.node)
+    if (required && below(own, required)) {
+      errors.push(
+        `${name}: engines.node "${engines.node}" is lower than its dependency ${dep} ` +
+          `(>=${required.join('.')}) — raise engines.node in packages/${pkg}/package.json`,
+      )
+    }
+  }
+}
+
 if (errors.length > 0) {
   for (const e of errors) console.error(`check:dist: ${e}`)
   process.exit(1)
 }
-console.log(`check:dist: ${files} JS files, one sourceMappingURL each`)
+console.log(`check:dist: ${files} JS files, one sourceMappingURL each; engines.node declared`)
