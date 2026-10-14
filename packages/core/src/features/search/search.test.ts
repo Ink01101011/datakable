@@ -304,6 +304,30 @@ describe('search(): client matching (§6.3)', () => {
     expect(ids(t)).toEqual([2])
     expect(t.getState().search.input).toBe('  bob ')
   })
+
+  it('NFC and NFD spellings match each other, like the contains filter (#30)', async () => {
+    const data = [
+      { id: 0, name: 'Zoë' }, // NFC
+      { id: 1, name: 'Zoë' }, // NFD
+      { id: 2, name: 'Zoe' },
+      { id: 3, name: 'กำ' }, // Thai, NFC-stable
+    ]
+    for (const caseSensitive of [false, true]) {
+      const t = createTable({
+        data,
+        onDiagnostic,
+        columns: [{ key: 'name' }],
+        features: [search({ caseSensitive, fuzzyMaxDistance: 0 })],
+      })
+      const zo = caseSensitive ? 'Zo' : 'zo'
+      await t.setSearch(`${zo}ë`)
+      expect(ids(t), `NFC query, caseSensitive ${caseSensitive}`).toEqual([0, 1])
+      await t.setSearch(`${zo}ë`)
+      expect(ids(t), `NFD query, caseSensitive ${caseSensitive}`).toEqual([0, 1])
+      await t.setSearch('กำ')
+      expect(ids(t)).toEqual([3])
+    }
+  })
 })
 
 describe('search(): pipeline (§3.3)', () => {

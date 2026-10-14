@@ -81,6 +81,35 @@ function numberReader(values: Float64Array): Read | undefined {
   return (r) => String(values[r])
 }
 
+/** `s` may change under NFC: it has a code unit from U+0300 (combining marks and up). */
+function mayDenormalize(s: string): boolean {
+  for (let i = 0; i < s.length; i++) if (s.charCodeAt(i) >= 0x300) return true
+  return false
+}
+
+/**
+ * Reads one column's values in NFC (#30), normalised once here, never per keystroke: the rows whose
+ * value is not NFC (rare: NFD input from macOS, Thai or Vietnamese keyboards) keep their NFC form
+ * in a sparse map; every other row reads through `read` unchanged. Time-sliced by `CHUNK` rows.
+ */
+function* nfc(size: number, read: Read): Generator<undefined, Read, undefined> {
+  let over: Map<number, string> | undefined
+  for (let r = 0; r < size; r++) {
+    const v = read(r)
+    if (mayDenormalize(v)) {
+      const n = v.normalize('NFC')
+      if (n !== v) {
+        over ??= new Map()
+        over.set(r, n)
+      }
+    }
+    if (r % CHUNK === CHUNK - 1) yield
+  }
+  if (!over) return read
+  const map = over
+  return (r) => map.get(r) ?? read(r)
+}
+
 /**
  * Builds the matcher over the formatted values of the searchable columns (what the user sees), once
  * per data + columns, as a time-sliced job (§9.1): one column read per slice. Searchable columns are
@@ -111,19 +140,22 @@ export function* buildIndex(
     if (!read) {
       const formatted = ctx.getFormattedValues(col.id)
       if (!formatted) continue
-      read = (r) => formatted[r] ?? ''
+      const strings: Read = (r) => formatted[r] ?? ''
+      read = yield* nfc(ctx.data.length, strings)
     }
     keys.push({ name: `c${keys.length}`, weight })
     reads.push(read)
     yield
   }
   if (keys.length === 0) return null
-  // Values are folded per chunk while matching, and so is the query.
+  // Values (NFC already) are folded per chunk while matching; the query is normalised as well, so
+  // NFC and NFD spellings match each other like in the `contains` filter (#30).
   const fold = (v: string) => (config.caseSensitive ? v : v.toLowerCase())
+  const foldQuery = (q: string) => fold(q.normalize('NFC'))
   const at = (k: number, r: number) => fold((reads[k] as Read)(r))
   return useExSearch
-    ? exSearchIndex(ctx.data.length, keys, at, fold, config)
-    : containsIndex(keys, at, fold, config)
+    ? exSearchIndex(ctx.data.length, keys, at, foldQuery, config)
+    : containsIndex(keys, at, foldQuery, config)
 }
 
 /** Matches `rows` chunk by chunk (`score` decides alone, so chunks match like the whole). */
