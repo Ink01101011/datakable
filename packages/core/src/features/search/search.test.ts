@@ -310,6 +310,43 @@ describe('search(): client matching (§6.3)', () => {
     await opted.setSearch('2020')
     expect(opted.getRowModel().rows.map((r) => r.index)).toEqual([0])
     expect(seen.filter((d) => d.code === 'DK_SEARCH_COLUMN_SKIPPED')).toHaveLength(3)
+    // Without any weight, a `format` alone does not opt a Date or an accessor's arrays in.
+    const formatted = createTable({
+      data,
+      onDiagnostic,
+      columns: [
+        { key: 'name' },
+        { key: 'joined', format: (d: Date) => String(d.getUTCFullYear()) },
+        { id: 'list', accessor: (r: (typeof data)[number]) => r.tags },
+      ],
+      features: [search({ threshold: 0.9 })],
+    })
+    await formatted.setSearch('2020')
+    expect(formatted.getRowModel().rows.map((r) => r.index)).toEqual([])
+    await formatted.setSearch('red')
+    expect(formatted.getRowModel().rows.map((r) => r.index)).toEqual([1])
+    expect(seen.filter((d) => d.code === 'DK_SEARCH_COLUMN_SKIPPED').length).toBe(5)
+  })
+
+  it('a key column is read from the rows while matching; a throwing read goes through the cache', async () => {
+    let throws = false
+    const row = (id: number, name: string) => ({
+      id,
+      get name() {
+        if (throws && id === 1) throw new Error('getter')
+        return name
+      },
+    })
+    const data = [row(0, 'Ada'), row(1, 'Bob')]
+    const t = createTable({ data, onDiagnostic, features: [search({ threshold: 0.9 })] })
+    await t.setSearch('bob')
+    expect(t.getRowModel().rows.map((r) => r.index)).toEqual([1])
+    // A read that throws while the index is built: the column cache reads (and reports) it.
+    throws = true
+    const u = createTable({ data, onDiagnostic, features: [search({ threshold: 0.9 })] })
+    await u.setSearch('ada')
+    expect(u.getRowModel().rows.map((r) => r.index)).toEqual([0])
+    expect(codes()).toContain('DK_CALLBACK_FAILED')
   })
 
   it('accessor columns are searchable', async () => {

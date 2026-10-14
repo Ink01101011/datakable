@@ -62,43 +62,27 @@ describe('§9.3 pipeline memory, real default preset, 100k rows (dist, productio
     expect(t.getData()).toBe(data)
   })
 
-  // #27: zero-config search over mixed column types (the PVT data shape). Columns of primitives
-  // (strings, nullable numbers, number | string, booleans) keep no formatted copy; object columns
-  // (dates, arrays, nested objects) keep their formatted strings in the column cache. Every
-  // searched column still costs its values array (8 bytes per row in Node), so the budget holds
-  // for a few searched columns: five primitive columns are held to it, seven and all ten printed.
-  it(`zero-config search, 5 mixed primitive columns: ≤ ${BUDGET_MB} MB (7 and 10 printed)`, async () => {
+  // #27: zero-config search over the PVT data shape (ten mixed-type fields). Only the columns of
+  // primitives are searched (strings, nullable numbers, number | string, booleans): seven here;
+  // `joined` (Date | string), `tags` (arrays) and `address` (objects) need a `search` weight. A
+  // primitive key column is read from the rows while matching: no values array, no formatted copy.
+  it(`zero-config search, the 10-column PVT shape: ≤ ${BUDGET_MB} MB`, async () => {
     const data = mixedUsers(N)
-    const five = data.map(({ id, name, age, balance, isActive }) => ({
-      id,
-      name,
-      age,
-      balance,
-      isActive,
-    }))
-    const seven = data.map(({ joined, tags, address, ...rest }) => rest)
-    const run = async (rows: readonly { id: number }[], label: string) => {
-      const { mb, value: t } = await measureHeap(async () => {
-        const t = createTable({
-          data: rows,
-          rowKey: 'id',
-          features: createDefaultFeatures(),
-          onDiagnostic() {},
-        })
-        t.getRowModel()
-        await expect(t.setSearch('user 12')).resolves.toEqual({ status: 'applied' })
-        return t
+    const { mb, value: t } = await measureHeap(async () => {
+      const t = createTable({
+        data,
+        rowKey: 'id',
+        features: createDefaultFeatures(),
+        onDiagnostic() {},
       })
-      console.info(`[§9.3 memory] zero-config search, ${label}: ${mb.toFixed(2)} MB`)
-      expect(t.getRowModel().filteredCount).toBeGreaterThan(0)
-      expect(t.getData()).toBe(rows)
-      return mb
-    }
-    expect(await run(five, `5 primitive columns (budget ${BUDGET_MB})`)).toBeLessThanOrEqual(
-      BUDGET_MB,
-    )
-    await run(seven, '7 primitive columns')
-    await run(data, 'all 10 columns (+ Date | string, arrays, objects)')
+      t.getRowModel()
+      await expect(t.setSearch('user 12')).resolves.toEqual({ status: 'applied' })
+      return t
+    })
+    console.info(`[§9.3 memory] zero-config search, 10-column PVT shape: ${mb.toFixed(2)} MB`)
+    expect(t.getRowModel().filteredCount).toBeGreaterThan(0)
+    expect(mb).toBeLessThanOrEqual(BUDGET_MB)
+    expect(t.getData()).toBe(data)
   })
 
   it(`filter + sort, unpaginated (90k visible rows): ≤ ${BUDGET_MB} MB`, () => {
