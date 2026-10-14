@@ -127,12 +127,14 @@ function* nfc(size: number, read: Read): Generator<undefined, Read, undefined> {
 /**
  * Builds the matcher over the formatted values of the searchable columns (what the user sees), once
  * per data + columns, as a time-sliced job (§9.1): one column read per slice. Searchable columns are
- * those with a `search` weight > 0; when no column declares `search`, every column is searchable at
- * weight 1. `null` when nothing is searchable. The values are read from the column cache, never
- * copied (§9.3 memory): a column of numbers or other primitives without `format` is stringified
- * while matching (no formatted strings are cached for it, #27), and the case is folded per chunk
- * while matching. Only a column with `format` or with object values (dates, arrays) keeps its
- * formatted strings in the column cache.
+ * those with a `search` weight > 0. When no column declares `search`, the columns of primitives
+ * (strings, numbers, booleans, nullable) are searchable at weight 1, and a column of dates, arrays
+ * or other objects is not (#27: it would keep a formatted string per row; it opts in with a
+ * weight; `DK_SEARCH_COLUMN_SKIPPED` in development). `null` when nothing is searchable. The values
+ * are read from the column cache, never copied (§9.3 memory): a column of numbers or other
+ * primitives without `format` is stringified while matching (no formatted strings are cached for
+ * it, #27), and the case is folded per chunk while matching. Only a column with `format` or with
+ * object values (dates, arrays) keeps its formatted strings in the column cache.
  */
 export function* buildIndex(
   ctx: RowModelContext,
@@ -148,13 +150,19 @@ export function* buildIndex(
     const w = (col.def as { search?: unknown }).search
     const weight = declared ? (typeof w === 'number' && w > 0 ? w : 0) : 1
     if (weight === 0) continue
+    const values = ctx.getColumnValues(col.id)
+    if (!values) continue
+    yield // reading a column is a task of its own (#40)
+    const numbers = values instanceof Float64Array
+    let raw = numbers ? undefined : primitiveReader(values)
+    if (!declared && !numbers && !raw) {
+      if (DEV) ctx.emit('DK_SEARCH_COLUMN_SKIPPED', { column: col.id, index: col.index })
+      continue
+    }
     let read: Read
-    const values = col.format ? undefined : ctx.getColumnValues(col.id)
-    if (values) yield // reading a column is a task of its own (#40)
-    if (values instanceof Float64Array) read = numberReader(values)
+    if (numbers && !col.format) read = numberReader(values)
     else {
-      let raw = values && primitiveReader(values)
-      if (!raw) {
+      if (col.format || !raw) {
         // Time-sliced in a table run (#40): dates or a heavy `format` are not one long task.
         const sliced = (ctx as RowModelContext & SlicedFormatting).formattedSliced
         const formatted = sliced ? yield* sliced(col.id) : ctx.getFormattedValues(col.id)

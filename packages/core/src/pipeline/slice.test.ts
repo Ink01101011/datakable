@@ -398,7 +398,8 @@ describe('search: sliced projection and matching (§6.3, §9.1)', () => {
   })
 
   it('a slow formatted column is formatted in time-sliced batches, each row once (#40)', async () => {
-    // Dates and a `format` that throws on every 7th row: what a zero-config table formats.
+    // Dates and a `format` that throws on every 7th row (a date column is searched once it has a
+    // weight, #27).
     const data = Array.from({ length: 3000 }, (_, i) => ({
       id: i,
       name: `name ${i}`,
@@ -408,7 +409,10 @@ describe('search: sliced projection and matching (§6.3, §9.1)', () => {
       if (d.getUTCDate() % 7 === 0) throw new RangeError('bad day')
       return d.toISOString().slice(0, 10)
     })
-    const cols = [{ key: 'name' as const }, { key: 'when' as const, format }]
+    const cols = [
+      { key: 'name' as const, search: 1 },
+      { key: 'when' as const, search: 1, format },
+    ]
     const sync = createTable({ data, columns: cols, features: [search()] })
     sync.getRowModel()
     await sync.setSearch('2020-03-14')

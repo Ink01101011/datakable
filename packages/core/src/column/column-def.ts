@@ -64,7 +64,11 @@ export type SortAlgorithm =
 /** Fields shared by every column whose value type is `V`. */
 type BaseColumn<T, V, R> = {
   header?: string
-  /** Search weight; omit to exclude the column from search. */
+  /**
+   * Search weight. Once any column declares one, only weighted columns are searched; when none
+   * does, the columns of strings, numbers and booleans are (a date, array or object column needs a
+   * weight to be searched).
+   */
   search?: number
   sortable?: boolean
   sortFn?: (a: V, b: V) => number
