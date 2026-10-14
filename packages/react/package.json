@@ -1,6 +1,6 @@
 {
   "name": "@datakable/react",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "React bindings for DataKable — useDataTable hook and DataTable component.",
   "license": "MIT",
   "author": "Supakit Kitjanabumrungsak",

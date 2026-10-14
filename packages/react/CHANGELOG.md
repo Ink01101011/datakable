@@ -1,5 +1,114 @@
 # @datakable/react
 
+## 1.1.0
+
+### Minor Changes
+
+- 00ff267: Smaller production bundles: diagnostic details that are sentences in development (`fallback`,
+  `reason`, `problem`, `expected`) are now short keys in production, e.g.
+  `fallback: 'cells-undefined'` instead of `'the failed cells read as undefined'`, or
+  `reason: 'page-size|10'` (a key and its arguments) instead of `'pageSize was replaced by 10'`.
+  Codes, `where`, levels and every other detail are unchanged, and development builds read exactly
+  as before. To get the sentences back in production, import the messages once in the app entry:
+  `import 'datakable/messages'` (or `@datakable/core/messages`); the details then read exactly as in
+  development. The keys are listed in `packages/core/src/diagnostics/prose.ts`.
+
+### Patch Changes
+
+- 7090c8d: `styles.css` no longer fades the stale rows to `opacity: 0.6` while the table is busy over them
+  (refresh, server or debounced search): that dropped body text to 4.24:1 in the light theme (WCAG
+  1.4.3 needs 4.5:1), and flagged cells to 2.59:1. The rows keep full contrast; the "Updating…"
+  indicator signals the refresh and the rows get `cursor: progress`. Fixes #57.
+- e5e34cc: `<DataTable caption="Customers" />` names its search box "Search Customers" and its pager
+  `<nav>` "Customers pagination" (still "Search" / "Pagination" without a text caption), so two
+  tables on one page no longer share a control name and a landmark name. Custom `SearchInput` /
+  `Pagination` components receive the name as the new `label` prop. Fixes #59.
+- 43bd2d3: `styles.css`: the search input's border used `--dk-border` (the table-rule colour), only 1.43:1
+  (light) / 1.92:1 (dark) against the background, below WCAG 1.4.11's 3:1 for a control boundary. It
+  now uses a new token, `--dk-control-border`: `#818b98` (3.45:1 on `#fff`) and `#6e7681` in the
+  dark set (4.12:1 on `#0d1117`). `--dk-border` still draws the table rules. Fixes #58.
+- a61b48e: `<DataTable />`: the `⚠` of a cell that failed to render (a throwing `cell` / `format` /
+  `invalidCell`, a bad return, or a component that throws inside a cell) is now
+  `<span role="img" aria-label="Could not display this value">⚠</span>`, so screen readers say what
+  it means instead of reading a bare symbol. Fixes #60.
+- 578b419: `<DataTable />`'s default pager marks Previous / Next with `aria-disabled="true"` at the first /
+  last page instead of `disabled`: paging to the last page with the keyboard no longer disables the
+  focused button and drops focus to `<body>`. The button stays focusable and ignores activation;
+  `styles.css` dims `button[aria-disabled="true"]` like `:disabled`. Fixes #55.
+- 152abc0: `<DataTable />`: activating Retry (first-load error, refresh error over stale rows, or the render
+  error state) unmounted the focused button and dropped keyboard focus to `<body>`. Focus now moves
+  to the `<table>` (made focusable with `tabIndex = -1` at that moment) before the button goes away;
+  a `retry()` called while focus is elsewhere leaves focus alone. Fixes #56.
+- 59b5f7a: `<DataTable />` announces status messages (WCAG 4.1.3): one visually hidden `aria-live="polite"`
+  region, present from the first render (and in the server HTML), says "Searching rows…" while a
+  search waits or runs and then the result once the table settles ("5 rows", "25 rows, page 2 of 3",
+  "0 rows"; server mode "Page 2 of 3"). Before, search results, no results and page changes were
+  silent, and the search spinner was an empty `role="status"` with nothing to read; the spinner is now
+  decorative (`aria-hidden`). Fixes #54.
+- 8f79b5b: Packaging and type-resolution fixes:
+  
+  - The `./styles.css` exports of `datakable` and `@datakable/react` now carry a `types` condition
+    (an empty declaration per module format), so `import 'datakable/styles.css'` type-checks under
+    TypeScript 6, which checks side-effect imports by default. Fixes #34.
+  - A `typesVersions` fallback maps every subpath entry (`datakable/core`, `datakable/messages`,
+    `@datakable/core/pagination`, …, and the stylesheets) for `moduleResolution: node10`, which ignores
+    `exports`. Fixes #33.
+  - All three packages declare `engines.node: ">=18.18.0"` (the floor set by the runtime dependency
+    `kk-debounce`; the code itself targets ES2022). Fixes #37.
+  - The minimum TypeScript version, 5.4 (the types use `NoInfer`), is now documented, and the
+    published declarations are checked against it. Fixes #32.
+  - Every published `.js` / `.cjs` file carries exactly one `sourceMappingURL` comment (fixed in
+    1.0.1, now checked on every build). Fixes #35.
+- d4ffcf9: Fix `<DataTable columns={[...]}>` with an inline columns array never reporting
+  `DK_UNSTABLE_COLUMNS` in development: the re-render caused by forwarding the new columns reused
+  the same props and reset the count between parent renders. Only renders that bring new options are
+  counted now, so `<DataTable>` reports it after two parent re-renders, like `useDataTable`. Fixes #23.
+- 169a7f7: Fix `<DataTable />` reading the live table for the sort headers and the pager while hydrating.
+  When the table changed during the hydrating render (a table method called in the component body),
+  the header (`aria-sort`, ▲) and pager did not match the server HTML, so React discarded it and
+  `DK_HYDRATION_MISMATCH` was never reported. They now render from the same snapshot as the rows:
+  the server HTML hydrates, `DK_HYDRATION_MISMATCH` names the changed slice, and React re-renders
+  with the live table. (A server-mode pager still reads its page count from the table.) Fixes #16.
+- 19300fa: A custom `components.SearchInput` or `components.Pagination` that throws no longer unmounts the
+  whole React root: `<DataTable />` renders the default part in its place (still bound to the table)
+  until another component is passed, and reports `DK_RENDER_FAILED` (`render:table` at
+  `components.SearchInput` / `components.Pagination`). Fixes #26.
+- 820038c: `<DataTable />` now reports `DK_UNRENDERABLE_VALUE` when it renders a cell whose value the default
+  formatter cannot turn into text (an object, a function, an array holding one), on the client and in
+  server rendering. Before, only building the search index reported it, so a table without search
+  rendered `''` silently. Reported once per column and data. Fixes #18.
+- b9cf577: Fix a table leaked per mount by `useDataTable` (and `<DataTable data>`) under React 18's
+  development StrictMode: React 18 discards the first mount render with its ref, so that render's
+  table was created and never destroyed (`table:init` 2, `table:destroy` 1). The discarded table is
+  now destroyed once the render is over. React 19 and production builds are unchanged. Fixes #25.
+- Updated dependencies [f4e1b7e]
+- Updated dependencies [337d557]
+- Updated dependencies [3c9826d]
+- Updated dependencies [622333f]
+- Updated dependencies [c2509da]
+- Updated dependencies [b5752d4]
+- Updated dependencies [8f79b5b]
+- Updated dependencies [825a969]
+- Updated dependencies [b8d1e6c]
+- Updated dependencies [00ff267]
+- Updated dependencies [4879542]
+- Updated dependencies [addbf66]
+- Updated dependencies [7729717]
+- Updated dependencies [44ce4bc]
+- Updated dependencies [b61ee10]
+- Updated dependencies [2080355]
+- Updated dependencies [e3b6d3b]
+- Updated dependencies [9b693a6]
+- Updated dependencies [3082297]
+- Updated dependencies [66d10d6]
+- Updated dependencies [33a0d32]
+- Updated dependencies [55ad4bd]
+- Updated dependencies [91b163e]
+- Updated dependencies [6fc764f]
+- Updated dependencies [33a0d32]
+- Updated dependencies [760c769]
+  - @datakable/core@1.1.0
+
 ## 1.0.1
 
 ### Patch Changes
