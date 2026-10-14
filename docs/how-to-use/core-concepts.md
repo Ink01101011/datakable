@@ -89,8 +89,8 @@ object until data, state or columns change the result, so you can compare it by 
 | Field | Type | Description |
 | --- | --- | --- |
 | `rows` | `readonly Row<T>[]` | The visible rows only: the current page when paginated. |
-| `filteredCount` | `number` | Rows left after filter and search, before pagination. |
-| `totalCount` | `number` | Rows after ingest (after a schema dropped invalid rows). |
+| `filteredCount` | `number` | Rows left after filter and search, before pagination. In server mode, the rows the table holds (the page the server returned), not the server's total: that is the fetcher result's `rowCount` ([Server mode](server-mode.md#counting-rows-in-server-mode)). |
+| `totalCount` | `number` | Rows after ingest (after a schema dropped invalid rows). In server mode, the page the server returned. |
 | `status` | `RowModelStatus` | What the table is doing (below). |
 | `isInitialLoad` | `boolean` | `true` until the table has had rows to show once. |
 
@@ -305,7 +305,9 @@ throws ([`DK_INVALID_OPTION`](../how-to-fix/errors.md#dk_invalid_option)) naming
 - **Treating `status: 'error'` as "no rows"** — the rows on screen are the last good ones. Only
   `isInitialLoad && status === 'error'` means nothing could be shown.
 - **Reading `rows` as all rows** — it is the current page. Use `filteredCount` for the number of
-  matching rows and `getData()` for all ingested rows.
+  matching rows and `getData()` for all ingested rows. In server mode both count the page: the
+  number of matching rows is the server's `rowCount`
+  ([Server mode](server-mode.md#counting-rows-in-server-mode)).
 
 ## See also
 

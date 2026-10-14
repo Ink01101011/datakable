@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { fences } from './docs-check'
 import { readRepo } from './docs-files'
 
@@ -45,5 +45,27 @@ describe('#17: the app-router pages await nothing outside <Suspense> (Next 16 ca
     const element = Page() as unknown as { type: unknown }
     expect(element).not.toBeInstanceOf(Promise)
     expect(element.type).toBe(Suspense)
+  })
+})
+
+describe('#31: server mode — filteredCount / totalCount count the loaded page', () => {
+  it('server-mode.md: the counts are the page; the total is kept from the fetcher result', async () => {
+    const logged: unknown[][] = []
+    const log = vi.spyOn(console, 'log').mockImplementation((...a) => void logged.push(a))
+    vi.stubGlobal('fetchOrders', async ({ pageIndex = 0 }: { pageIndex?: number }) => ({
+      rows: Array.from({ length: 20 }, (_, i) => ({ id: String(pageIndex * 20 + i), total: i })),
+      rowCount: 5000,
+    }))
+    await import('./docs-examples/how-to-use/server-mode/6-counting')
+    await vi.waitFor(() => expect(logged).toHaveLength(2))
+    expect(logged).toEqual([
+      [20, 20, 20],
+      [5000, 250],
+    ])
+    log.mockRestore()
+    vi.unstubAllGlobals()
+    expect(prose('docs/how-to-use/core-concepts.md')).toMatch(
+      /`filteredCount` \| `number` \| Rows left after filter and search, before pagination\. In server mode/,
+    )
   })
 })
