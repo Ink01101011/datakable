@@ -256,7 +256,9 @@ console.log(filters, validity, search.query, sorting.by, pagination.pageSize)
   `onStateChange`, or move the slice to `initialState` so the table owns it.
 - **Feeding back one slice when you own several**: `setOptions({ state: { sorting } })` drops
   every other slice from `state`, which releases them to the table. Pass all the slices you own
-  ([controlled state](#controlled-state)).
+  ([controlled state](#controlled-state)); in development the drop is reported as
+  [`DK_CONTROLLED_SLICE_DROPPED`](../how-to-fix/errors.md#dk_controlled_slice_dropped). To release a
+  slice on purpose, pass it as `undefined`.
 - **Not feeding the value back**: `onStateChange` alone does not change what the table shows. With
   `createTable`, call `setOptions({ state })` with the new value; in React, set the state you pass
   as `state`. An `onStateChange` that does not feed the value back freezes the slice; in
