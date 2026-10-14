@@ -98,7 +98,7 @@ development).
 | --- | --- | --- | --- |
 | `strategy` | `'immediate' \| 'debounce' \| 'throttle'` | `'immediate'` | `immediate`: every keystroke is applied. `debounce`: applied after `wait` without typing. `throttle`: at most once per `wait` (the first keystroke at once, the latest at the end of the window). |
 | `wait` | `number` (ms) or `{ hours?, minutes?, seconds?, ms? }` | `300` | Used by `debounce` and `throttle`. |
-| `behavior` | `'trailing' \| 'leading'` | `'trailing'` | Debounce only. `leading`: apply the first keystroke at once and drop the rest of the burst (`flushSearch()` applies them). |
+| `behavior` | `'trailing' \| 'leading'` | `'trailing'` | Debounce only. `leading`: apply the first keystroke at once and drop the rest of the burst (`flushSearch()` applies them; otherwise their `setSearch()` promises resolve `'superseded'` when the silence window ends). |
 | `minLength` | `number` (integer ≥ 0) | `0` | A trimmed input shorter than this is applied as an empty query (every row). |
 | `commitOn` | `'type' \| 'enter'` | `'type'` | `enter`: typing only updates `input`; only `flushSearch()` applies it. |
 

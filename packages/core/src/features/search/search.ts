@@ -1,3 +1,4 @@
+import { debounce } from 'kk-debounce/debounce'
 import { debouncedSignal } from 'kk-debounce/debounceSignal'
 import { throttle } from 'kk-debounce/throttle'
 import { optionDiagnostics } from '../../catalog/codes'
@@ -64,7 +65,8 @@ export interface SearchTyping {
   wait?: SearchWait
   /**
    * Debounce only. `'trailing'` (default): apply after the burst. `'leading'`: apply the first
-   * keystroke at once and drop the rest of the burst (`flushSearch()` applies them).
+   * keystroke at once and drop the rest of the burst (`flushSearch()` applies them; otherwise
+   * their `setSearch()` promises resolve `'superseded'` when the silence window ends).
    */
   behavior?: 'trailing' | 'leading'
   /** A trimmed input shorter than this is applied as an empty query (all rows). Default 0. */
@@ -468,8 +470,24 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
       /** The slice status while nothing new is applied: a search may still be in flight. */
       const resting = (): SearchStatus => (session?.busy() ? 'searching' : 'idle')
 
-      instances.set(table, () => {
+      /**
+       * Leading debounce (#28): the keystrokes it drops settle `'superseded'` when the silence
+       * window ends (it restarts with each keystroke, like kk-debounce's), unless `flushSearch()`
+       * applies them first.
+       */
+      const drop = debounce(() => {
+        const list = waiting
+        waiting = []
+        for (const w of list) w.resolve(SUPERSEDED)
+      }, wait)
+      /** Drops the scheduled commit (and the end of a leading silence window). */
+      const stop = () => {
         timer?.cancel()
+        drop.cancel()
+      }
+
+      instances.set(table, () => {
+        stop()
         session?.destroy()
         supersede()
       })
@@ -485,7 +503,7 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
           return p
         }
         if (!timer || query === current) {
-          timer?.cancel()
+          stop()
           applyQuery(query, next)
           return p
         }
@@ -501,9 +519,11 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
           return p
         }
         // A leading debounce drops the rest of the burst: nothing is scheduled to commit it (the
-        // silence window keeps running; `flushSearch()` commits the input).
+        // silence window keeps running; `flushSearch()` commits the input), and its promise settles
+        // when the window ends.
         if (strategy === 'debounce' && typing.behavior === 'leading') {
           write(next, current, resting())
+          drop()
           return p
         }
         write(next, current, 'pending')
@@ -511,7 +531,7 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
       }
       /** Applies `input` now (Enter, clear): any scheduled commit is dropped. */
       const applyNow = (next: string): Promise<SearchOutcome> => {
-        timer?.cancel()
+        stop()
         const query = target(next)
         replaceWaiting(query)
         const p = waitFor(query)
@@ -522,7 +542,7 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
         setSearch: (query) => commit(toText(query)),
         flushSearch: () => applyNow(input()),
         cancelSearch: () => {
-          timer?.cancel()
+          stop()
           session?.abort()
           supersede()
           const s = ctx.getState()
