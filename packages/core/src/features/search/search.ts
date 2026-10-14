@@ -11,7 +11,6 @@ import type { AnyRow, RowModelContext } from '../../feature/types'
 import { defineInterceptor } from '../../intercept/define'
 import { runJob, sliced } from '../../pipeline/slice'
 import { type DataMode, modeOption } from '../../source/mode'
-import { skippedColumnDiagnostics } from './codes'
 import {
   APPLIED,
   type AsyncSearchFn,
@@ -25,6 +24,7 @@ import {
   type Waiter,
 } from './search-fn-brand'
 import { buildIndex, type MatchConfig, probeExSearch, type SearchIndex } from './search-index'
+import { skippedColumnDiagnostics } from './skipped-codes'
 
 keepDiagnostics(optionDiagnostics, skippedColumnDiagnostics)
 
