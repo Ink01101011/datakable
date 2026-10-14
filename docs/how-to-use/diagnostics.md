@@ -108,7 +108,10 @@ for (const d of table.getDiagnostics()) {
 
 - **Deduplicated.** A diagnostic is delivered once per code and `where` for one `data` reference;
   repeats raise `context.occurrences.count` on the stored one instead of reaching the sinks again.
-  New data (a new array reference) reports it again.
+  New data (a new array reference) reports it again. In development, `DK_SSR_ASYNC_DEFERRED` is
+  printed to the console once per process (per thread) for a table name and source: a dev server
+  that renders a page several times per request creates the table each time. Every table still
+  records it.
 - **Rate-limited console.** At most 20 console reports per second per table; when some were held
   back, one warning says how many. They are still in `getDiagnostics()` and were given to
   `onDiagnostic`.

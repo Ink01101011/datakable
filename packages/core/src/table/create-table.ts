@@ -937,6 +937,7 @@ export function createTable<T, S extends TableState>(
 
   setTableInternals(table, {
     features: pipeline,
+    name: options.name,
     rowCount: () => (typeof options.fetcher === 'function' ? server?.rowCount() : options.rowCount),
     hasFetcher: () => typeof options.fetcher === 'function',
     emit: hub.emit,
