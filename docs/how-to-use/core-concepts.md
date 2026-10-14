@@ -172,8 +172,9 @@ refresh indicator ([React](react.md)).
 
 ## Updating options
 
-`setOptions(partial)` merges new options into the current ones. Pass a **new array** to change the
-data: the table compares `data` and `columns` by reference, ingests the new data, keeps its state
+`setOptions(partial)` merges new options into the current ones, one level deep: `state` is replaced
+as a whole, so pass every controlled slice ([State](state.md#controlled-state)). Pass a **new
+array** to change the data: the table compares `data` and `columns` by reference, ingests the new data, keeps its state
 (sort, filters, search query, page) and notifies once.
 
 ```ts

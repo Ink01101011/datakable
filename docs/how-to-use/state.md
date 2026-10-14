@@ -147,6 +147,40 @@ const table = createTable({
 table.toggleSort('name') // → onStateChange → setOptions → the rows are sorted by name
 ```
 
+`setOptions` replaces the whole `state` option: it is merged one level deep, like every option.
+When you own several slices, pass all of them each time you feed one back. A slice left out of
+`state` is no longer controlled: the table changes it on its own, without asking `onStateChange`,
+and nothing is reported.
+
+```ts
+import { createTable, type PaginationState, type SortingState } from 'datakable'
+
+type User = { id: number; name: string; age: number }
+declare const users: User[]
+declare function writeToUrl(state: object): void
+
+// You own two slices. setOptions({ state }) replaces the whole `state` option, so pass every
+// slice you own each time: a slice left out is released to the table.
+let owned: { sorting: SortingState<User>; pagination: PaginationState } = {
+  sorting: { by: [] },
+  pagination: { pageIndex: 0, pageSize: 10 },
+}
+
+export const table = createTable({
+  data: users,
+  rowKey: 'id',
+  state: owned,
+  onStateChange: (updater) => {
+    owned = { ...owned, ...updater(owned) } // the changed slices, merged into yours
+    writeToUrl(owned)
+    table.setOptions({ state: owned }) // every owned slice, not only the changed one
+  },
+})
+
+table.toggleSort('name')
+table.nextPage() // still asks onStateChange: pagination is still controlled
+```
+
 In React, keep the slice in `useState` and pass it as `state`; `useDataTable` syncs `state` on
 every render, so setting your state is the feed-back:
 
@@ -220,6 +254,9 @@ console.log(filters, validity, search.query, sorting.by, pagination.pageSize)
   updates are dropped and reported as
   [`DK_CONTROLLED_WITHOUT_HANDLER`](../how-to-fix/errors.md#dk_controlled_without_handler). Pass
   `onStateChange`, or move the slice to `initialState` so the table owns it.
+- **Feeding back one slice when you own several**: `setOptions({ state: { sorting } })` drops
+  every other slice from `state`, which releases them to the table. Pass all the slices you own
+  ([controlled state](#controlled-state)).
 - **Not feeding the value back**: `onStateChange` alone does not change what the table shows. With
   `createTable`, call `setOptions({ state })` with the new value; in React, set the state you pass
   as `state`. An `onStateChange` that does not feed the value back freezes the slice; in

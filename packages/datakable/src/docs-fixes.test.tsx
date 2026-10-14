@@ -90,3 +90,39 @@ describe('#47: code that is not bundled reads NODE_ENV when it runs', () => {
     )
   })
 })
+
+describe('#49: setOptions({ state }) replaces the whole state option', () => {
+  it('state.md: feeding back every controlled slice keeps them all controlled', async () => {
+    const users = Array.from({ length: 30 }, (_, i) => ({ id: i + 1, name: `n${30 - i}`, age: i }))
+    vi.stubGlobal('users', users)
+    vi.stubGlobal('writeToUrl', () => {})
+    // The example toggles a sort and moves to the next page.
+    const { table } = await import('./docs-examples/how-to-use/state/4-controlled-several')
+    vi.unstubAllGlobals()
+    // Both slices stay controlled: the table asked, the app fed back, the two agree.
+    const owned = table.getOptions().state
+    expect(Object.keys(owned ?? {}).sort()).toEqual(['pagination', 'sorting'])
+    expect(owned?.pagination?.pageIndex).toBe(1)
+    expect(table.getState().pagination).toBe(owned?.pagination)
+    expect(table.getState().sorting).toBe(owned?.sorting)
+    expect(table.getState().sorting.by).toEqual([{ id: 'name', desc: false }])
+    expect(prose('docs/how-to-use/core-concepts.md')).toMatch(
+      /`setOptions\(partial\)` merges new options into the current ones, one level deep: `state` is replaced as a whole/,
+    )
+  })
+
+  it('a partial state releases the slices it leaves out (the documented pitfall)', async () => {
+    const { createTable, pagination, sorting } = await import('./index')
+    const data = Array.from({ length: 30 }, (_, i) => ({ id: i + 1 }))
+    const table = createTable({
+      data,
+      rowKey: 'id',
+      features: [sorting(), pagination({ pageSize: 5 })],
+      state: { sorting: { by: [] }, pagination: { pageIndex: 0, pageSize: 5 } },
+      onStateChange: () => {},
+    })
+    table.setOptions({ state: { sorting: { by: [] } } })
+    table.nextPage() // pagination is no longer controlled: the table moves on its own
+    expect(table.getState().pagination.pageIndex).toBe(1)
+  })
+})
