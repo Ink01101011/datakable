@@ -58,14 +58,14 @@ declare const process: { env: { NODE_ENV?: string } }
 export const cellSlot = defineSlot({
   name: 'cell',
   returns: 'sync',
-  fallback: 'those cells rendered ⚠',
+  fallback: 'cells-warn', // prose key: 'those cells rendered ⚠' (core diagnostics/prose.ts)
 })
 
 /** `columns[i].invalidCell` (§5.1): renders a flagged cell; same contract as `cell`. */
 export const invalidCellSlot = defineSlot({
   name: 'invalidCell',
   returns: 'sync',
-  fallback: 'those cells rendered ⚠',
+  fallback: 'cells-warn', // prose key: 'those cells rendered ⚠' (core diagnostics/prose.ts)
 })
 
 /** Message text (§8.2): development builds, or production via `datakable/messages`. */

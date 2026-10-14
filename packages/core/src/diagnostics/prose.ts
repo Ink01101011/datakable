@@ -14,6 +14,7 @@ import { DEV } from './env'
 export const proseMessages: Readonly<Record<string, string>> = {
   // Cell slots (`DK_CALLBACK_FAILED` / `DK_CALLBACK_BAD_RETURN` fallback).
   'cells-coerced': 'those cells were coerced with the default formatter',
+  'cells-warn': 'those cells rendered ⚠', // `<DataTable />` (@datakable/react)
   'cells-undefined': 'the failed cells read as undefined',
   'cells-empty': "the failed cells render ''",
   'rows-unmatched': 'the failed rows are treated as non-matching',

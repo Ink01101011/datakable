@@ -316,7 +316,7 @@ function report(table: object, failures: readonly Failure[]) {
   for (const list of bySlot.values()) {
     const first = list[0] as Failure
     const rows = list.slice(0, 3).map((f) => f.row)
-    const fallback = 'those cells rendered ⚠'
+    const fallback = 'cells-warn' // prose key: 'those cells rendered ⚠'
     try {
       if (first.lost !== undefined) {
         // Deduped by the table per column and data reference, like the column cache's report.

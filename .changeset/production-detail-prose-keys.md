@@ -1,5 +1,6 @@
 ---
 '@datakable/core': minor
+'@datakable/react': minor
 'datakable': minor
 ---
 
