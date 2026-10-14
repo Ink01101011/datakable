@@ -903,7 +903,7 @@ export function createTable<T, S extends TableState>(
       'DK_INVALID_OPTION',
       {
         path,
-        expected: `${wrap}(${path}) from '@datakable/core/${entry}'`,
+        expected: `wrapped|${wrap}|${path}|${entry}`, // prose key (diagnostics/prose.ts)
         received: typeof value,
         suggestions: [],
         phase,

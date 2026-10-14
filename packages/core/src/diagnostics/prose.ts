@@ -85,6 +85,8 @@ export const proseMessages: Readonly<Record<string, string>> = {
   'prim-or-date': 'a primitive or a Date',
   'range-bound': 'number | bigint or a valid Date bound',
   'same-type': 'min and max of the same type ({0})',
+  // An option given without its wrapper (`DK_INVALID_OPTION` expected).
+  wrapped: "{0}({1}) from '@datakable/core/{2}'",
   // DK_INTERNAL problems.
   escaped: 'an exception escaped DataKable code',
   'unknown-code': 'unknown diagnostic code "{0}": define it with defineDiagnostic() first',

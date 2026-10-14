@@ -239,7 +239,7 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
     throwConfigError('DK_INVALID_OPTION', {
       path: 'searchFn',
       feature: 'search',
-      expected: "withSearchFn(searchFn) from '@datakable/core/search-async'",
+      expected: 'wrapped|withSearchFn|searchFn|search-async', // prose key (diagnostics/prose.ts)
       received: typeof opts.searchFn,
       suggestions: [],
       phase: 'init',
