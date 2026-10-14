@@ -46,6 +46,9 @@ import { validity } from '@datakable/core/validity'
 import { useDataTable } from '@datakable/react'
 import { createTable } from 'datakable'
 import 'datakable/messages'
+// The stylesheet exports carry types (#34): TS 6 checks side-effect imports by default.
+import 'datakable/styles.css'
+import '@datakable/react/styles.css'
 import { createTable as fromCore } from 'datakable/core'
 
 type User = { id: number; name: string; address: { city: string } }
@@ -87,6 +90,17 @@ export { allMessages, core, d, defineFeature, fromCore, useDataTable }
 `,
 )
 
+// A CommonJS consumer (.cts, checked under node16): the stylesheet's `types` condition resolves to
+// a .d.cts, not the ESM .d.ts that a `require` cannot load (TS1479).
+writeFileSync(
+  join(dir, 'index-cjs.cts'),
+  `import 'datakable/styles.css'
+import '@datakable/react/styles.css'
+import { createTable } from 'datakable'
+export const z = createTable({ data: [{ id: 1 }], rowKey: 'id' })
+`,
+)
+
 const req = createRequire(join(root, 'package.json'))
 // The current TypeScript, and the minimum the docs promise (getting-started, READMEs: TS >= 5.4,
 // #32): the root devDependency `typescript-min` pins it, so a published .d.ts that needs a newer
@@ -96,11 +110,11 @@ const compilers = ['typescript', 'typescript-min'].map((pkg) => ({
   version: req(`${pkg}/package.json`).version,
 }))
 const configs = {
-  node16: { module: 'node16', moduleResolution: 'node16' },
-  bundler: { module: 'esnext', moduleResolution: 'bundler' },
+  node16: { module: 'node16', moduleResolution: 'node16', files: ['index.ts', 'index-cjs.cts'] },
+  bundler: { module: 'esnext', moduleResolution: 'bundler', files: ['index.ts'] },
 }
 let failed = false
-for (const [name, resolution] of Object.entries(configs)) {
+for (const [name, { files, ...resolution }] of Object.entries(configs)) {
   writeFileSync(
     join(dir, `tsconfig.${name}.json`),
     JSON.stringify({
@@ -115,7 +129,7 @@ for (const [name, resolution] of Object.entries(configs)) {
         jsx: 'react-jsx',
         types: [],
       },
-      files: ['index.ts'],
+      files,
     }),
   )
   for (const { tsc, version } of compilers) {

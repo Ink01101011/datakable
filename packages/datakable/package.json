@@ -63,17 +63,23 @@
         "default": "./dist/messages.cjs"
       }
     },
-    "./styles.css": "./dist/styles.css",
+    "./styles.css": {
+      "types": {
+        "import": "./dist/styles.css.d.ts",
+        "require": "./dist/styles.css.d.cts"
+      },
+      "default": "./dist/styles.css"
+    },
     "./package.json": "./package.json"
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && node ../../scripts/write-styles-dts.mjs",
     "dev": "tsup --watch",
     "typecheck": "tsc -p tsconfig.json",
-    "check:pkg": "publint --strict && attw --pack . --profile node16 --exclude-entrypoints styles.css"
+    "check:pkg": "publint --strict && attw --pack . --profile node16"
   },
   "dependencies": {
     "@datakable/core": "workspace:^",

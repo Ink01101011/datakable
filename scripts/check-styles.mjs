@@ -22,6 +22,8 @@ link(join(root, 'packages/datakable'), 'datakable')
 link(join(root, 'node_modules/react'), 'react')
 writeFileSync(join(dir, 'styled.js'), "import 'datakable/styles.css'\n")
 writeFileSync(join(dir, 'styled-react.js'), "import '@datakable/react/styles.css'\n")
+// From CSS: `@import` resolves the export through its `default` condition (the `types` one is for TS).
+writeFileSync(join(dir, 'styled.css'), "@import 'datakable/styles.css';\n")
 writeFileSync(
   join(dir, 'plain.jsx'),
   "import { DataTable } from 'datakable'\nexport const App = () => <DataTable data={[]} />\n",
@@ -48,7 +50,7 @@ const fail = (msg) => {
 }
 const isCss = (p) => p.endsWith('.css')
 
-for (const entry of ['styled.js', 'styled-react.js']) {
+for (const entry of ['styled.js', 'styled-react.js', 'styled.css']) {
   const r = await bundle(entry)
   const css = r.outputFiles.find((f) => isCss(f.path))
   if (!css?.text.includes('[data-datakable]')) fail(`${entry}: no stylesheet in the bundle`)

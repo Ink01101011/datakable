@@ -197,7 +197,11 @@ describe('styles.css packaging (§12)', () => {
 
   it.each(['react', 'datakable'])('%s exports ./styles.css and lists it in sideEffects', (name) => {
     const p = pkg(name)
-    expect(p.exports['./styles.css']).toBe('./dist/styles.css')
+    // Bundlers and CSS @import resolve `default`; TypeScript gets a declaration per format (#34).
+    expect(p.exports['./styles.css']).toEqual({
+      types: { import: './dist/styles.css.d.ts', require: './dist/styles.css.d.cts' },
+      default: './dist/styles.css',
+    })
     expect(p.sideEffects).toEqual(expect.arrayContaining(['./dist/styles.css']))
     // The JS stays side-effect free (messages excepted).
     for (const s of p.sideEffects as string[]) expect(s).toMatch(/messages\.c?js$|styles\.css$/)
