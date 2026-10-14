@@ -234,6 +234,11 @@ Over loaded rows, any `status` other than `'idle'` shows a refresh indicator abo
 `'error'`. Activating a Retry button (the load error, the refresh error or the render error) moves
 keyboard focus to the `<table>` before the button goes away, so focus does not fall to `<body>`.
 
+Status messages go to one visually hidden `aria-live="polite"` region at the end of the root, in
+the markup from the first render: "Searching rows…" while a search is `pending` / `searching`, and
+once the table settles the result, e.g. "5 rows", "25 rows, page 2 of 3", "0 rows" (server mode:
+"Page 2 of 3"). It is written only when the message changes, never on the first render.
+
 ### Replacing parts with `components`
 
 Each part you pass replaces the built-in one; the others stay. Hoist the object so it is the same
@@ -342,7 +347,7 @@ export function Users({ users }: { users: User[] }) {
 | `data-initial-load` | the root | `'true'` / `'false'` |
 | `aria-busy` | the root | `'true'` while `validating`, `pending`, `searching` or `fetching` |
 | `data-dk-search` | the search input's wrapper | — |
-| `data-dk-spinner` | the search spinner (`role="status"`) | — |
+| `data-dk-spinner` | the search spinner (decorative, `aria-hidden`) | — |
 | `aria-sort`, `data-sort` | sortable `<th>` | `ascending` / `descending` / `none`; `asc` / `desc` |
 | `data-dk-sort-indicator` | the ▲ / ▼ in a sort button | — |
 | `data-dk-state` | the state row `<tr>` | `loading`, `error`, `empty` |

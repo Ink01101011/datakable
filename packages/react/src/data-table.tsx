@@ -21,6 +21,7 @@ import {
 import {
   Component,
   type ComponentType,
+  type CSSProperties,
   type ReactNode,
   useEffect,
   useLayoutEffect,
@@ -461,17 +462,29 @@ function bad(
 
 type Page = { pageIndex: number; pageSize: number }
 
+/** Visually hidden, still read by screen readers (inline: the table ships no CSS). */
+const HIDDEN: CSSProperties = {
+  position: 'absolute',
+  width: 1,
+  height: 1,
+  overflow: 'hidden',
+  clipPath: 'inset(50%)',
+  whiteSpace: 'nowrap',
+}
+
+const serverPaged = (view: Api) =>
+  (view.getOptions() as { features?: readonly { stage?: string; mode?: string }[] }).features?.some(
+    (f) => f?.stage === 'paginate' && f.mode === 'server',
+  ) === true
+
 /**
  * The pager of the rendered snapshot, like the pagination API computes it live: the hydrating
  * render must match the server HTML even when the table changed meanwhile (#16). Client mode
  * pages over the row model's `filteredCount`; server mode over the fetched `rowCount`, which only
  * the table knows (and no render changes).
  */
-function pages(view: Api, page: Page, count: number) {
-  const features = (
-    view.getOptions() as { features?: readonly { stage?: string; mode?: string }[] }
-  ).features
-  if (features?.some((f) => f?.stage === 'paginate' && f.mode === 'server')) {
+function pages(view: Api, page: Page, count: number, server: boolean) {
+  if (server) {
     return {
       ...page,
       pageCount: view.getPageCount?.() ?? 0,
@@ -540,6 +553,31 @@ function DataTableView(props: {
     keepFocus()
     void view.refetch()
   }
+  const server = paged && serverPaged(view)
+  const pager = paged ? pages(view, state.pagination as Page, rowModel.filteredCount, server) : null
+
+  // Status messages (#54): one polite live region, in the markup from the first render (a region
+  // inserted with its text is often not announced). Written after commit, only when the message
+  // changes, so the first render (and the hydrating one) matches the server HTML.
+  // Worded unlike the visible parts ("No rows", "Searching…"), so a text query finds one element.
+  const n = rowModel.filteredCount
+  const count = `${n} row${n === 1 ? '' : 's'}`
+  const page = pager ? `age ${pager.pageIndex + 1} of ${Math.max(pager.pageCount, 1)}` : ''
+  let said = ''
+  if (searchState?.status === 'pending' || searchState?.status === 'searching') {
+    said = 'Searching rows…'
+  } else if (status === 'idle' && !loading) {
+    // Server mode: `filteredCount` is the page's rows, so only the page (or "0 rows").
+    said = server && n ? `P${page}` : page ? `${count}, p${page}` : count
+  }
+  const liveEl = useRef<HTMLDivElement>(null)
+  const saidBefore = useRef<string | null>(null)
+  useEffect(() => {
+    const el = liveEl.current
+    if (el && saidBefore.current !== null && saidBefore.current !== said) el.textContent = said
+    saidBefore.current = said
+  })
+
   // A text caption names the search box and the pager, so two tables get distinct names (#59).
   const cap = props.caption
   const named = typeof cap === 'string' || typeof cap === 'number' ? `${cap}` : ''
@@ -666,15 +704,16 @@ function DataTableView(props: {
           </BodyBoundary>
         </tbody>
       </table>
-      {paged &&
+      {pager &&
         part(table, 'Pagination', parts.Pagination, DefaultPagination, {
-          ...pages(view, state.pagination as Page, rowModel.filteredCount),
+          ...pager,
           prev: () => view.prevPage?.(),
           next: () => view.nextPage?.(),
           setPageIndex: (i) => view.setPageIndex?.(i),
           setPageSize: (n) => view.setPageSize?.(n),
           label: named ? `${named} pagination` : 'Pagination',
         })}
+      <div aria-live="polite" style={HIDDEN} ref={liveEl} />
     </div>
   )
 }
@@ -850,7 +889,8 @@ function DefaultSearchInput({
         }}
       />
       {(status === 'pending' || status === 'searching') && (
-        <span role="status" data-dk-spinner="" aria-label="Searching" />
+        // Decorative: the live region says "Searching…" (an empty status announces nothing).
+        <span data-dk-spinner="" aria-hidden="true" />
       )}
     </>
   )

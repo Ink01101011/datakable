@@ -1,6 +1,7 @@
 import { type FetchResult, pagination, search, sorting } from '@datakable/core'
 import { withFetcher } from '@datakable/core/server'
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { renderToString } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest'
 import { DataTable } from './data-table'
 import { useDataTable } from './use-data-table'
@@ -192,5 +193,63 @@ describe('Retry moves focus to the table before its button goes away (#56)', () 
     box.focus()
     await act(async () => void table?.refetch())
     expect(document.activeElement).toBe(box)
+  })
+})
+
+describe('status messages: one persistent polite live region (#54)', () => {
+  const live = (c: HTMLElement) => c.querySelector('[data-datakable] > [aria-live="polite"]')
+
+  it('is in the markup from the first render (server HTML too), empty until something changes', () => {
+    const html = renderToString(<DataTable data={users} features={[search(), pagination()]} />)
+    expect(html).toMatch(/<div aria-live="polite"[^>]*><\/div><\/div>$/)
+    const { container } = render(<DataTable data={users} features={[search(), pagination()]} />)
+    expect(live(container)?.textContent).toBe('')
+  })
+
+  it('announces search results, no results and page changes', () => {
+    const { container } = render(<DataTable data={users} features={[search(), pagination()]} />)
+    const box = screen.getByRole('searchbox')
+    fireEvent.change(box, { target: { value: 'kyoto' } })
+    expect(live(container)?.textContent).toBe('5 rows, page 1 of 1')
+    fireEvent.change(box, { target: { value: 'zzzz' } })
+    expect(live(container)?.textContent).toBe('0 rows, page 1 of 1')
+    fireEvent.keyDown(box, { key: 'Escape' })
+    expect(live(container)?.textContent).toBe('25 rows, page 1 of 3')
+    fireEvent.click(screen.getByRole('button', { name: 'Next page' }))
+    expect(live(container)?.textContent).toBe('25 rows, page 2 of 3')
+  })
+
+  it('announces "Searching rows…" while a debounced search waits; the spinner is not an empty status', async () => {
+    vi.useFakeTimers()
+    try {
+      const { container } = render(
+        <DataTable data={users} features={[search({ typing: { strategy: 'debounce' } })]} />,
+      )
+      fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'kyoto' } })
+      expect(live(container)?.textContent).toBe('Searching rows…')
+      const spinner = container.querySelector('[data-dk-spinner]') as HTMLElement
+      expect(spinner.getAttribute('role')).toBeNull()
+      expect(spinner.getAttribute('aria-hidden')).toBe('true')
+      await act(async () => {
+        fireEvent.keyDown(screen.getByRole('searchbox'), { key: 'Enter' })
+      })
+      expect(live(container)?.textContent).toBe('5 rows')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('server mode: the first load and a refetch end with the page status', async () => {
+    const calls: ((r: FetchResult<User>) => void)[] = []
+    const fetcher = withFetcher(() => new Promise<FetchResult<User>>((r) => calls.push(r)))
+    const { container } = render(
+      <Hooked options={{ fetcher, features: [pagination({ mode: 'server', pageSize: 10 })] }} />,
+    )
+    expect(live(container)?.textContent).toBe('')
+    await act(async () => calls[0]?.({ rows: users.slice(0, 10), rowCount: 25 }))
+    expect(live(container)?.textContent).toBe('Page 1 of 3')
+    fireEvent.click(screen.getByRole('button', { name: 'Next page' }))
+    await act(async () => calls[1]?.({ rows: users.slice(10, 20), rowCount: 25 }))
+    expect(live(container)?.textContent).toBe('Page 2 of 3')
   })
 })

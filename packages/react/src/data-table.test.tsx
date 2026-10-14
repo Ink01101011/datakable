@@ -143,14 +143,18 @@ describe('<DataTable /> (§10)', () => {
       expect(box.value).toBe('anan')
       const wrapper = container.querySelector('[data-dk-search]') as HTMLElement
       expect(wrapper.getAttribute('data-status')).toBe('pending')
-      expect(within(wrapper).getByRole('status')).toBeTruthy()
+      // The spinner is decorative; the root's live region says it (#54).
+      expect(wrapper.querySelector('[data-dk-spinner]')).toBeTruthy()
+      const live = container.querySelector('[aria-live="polite"]') as HTMLElement
+      expect(live.textContent).toBe('Searching rows…')
       expect(names()).toEqual(['Mali', 'Anan', 'Ploy'])
       await act(async () => {
         fireEvent.keyDown(box, { key: 'Enter' })
       })
       expect(names()).toEqual(['Anan'])
       expect(wrapper.getAttribute('data-status')).toBe('idle')
-      expect(within(wrapper).queryByRole('status')).toBeNull()
+      expect(wrapper.querySelector('[data-dk-spinner]')).toBeNull()
+      expect(live.textContent).toBe('1 row')
     } finally {
       vi.useRealTimers()
     }
