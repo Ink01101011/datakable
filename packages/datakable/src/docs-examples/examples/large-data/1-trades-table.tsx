@@ -1,4 +1,11 @@
-import { type ColumnDef, columnFilters, DataTable, pagination, search, sorting } from 'datakable'
+import {
+  type ColumnDef,
+  columnFilters,
+  DataTable,
+  pagination,
+  search,
+  sorting,
+} from 'datakable/react'
 import type { ReactNode } from 'react'
 
 export type Trade = { id: number; symbol: string; side: 'buy' | 'sell'; qty: number; at: Date }

@@ -10,6 +10,7 @@
       "@datakable/core/server": ["./packages/core/src/source/server-entry.ts"],
       "@datakable/core/search-async": ["./packages/core/src/features/search/search-async-entry.ts"],
       "@datakable/core/*": ["./packages/core/src/features/*/index.ts"],
+      "@datakable/react/messages": ["./packages/react/src/messages.ts"],
       "@datakable/react": ["./packages/react/src/index.ts"],
       "datakable": ["./packages/datakable/src/index.ts"],
       "datakable/*": ["./packages/datakable/src/*.ts"]

@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { DataTable } from './index'
+import { DataTable } from './react'
 
 afterEach(cleanup)
 

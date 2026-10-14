@@ -1,4 +1,4 @@
-import { type PaginationState, useDataTable } from 'datakable'
+import { type PaginationState, useDataTable } from 'datakable/react'
 import { useState } from 'react'
 
 type User = { id: number; name: string }

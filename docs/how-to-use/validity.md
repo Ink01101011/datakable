@@ -37,10 +37,15 @@ table.setValidity('valid') // only the rows that passed
 table.setValidity('all') // every row (the default)
 ```
 
-`validity()` is in `datakable`'s default preset. In React, bind the slice to a control:
+`validity()` is in `datakable`'s (and `datakable/react`'s) default preset. In React, bind the slice to a control:
 
 ```tsx
-import { type StandardSchemaV1, useDataTable, type ValidityState, withSchema } from 'datakable'
+import {
+  type StandardSchemaV1,
+  useDataTable,
+  type ValidityState,
+  withSchema,
+} from 'datakable/react'
 
 type User = { id: number; name: string; email: string }
 declare const UserSchema: StandardSchemaV1<unknown, User>

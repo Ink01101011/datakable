@@ -5,11 +5,12 @@
 //   `"use client"` directive must list its exports by name: Next's webpack RSC transform rejects
 //   `export *` in a client boundary ("It's currently unsupported to use "export *" in a client
 //   boundary").
-// - Under the `react-server` condition, importing `@datakable/react`, `datakable` and
-//   `datakable/messages` must work from a server module: `"use client"` modules become client
-//   references (as the bundler does), and everything else runs. `createTable` must be a real
-//   function on the server (`datakable`'s with its default preset), `<DataTable />` /
-//   `useDataTable` must stay client references.
+// - Under the `react-server` condition, importing `@datakable/react`, `datakable`,
+//   `datakable/react` and `datakable/messages` must work from a server module: `"use client"`
+//   modules become client references (as the bundler does), and everything else runs.
+//   `createTable` must be a real function on the server (`datakable`'s with its default preset),
+//   `<DataTable />` / `useDataTable` must stay client references. (Without a bundler, plain
+//   `node --conditions=react-server` is `pnpm check:framework-free`, #63.)
 // - A bundle of `createTable` alone from `datakable` must not contain React (#9): React is only in
 //   the modules of `<DataTable />` and `useDataTable`, which the bundler drops when unused.
 // - A production bundle that keeps every export of the `"use client"` modules (what a server
@@ -108,12 +109,13 @@ async function main() {
     join(dir, 'server.mjs'),
     `export * as dkReact from '@datakable/react'
 export * as dk from 'datakable'
+export * as dkr from 'datakable/react'
 import 'datakable/messages'
 `,
   )
   register(import.meta.url)
   try {
-    const { dkReact, dk } = await import(pathToFileURL(join(dir, 'server.mjs')).href)
+    const { dkReact, dk, dkr } = await import(pathToFileURL(join(dir, 'server.mjs')).href)
     assert.equal(
       typeof dkReact.createTable,
       'function',
@@ -141,16 +143,18 @@ import 'datakable/messages'
       dt.getRowModel().rows.map((r) => r.original.id),
       [1, 2],
     )
+    assert.equal(dkr.createTable, dk.createTable, 'datakable/react has the bare createTable')
     for (const name of ['DataTable', 'useDataTable']) {
       assert.equal(
-        dk[name]?.$$typeof,
+        dkr[name]?.$$typeof,
         CLIENT_REF,
-        `${name} from datakable is not a client reference: its module lost "use client"`,
+        `${name} from datakable/react is not a client reference: its module lost "use client"`,
       )
+      assert.equal(dk[name], undefined, `datakable exports ${name}: it belongs to datakable/react`)
     }
   } catch (e) {
     failures.push(
-      `server import of @datakable/react / datakable / datakable/messages: ${e.message}`,
+      `server import of @datakable/react / datakable / datakable/react / datakable/messages: ${e.message}`,
     )
   }
 
@@ -159,6 +163,7 @@ import 'datakable/messages'
   const esbuild = createRequire(join(root, 'packages/core/package.json'))('esbuild')
   for (const [name, contents] of [
     ['datakable createTable', "export { createTable } from 'datakable'"],
+    ['datakable/react createTable', "export { createTable } from 'datakable/react'"],
     ['datakable/messages', "import 'datakable/messages'"],
   ]) {
     const result = await esbuild.build({
@@ -232,7 +237,8 @@ import 'datakable/messages'
     process.exit(1)
   }
   console.log(
-    'check:rsc ok: @datakable/react, datakable and datakable/messages load in a server module; ' +
-      'a createTable-only bundle of datakable has no React; client references carry no message text',
+    'check:rsc ok: @datakable/react, datakable, datakable/react and datakable/messages load in a ' +
+      'server module; a createTable-only bundle of datakable has no React; client references carry ' +
+      'no message text',
   )
 }

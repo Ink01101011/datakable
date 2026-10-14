@@ -24,7 +24,7 @@ import {
   pagination,
   sorting,
   withFetcher,
-} from 'datakable'
+} from 'datakable/react'
 
 export type User = { id: number; name: string; email: string }
 

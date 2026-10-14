@@ -4,7 +4,7 @@ import {
   type InvalidCellContext,
   useDataTable,
   withSchema,
-} from 'datakable'
+} from 'datakable/react'
 import type { ReactNode } from 'react'
 import { type Account, AccountSchema } from './1-account-schema'
 

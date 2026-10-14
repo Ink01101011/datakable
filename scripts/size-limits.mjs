@@ -1,7 +1,8 @@
 // Bundle-size entries (spec §9.3), measured by `scripts/size.mjs` with the ONE standard method
 // (R10): esbuild 0.27.7 `--bundle --minify --format=esm`, `process.env.NODE_ENV = "production"`,
 // externals `ex-search`, `exsorted*`, `kk-debounce*`, `react`, `react-dom`; the entry is a one-line
-// re-export of the named symbols from the BUILT dist; size = gzip -9 of the output. 1 KB = 1024 B.
+// re-export of the named symbols from the BUILT dist entry a consumer imports (`dist/index.js`, or
+// `dist/react.js` for `datakable/react`, #63); size = gzip -9 of the output. 1 KB = 1024 B.
 //
 // Each entry carries two numbers:
 // - `budget`: the §9.3 spec budget of that entry. An entry over it is printed as UNMET and raised
@@ -34,7 +35,7 @@ const initialSort = `initialState: { sorting: { by: [{ id: 'n', desc: false }] }
  */
 const budget = (kb, what) => ({ budget: kb * KB, spec: `§9.3 ${what} ≤ ${kb} KB` })
 
-/** @type {{ name: string, pkg: 'core' | 'react' | 'datakable', import: string[], budget?: number, spec: string, limit: number, smoke: string, expect: string }[]} */
+/** @type {{ name: string, pkg: 'core' | 'react' | 'datakable', entry?: 'react', import: string[], budget?: number, spec: string, limit: number, smoke: string, expect: string }[]} */
 export default [
   {
     name: '@datakable/core: createTable',
@@ -97,8 +98,10 @@ export default [
     limit: 27 * KB,
   },
   {
-    name: 'datakable: useDataTable (default preset + react hook)',
+    name: 'datakable/react: useDataTable (default preset + react hook)',
     pkg: 'datakable',
+    // 2.0 (#63): the hook moved from the `datakable` root to `datakable/react`.
+    entry: 'react',
     import: ['useDataTable'],
     ...budget(28.5, 'datakable useDataTable'),
     smoke: `const C = () => useDataTable({ data: ${rows}, rowKey: 'id', ${initialSort} }).rowModel.rows.map((r) => r.original.id).join(','); return server.renderToString(React.createElement(C))`,
@@ -113,8 +116,10 @@ export default [
     limit: 28.5 * KB,
   },
   {
-    name: 'datakable: DataTable (default preset + <DataTable />)',
+    name: 'datakable/react: DataTable (default preset + <DataTable />)',
     pkg: 'datakable',
+    // 2.0 (#63): the component moved from the `datakable` root to `datakable/react`.
+    entry: 'react',
     import: ['DataTable'],
     ...budget(32.5, 'datakable DataTable'),
     smoke: `const html = server.renderToString(React.createElement(DataTable, { data: ${rows}, rowKey: 'id', ${initialSort} })); return html.indexOf('>a<') < html.indexOf('>b<') && html.includes('>b<') ? 'a before b' : html`,

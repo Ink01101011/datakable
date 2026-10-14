@@ -34,7 +34,7 @@ the value you pass back in `state` on the next render is that result.
 `initialState` instead and let the table own the slice.
 
 ```tsx
-import { type SortingState, useDataTable } from 'datakable'
+import { type SortingState, useDataTable } from 'datakable/react'
 import { useState } from 'react'
 
 type User = { id: number; name: string; age: number }
@@ -97,12 +97,12 @@ export const table = createTable({
 
 ## The feature is not installed
 
-`datakable`'s `createTable`, `useDataTable` and `<DataTable />` install the default preset
-(`columnFilters()`, `validity()`, `search()`, `sorting()`, `pagination()`) **only when you pass no
-`features`**. A `features` array replaces the preset, and `@datakable/core` / `@datakable/react`
-install no features at all. The table's type has only the installed features' methods, so
-TypeScript reports the missing one; `<DataTable />` renders no sort buttons without `sorting()`,
-and none on a column with `sortable: false`.
+`datakable`'s `createTable` and `datakable/react`'s `useDataTable` and `<DataTable />` install the
+default preset (`columnFilters()`, `validity()`, `search()`, `sorting()`, `pagination()`) **only
+when you pass no `features`**. A `features` array replaces the preset, and `@datakable/core` /
+`@datakable/react` install no features at all. The table's type has only the installed features'
+methods, so TypeScript reports the missing one; `<DataTable />` renders no sort buttons without
+`sorting()`, and none on a column with `sortable: false`.
 
 ```ts
 import { columnFilters, createTable, sorting } from 'datakable'

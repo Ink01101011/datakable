@@ -15,8 +15,8 @@ These are acceptance targets of the [design spec](../superpowers/specs/2026-10-1
 | `@datakable/core` `createTable` (gzip) | ≤ 15 KB |
 | `@datakable/core` `createTable` + `columnFilters` + `sorting` + `pagination` (gzip) | ≤ 24 KB |
 | `datakable` `createTable`, default preset (gzip) | ≤ 27 KB |
-| `datakable` `useDataTable`, default preset + hook (gzip) | ≤ 28.5 KB |
-| `datakable` `<DataTable />`, default preset + component (gzip) | ≤ 32.5 KB |
+| `datakable/react` `useDataTable`, default preset + hook (gzip) | ≤ 28.5 KB |
+| `datakable/react` `<DataTable />`, default preset + component (gzip) | ≤ 32.5 KB |
 | Pipeline memory at 100k rows, excluding the data itself | ≤ 5 MB (paginated, unpaginated and with a client search) |
 | Interaction (type, sort, page) on 10k rows, client mode, 4x CPU throttle | < 100 ms |
 | Longest task while building the search projection for 100k rows | ≤ 50 ms |
@@ -111,7 +111,7 @@ The table notices new data by reference. Mutating the array you passed and passi
 the old caches and the old rows (development reports `DK_DATA_MUTATED`):
 
 ```tsx
-import { type ColumnDef, DataTable } from 'datakable'
+import { type ColumnDef, DataTable } from 'datakable/react'
 import type { ReactNode } from 'react'
 import { useMemo } from 'react'
 
@@ -153,10 +153,10 @@ export function Orders({ orders, onlyOpen }: { orders: Order[]; onlyOpen: boolea
 
 ### Bundle only what you use
 
-- `datakable`'s `createTable`, `useDataTable` and `<DataTable />` install the default preset (all
-  five features). If you need fewer features, pass `features` (which replaces the preset), or
-  import the bare table from `@datakable/core` and one entry per feature, so the others are not
-  bundled:
+- `datakable`'s `createTable` and `datakable/react`'s `useDataTable` and `<DataTable />` install the
+  default preset (all five features). If you need fewer features, pass `features` (which replaces
+  the preset), or import the bare table from `@datakable/core` and one entry per feature, so the
+  others are not bundled:
 
 ```ts
 import { createTable } from 'datakable'

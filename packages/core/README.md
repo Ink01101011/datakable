@@ -2,7 +2,7 @@
 
 The headless, framework-agnostic core of DataKable: a table store, a row pipeline built from
 features (column filters, validity, search, sorting, pagination), data modes, schema validation,
-diagnostics and `explain()`. No React. For React, use [`datakable`](https://github.com/Ink01101011/datakable/tree/main/packages/datakable) or
+diagnostics and `explain()`. No React. For React, use [`datakable/react`](https://github.com/Ink01101011/datakable/tree/main/packages/datakable) or
 [`@datakable/react`](https://github.com/Ink01101011/datakable/tree/main/packages/react).
 
 > Version 1.0: the public API is stable and follows semantic versioning from here. Guides,

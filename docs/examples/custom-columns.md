@@ -13,7 +13,7 @@ of diagnostics.
 ## The code
 
 ```tsx
-import { type ColumnDef, DataTable } from 'datakable'
+import { type ColumnDef, DataTable } from 'datakable/react'
 import type { ReactNode } from 'react'
 
 export type Order = {

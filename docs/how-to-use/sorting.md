@@ -57,7 +57,7 @@ The `sorting` slice (`SortingState<T>`) is `{ by: readonly SortEntry<T>[] }`, wi
 A sortable header with `aria-sort` and Shift+click:
 
 ```tsx
-import { useDataTable } from 'datakable'
+import { useDataTable } from 'datakable/react'
 
 type User = { id: number; name: string; age: number }
 
