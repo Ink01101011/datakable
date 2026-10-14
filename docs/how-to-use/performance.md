@@ -142,7 +142,8 @@ export function Orders({ orders, onlyOpen }: { orders: Order[]; onlyOpen: boolea
 - **Search the columns that matter.** Give the searchable columns a `search` weight; when one
   column declares a weight, only the columns with one are searched. See [Search](search.md).
 - **Read `DK_PERF_HINT`.** In development, the tracer reports a pipeline step that took longer
-  than 50 ms, with its numbers and a suggestion. `explain()` shows the time per step. See
+  than 50 ms, with its numbers and a suggestion, and a time slice over 50 ms. `explain()` shows the
+  time per step (time-sliced work: the total over its runs). See
   [Diagnostics](diagnostics.md).
 
 ### Bundle only what you use

@@ -24,6 +24,8 @@ declare module '../diagnostics/catalog' {
       rows: number
       /** The budget, in milliseconds (§9.3: the longest task). */
       budget: number
+      /** One slice of the step's time-sliced work, run between pipeline runs (#61). */
+      sliced?: boolean
     }
   }
 }
@@ -50,8 +52,8 @@ export const envMessages: DiagnosticMessages<'DK_ENV_FALLBACK' | 'DK_PERF_HINT'>
   },
   DK_PERF_HINT: {
     problem: (d) =>
-      `the "${d.feature}" step took ${ms(d.ms)} on ${d.rows} rows, over the ${ms(d.budget)} ` +
-      'budget of one task',
+      `${d.sliced ? 'a time slice of ' : ''}the "${d.feature}" step took ${ms(d.ms)} on ` +
+      `${d.rows} rows, over the ${ms(d.budget)} budget of one task`,
     impact: () => 'the page could not respond to input while it ran (a long task)',
     fix: (d) => [
       d.stage === 'none'

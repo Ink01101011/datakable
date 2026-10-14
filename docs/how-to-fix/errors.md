@@ -2610,7 +2610,7 @@ prints (development console):
 
 `info` · fault test: [env.test.ts](../../packages/core/src/pipeline/env.test.ts)
 
-**Problem.** Information from the tracer: a pipeline step took longer than one task's budget (50 ms), so the page could not respond to input while it ran. Reported with the step, the time and the row count.
+**Problem.** Information from the tracer: a pipeline step took longer than one task's budget (50 ms), so the page could not respond to input while it ran. Reported with the step, the time and the row count. A step's time-sliced work (§9.1) runs in slices between pipeline runs; a slice over the budget is reported as `a time slice of the "<feature>" step took …` (`details.sliced`).
 
 **Common causes.**
 
