@@ -20,13 +20,15 @@ const slots = new Map<string, SlotDefinition>()
  * is never redefined with another contract (module re-evaluation with the same one is fine).
  */
 export function defineSlot<const S extends SlotDefinition>(slot: S): S {
-  const prev = slots.get(slot.name)
   // Development check: slots are fixed at build time, a production bundle skips it.
-  if (DEV && prev && prev.returns !== slot.returns) {
-    throw new Error(
-      `[DataKable] slot "${slot.name}" is already defined to return ${prev.returns}; ` +
-        'a slot contract is never redefined — pick a new slot name',
-    )
+  if (DEV) {
+    const prev = slots.get(slot.name)
+    if (prev && prev.returns !== slot.returns) {
+      throw new Error(
+        `[DataKable] slot "${slot.name}" is already defined to return ${prev.returns}; ` +
+          'a slot contract is never redefined — pick a new slot name',
+      )
+    }
   }
   slots.set(slot.name, slot)
   return slot
