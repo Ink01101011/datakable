@@ -134,12 +134,14 @@ export function createInterceptorRuntime(
         )
       }
     })
-  const onHotWarning =
-    options.onHotWarning ??
-    ((w: HotOpWarning) => {
-      if (emit) emit('DK_HOT_INTERCEPTOR', { interceptor: w.interceptor.name, op: w.op })
-      else console.warn(`[DataKable] ${w.message}`)
-    })
+  // Dev-only (DK_HOT_INTERCEPTOR): `undefined` in production, with the code and its text.
+  const onHotWarning = DEV
+    ? (options.onHotWarning ??
+      ((w: HotOpWarning) => {
+        if (emit) emit('DK_HOT_INTERCEPTOR', { interceptor: w.interceptor.name, op: w.op })
+        else console.warn(`[DataKable] ${w.message}`)
+      }))
+    : undefined
   const report = (error: unknown, i: Interceptor<OpName>, ctx: AnyCtx) => {
     try {
       onError(error, i, ctx)
@@ -154,10 +156,10 @@ export function createInterceptorRuntime(
   let boundary: Interceptor<OpName> | undefined
   const chains = new Map<string, Chain>()
   /** (interceptor, op) pairs already warned about, so recompiles do not repeat the warning. */
-  const warned = new WeakMap<Interceptor<OpName>, Set<string>>()
+  const warned = DEV ? new WeakMap<Interceptor<OpName>, Set<string>>() : undefined
 
   function warnHot(i: Interceptor<OpName>, op: string) {
-    if (!DEV) return // dev-only warning: drops the text below from production bundles
+    if (!DEV || !warned || !onHotWarning) return // dev-only: production bundles drop the text below
     let ops = warned.get(i)
     if (ops?.has(op)) return
     if (!ops) {
@@ -187,7 +189,7 @@ export function createInterceptorRuntime(
   function compile(op: string): Chain {
     const info = getOperation(op)
     if (!info) {
-      throw internalError(op, `Unknown operation "${op}": register it with registerOperation()`)
+      throw internalError(op, `unknown-op|${op}`)
     }
     const mine = list.filter((i) => attaches(i, op))
     if (boundary && attaches(boundary, op)) mine.unshift(boundary)
@@ -220,11 +222,7 @@ export function createInterceptorRuntime(
     setInterceptors,
     installBoundary(b) {
       if (boundary) {
-        throw internalError(
-          '*',
-          `A boundary interceptor is already installed ("${boundary.name}"); ` +
-            `"${b.name}" was rejected`,
-        )
+        throw internalError('*', `boundary-twice|${boundary.name}|${b.name}`)
       }
       boundary = b
       compileAll()

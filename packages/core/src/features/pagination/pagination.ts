@@ -162,17 +162,17 @@ export const pagination = (opts: PaginationOptions = {}) => {
           ? (prev as PaginationState).pageSize
           : initialSize
         if (s === null || typeof s !== 'object') {
-          report('state', 'pageIndex', s, 'the pagination state was reset to its initial value')
+          report('state', 'pageIndex', s, 'page-reset')
           return { pageIndex: 0, pageSize: initialSize }
         }
         const { pageIndex, pageSize } = s as Partial<PaginationState>
         let fixed: PaginationState | undefined
         if (!isIndex(pageIndex)) {
-          report('state', 'pageIndex', pageIndex, 'pageIndex was replaced by 0')
+          report('state', 'pageIndex', pageIndex, 'page-index-0')
           fixed = { ...(s as PaginationState), pageIndex: 0 }
         }
         if (!isSize(pageSize)) {
-          report('state', 'pageSize', pageSize, `pageSize was replaced by ${fallbackSize}`)
+          report('state', 'pageSize', pageSize, `page-size|${fallbackSize}`)
           fixed = { ...(fixed ?? (s as PaginationState)), pageSize: fallbackSize }
         }
         return fixed
@@ -247,14 +247,14 @@ export const pagination = (opts: PaginationOptions = {}) => {
       return {
         setPageIndex(index) {
           if (!Number.isInteger(index)) {
-            report('setPageIndex', 'pageIndex', index, 'the call was ignored')
+            report('setPageIndex', 'pageIndex', index, 'call-ignored')
             return
           }
           goTo(index)
         },
         setPageSize(size) {
           if (!isSize(size)) {
-            report('setPageSize', 'pageSize', size, 'the call was ignored')
+            report('setPageSize', 'pageSize', size, 'call-ignored')
             return
           }
           const { s, index } = current()

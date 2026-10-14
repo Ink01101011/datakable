@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { expandProse } from '../diagnostics/prose'
 import type { Emit } from '../diagnostics/types'
 import { CELL_FALLBACK, CellFailures, runCells } from './cell-batch'
 
@@ -59,11 +60,13 @@ describe('column:batch cell boundary', () => {
         column: 'price',
         rows: [4, 7],
         count: 3,
-        fallback: "the failed cells render ''",
+        // The prose key (diagnostics/prose.ts); the built diagnostic reads the sentence.
+        fallback: 'cells-empty',
         errorName: 'TypeError',
       },
       { cause: first, run: 3 },
     )
+    expect(expandProse('cells-empty', true)).toBe("the failed cells render ''")
     // Reset after reporting, so the next run starts clean.
     expect(failures.count).toBe(0)
   })

@@ -11,7 +11,6 @@ import type { AnyRow, RowModelContext } from '../../feature/types'
 import { defineInterceptor } from '../../intercept/define'
 import { runJob, sliced } from '../../pipeline/slice'
 import { type DataMode, modeOption } from '../../source/mode'
-import { skippedColumnDiagnostics } from './codes'
 import {
   APPLIED,
   type AsyncSearchFn,
@@ -25,6 +24,7 @@ import {
   type Waiter,
 } from './search-fn-brand'
 import { buildIndex, type MatchConfig, probeExSearch, type SearchIndex } from './search-index'
+import { skippedColumnDiagnostics } from './skipped-codes'
 
 keepDiagnostics(optionDiagnostics, skippedColumnDiagnostics)
 
@@ -239,7 +239,7 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
     throwConfigError('DK_INVALID_OPTION', {
       path: 'searchFn',
       feature: 'search',
-      expected: "withSearchFn(searchFn) from '@datakable/core/search-async'",
+      expected: 'wrapped|withSearchFn|searchFn|search-async', // prose key (diagnostics/prose.ts)
       received: typeof opts.searchFn,
       suggestions: [],
       phase: 'init',
@@ -316,7 +316,7 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
         ctx.emit('DK_OPTION_NO_EFFECT', {
           path: 'query',
           feature: 'search',
-          reason: 'no column is searchable: give the columns to search a `search` weight',
+          reason: 'not-searchable',
           once: false,
         })
       }

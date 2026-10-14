@@ -10,6 +10,7 @@ import {
 } from './catalog'
 import { coreDiagnostics } from './codes'
 import { DEV } from './env'
+import { expandDetails } from './prose'
 import {
   type RedactField,
   type Redactor,
@@ -130,11 +131,13 @@ export function buildDiagnostic<C extends DiagnosticCode>(
     def = INTERNAL
     d = {
       op: 'diagnostic:emit',
-      problem: `unknown diagnostic code "${code}": define it with defineDiagnostic() first`,
+      problem: `unknown-code|${code}`,
     }
   }
   const b = def as unknown as DiagnosticDefinition<'DK_INTERNAL'>
   const dev = input.dev ?? DEV
+  // Detail prose keys (`fallback: 'cells-undefined'`) read as sentences wherever text is built.
+  if (dev || hasMessages()) d = expandDetails(d, dev)
   // Redact first: `where`, the text builders, the fingerprint and the docs URL only ever see
   // redacted data, so no consumer downstream (interceptors, sinks, strict errors) can leak it.
   const r = input.redaction ?? resolveRedaction(undefined, dev)

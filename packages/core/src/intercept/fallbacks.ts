@@ -35,50 +35,40 @@ function allRows(n: number): Uint32Array {
 }
 
 const builtins: { [K in keyof BuiltinOperations]: Fallback<K> } = {
-  'table:init': {
-    describe: 'table creation continued without the failed step',
-    value: () => undefined,
-  },
-  'table:setOptions': { describe: 'the previous options were kept', value: () => undefined },
-  'table:destroy': {
-    describe: 'teardown continued; the table is destroyed',
-    value: () => undefined,
-  },
-  'state:dispatch': {
-    describe: 'the update was dropped (state unchanged)',
-    value: () => undefined,
-  },
+  // `describe`: prose keys (diagnostics/prose.ts); a plugin's own fallback may use plain text.
+  'table:init': { describe: 'init-continued', value: () => undefined },
+  'table:setOptions': { describe: 'options-kept', value: () => undefined },
+  'table:destroy': { describe: 'destroy-continued', value: () => undefined },
+  'state:dispatch': { describe: 'update-dropped', value: () => undefined },
   'data:ingest': {
-    describe: 'the previous data was kept',
+    describe: 'data-kept',
     value: (ctx) => (ctx.meta.get(FALLBACK) as readonly unknown[] | undefined) ?? [],
   },
   'pipeline:run': {
-    describe: 'the last good row model was kept',
+    describe: 'row-model-kept',
     value: (ctx) =>
       (ctx.meta.get(FALLBACK) as Uint32Array | undefined) ?? allRows(ctx.input.rowCount),
   },
   'pipeline:step': {
-    describe: 'the step passed its input through',
+    describe: 'step-passthrough',
     value: (ctx) => ctx.input.indices,
   },
   'column:batch': {
-    describe:
-      "the column's cells use the slot fallback ('' for format, undefined for accessor, " +
-      'non-matching for filterFn, missing (sorted last) for sortBy)',
+    describe: 'batch-fallback',
     value: () => undefined,
   },
   'async:request': {
-    describe: "the previous results were kept (status: 'error')",
+    describe: 'results-kept',
     value: (ctx) => Promise.resolve(ctx.meta.get(FALLBACK)),
   },
   'diagnostic:emit': {
-    describe: 'the diagnostic was dropped (the logger never kills the table)',
+    describe: 'diagnostic-dropped',
     silent: true,
     value: () => undefined,
   },
 }
 
-const NONE: Fallback = { describe: 'the operation returned undefined', value: () => undefined }
+const NONE: Fallback = { describe: 'returned-undefined', value: () => undefined }
 
 const registry = new Map<string, Fallback>(Object.entries(builtins) as [string, Fallback][])
 

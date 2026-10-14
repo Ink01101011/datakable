@@ -112,14 +112,19 @@ export const coreDiagnostics = [
     },
     DEV && coreMessages.DK_INTERCEPTOR_FAILED,
   ),
-  defineDiagnostic(
-    {
-      code: 'DK_HOT_INTERCEPTOR',
-      level: 'warn',
-      where: (d) => ({ kind: 'interceptor', name: d.interceptor, op: d.op }),
-    },
-    DEV && coreMessages.DK_HOT_INTERCEPTOR,
-  ),
+  // Dev-only warning (never emitted in production): no definition there either.
+  ...(DEV
+    ? [
+        defineDiagnostic(
+          {
+            code: 'DK_HOT_INTERCEPTOR',
+            level: 'warn',
+            where: (d) => ({ kind: 'interceptor', name: d.interceptor, op: d.op }),
+          },
+          DEV && coreMessages.DK_HOT_INTERCEPTOR,
+        ),
+      ]
+    : []),
   defineDiagnostic(
     {
       code: 'DK_OPERATION_CONFLICT',
