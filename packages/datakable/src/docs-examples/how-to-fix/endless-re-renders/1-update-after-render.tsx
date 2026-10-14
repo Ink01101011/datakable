@@ -1,4 +1,4 @@
-import { useDataTable } from 'datakable'
+import { useDataTable } from 'datakable/react'
 import { useEffect } from 'react'
 
 type Order = { id: number; customer: string; status: string }

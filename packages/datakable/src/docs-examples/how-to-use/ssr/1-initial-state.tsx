@@ -1,4 +1,4 @@
-import { type SortEntry, useDataTable } from 'datakable'
+import { type SortEntry, useDataTable } from 'datakable/react'
 
 type User = { id: number; name: string; age: number }
 

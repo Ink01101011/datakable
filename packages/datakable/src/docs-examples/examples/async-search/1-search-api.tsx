@@ -1,4 +1,4 @@
-import { pagination, search, sorting, useDataTable, withSearchFn } from 'datakable'
+import { pagination, search, sorting, useDataTable, withSearchFn } from 'datakable/react'
 
 export type Product = { sku: string; name: string; price: number }
 

@@ -1,4 +1,4 @@
-import { DataTable, pagination, sorting } from 'datakable'
+import { DataTable, pagination, sorting } from 'datakable/react'
 
 type User = { id: number; name: string; age: number }
 

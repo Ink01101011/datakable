@@ -102,9 +102,10 @@ export const proseMessages: Readonly<Record<string, string>> = {
 export function expandProse(v: string, dev: boolean): string {
   const [key, ...args] = v.split('|') as [string, ...string[]]
   const text = (DEV && dev ? proseMessages[key] : undefined) ?? installedText(key)
-  // An argument may be a key itself (`'ranks|custom-threw'`).
+  // An argument may be a key itself (`'ranks|custom-threw'`); a missing one reads as ''. (`n` is
+  // the digit string: `args['0']` indexes like `args[0]`.)
   return typeof text === 'string'
-    ? text.replace(/\{(\d)\}/g, (_, n: string) => expandProse(args[+n] as string, dev))
+    ? text.replace(/\{(\d)\}/g, (_, n: number) => expandProse(args[n] ?? '', dev))
     : v
 }
 

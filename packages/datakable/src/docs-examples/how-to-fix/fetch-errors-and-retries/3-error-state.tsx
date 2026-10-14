@@ -5,7 +5,7 @@ import {
   type FetchResult,
   pagination,
   withFetcher,
-} from 'datakable'
+} from 'datakable/react'
 
 type User = { id: number; name: string }
 

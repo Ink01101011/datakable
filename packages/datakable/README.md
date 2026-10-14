@@ -1,13 +1,19 @@
 # datakable
 
-Type-safe generic data table for React: zero-config by default, headless when you need it.
+Type-safe generic data table: zero-config by default, headless when you need it, with React on
+`datakable/react`.
 
-This is the batteries-included entry. It re-exports [`@datakable/react`](https://github.com/Ink01101011/datakable/tree/main/packages/react) and
-[`@datakable/core`](https://github.com/Ink01101011/datakable/tree/main/packages/core), and its `useDataTable` / `createTable` install the default
-preset — `columnFilters()`, `validity()`, `search()`, `sorting()`, `pagination()` — when you pass no
-`features`.
+This is the batteries-included entry. `datakable` is framework-free: it re-exports
+[`@datakable/core`](https://github.com/Ink01101011/datakable/tree/main/packages/core), and its `createTable` installs the default preset —
+`columnFilters()`, `validity()`, `search()`, `sorting()`, `pagination()` — when you pass no
+`features`. `datakable/react` adds [`@datakable/react`](https://github.com/Ink01101011/datakable/tree/main/packages/react): `useDataTable` and
+`<DataTable />` with the same preset.
 
-> Version 1.0: the public API is stable and follows semantic versioning from here. Guides,
+> Version 2.0 moved `useDataTable`, `<DataTable />` and their types from `datakable` to
+> `datakable/react`: replace `from 'datakable'` with `from 'datakable/react'` in a React app
+> ([migrating from 1.x](https://github.com/Ink01101011/datakable/blob/main/docs/how-to-use/entry-points.md#migrating-from-1x)).
+
+> The public API is stable and follows semantic versioning from here. Guides,
 > examples and troubleshooting: the [documentation](https://github.com/Ink01101011/datakable/blob/main/docs/README.md).
 
 ## Install
@@ -16,8 +22,10 @@ preset — `columnFilters()`, `validity()`, `search()`, `sorting()`, `pagination
 npm install datakable react
 ```
 
-React `>=18`. The package is ESM + CJS with types, one file per module: a bundle that uses only
-`createTable` contains no React. Only the modules of `<DataTable />` and `useDataTable` are marked
+Without React, `npm install datakable`: `react` (`>=18`) is an optional peer, needed only by
+`datakable/react`. `datakable`, `datakable/core` and `datakable/messages` import no React. The
+package is ESM + CJS with types, one file per module: a bundle that uses only `createTable`
+contains no React. Only the modules of `<DataTable />` and `useDataTable` are marked
 `"use client"`, so `createTable` also works on the server. With the Next.js app router, a server
 component can render `<DataTable />` with plain data props; call `useDataTable`, or pass functions
 (cells, features, a fetcher), from a client component (a `'use client'` file). In Node.js (SSR,
@@ -31,7 +39,7 @@ browser code throws `ReferenceError: process is not defined`, as React and Redux
 ## React
 
 ```tsx
-import { useDataTable } from 'datakable'
+import { useDataTable } from 'datakable/react'
 
 type User = { id: number; name: string; age: number; city: string }
 
@@ -95,7 +103,7 @@ How options are synced, which ones are read once, and why `columns` must be stab
 Own any state slice (for example to sync sorting with the URL); the table owns the rest.
 
 ```tsx
-import { type SortingState, useDataTable } from 'datakable'
+import { type SortingState, useDataTable } from 'datakable/react'
 import { useState } from 'react'
 
 type User = { id: number; name: string }
@@ -195,7 +203,7 @@ Redaction, `onDiagnostic` (e.g. Sentry), `strict` and `explain()`:
 ## DataTable
 
 ```tsx
-import { DataTable, type DataTableComponents, useDataTable } from 'datakable'
+import { DataTable, type DataTableComponents, useDataTable } from 'datakable/react'
 
 type User = { id: number; name: string; age: number }
 
@@ -250,7 +258,7 @@ import {
   pagination,
   sorting,
   withFetcher,
-} from 'datakable'
+} from 'datakable/react'
 
 type User = { id: number; name: string }
 
@@ -332,9 +340,10 @@ startTable(table)
 
 | Import | What |
 | --- | --- |
-| `datakable` | `useDataTable` and `createTable` with the default preset, plus everything from `@datakable/react` and `@datakable/core` |
+| `datakable` | `createTable` with the default preset, plus everything from `@datakable/core`; no React |
+| `datakable/react` | everything from `datakable`, plus `useDataTable` and `<DataTable />` with the default preset and everything from `@datakable/react` |
 | `datakable/core` | `@datakable/core` as is (no preset by default) |
-| `datakable/messages` | side-effect import: full diagnostic text in production |
+| `datakable/messages` | side-effect import: full diagnostic text in production (no React) |
 | `datakable/styles.css` | optional stylesheet for `<DataTable />` (~1 kB gzip) |
 
 ## License

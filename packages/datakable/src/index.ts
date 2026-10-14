@@ -1,7 +1,7 @@
-export * from '@datakable/react'
-// The zero-config `createTable` (default preset) shadows the bare core one re-exported above.
+// `datakable` is framework-free (#63): core plus the zero-config `createTable` (default preset).
+// No module reachable from here imports React; `<DataTable />` and `useDataTable` are on
+// `datakable/react`.
+// The zero-config `createTable` (default preset) shadows the bare core one re-exported below.
+
+export * from '@datakable/core'
 export { createTable } from './create-table'
-// Likewise for the component: `<DataTable data={rows} />` installs the default preset.
-export { DataTable } from './data-table'
-// Likewise for the React hook: `useDataTable({ data })` installs the default preset.
-export { useDataTable } from './use-data-table'

@@ -1,4 +1,4 @@
-import { type ColumnDef, useDataTable } from 'datakable'
+import { type ColumnDef, useDataTable } from 'datakable/react'
 import { type ReactNode, useMemo } from 'react'
 
 type User = { id: number; name: string; age: number }

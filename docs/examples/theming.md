@@ -14,7 +14,7 @@ support a theme toggle that overrides the system setting.
 The component:
 
 ```tsx
-import { DataTable } from 'datakable'
+import { DataTable } from 'datakable/react'
 
 type User = { id: number; name: string; age: number }
 

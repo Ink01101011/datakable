@@ -1,6 +1,6 @@
 {
   "name": "@datakable/react",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "React bindings for DataKable — useDataTable hook and DataTable component.",
   "license": "MIT",
   "author": "Supakit Kitjanabumrungsak",
@@ -22,6 +22,8 @@
   ],
   "type": "module",
   "sideEffects": [
+    "./dist/messages.js",
+    "./dist/messages.cjs",
     "./dist/styles.css"
   ],
   "engines": {
@@ -32,6 +34,9 @@
   "types": "./dist/index.d.ts",
   "typesVersions": {
     "*": {
+      "messages": [
+        "./dist/messages.d.ts"
+      ],
       "styles.css": [
         "./dist/styles.css.d.ts"
       ]
@@ -46,6 +51,16 @@
       "require": {
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
+      }
+    },
+    "./messages": {
+      "import": {
+        "types": "./dist/messages.d.ts",
+        "default": "./dist/messages.js"
+      },
+      "require": {
+        "types": "./dist/messages.d.cts",
+        "default": "./dist/messages.cjs"
       }
     },
     "./styles.css": {
@@ -72,5 +87,10 @@
   },
   "peerDependencies": {
     "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
   }
 }

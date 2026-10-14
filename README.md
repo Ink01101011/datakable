@@ -25,7 +25,7 @@ npm install datakable react
 Requires React `>=18`; the types need TypeScript `>=5.4`; in Node.js (SSR, tests), Node `>=18.18`.
 
 ```tsx
-import { useDataTable } from 'datakable'
+import { useDataTable } from 'datakable/react'
 
 type User = { id: number; name: string; age: number; city: string }
 
@@ -92,7 +92,7 @@ fetcher), from a client component (a `'use client'` file).
 
 | Package | Path | Purpose |
 | --- | --- | --- |
-| [`datakable`](packages/datakable/README.md) | `packages/datakable` | Main entry: `useDataTable` / `createTable` with the default preset; `datakable/core`, `datakable/messages` |
+| [`datakable`](packages/datakable/README.md) | `packages/datakable` | Main entry: `createTable` with the default preset (no React); `datakable/react` for `useDataTable` / `<DataTable />`; `datakable/core`, `datakable/messages` |
 | [`@datakable/react`](packages/react/README.md) | `packages/react` | `useDataTable` hook (`"use client"` modules), no features by default |
 | [`@datakable/core`](packages/core/README.md) | `packages/core` | Headless, framework-agnostic table: store, features, diagnostics. No React |
 | `@datakable/docs` | `apps/docs` | Vite playground (private) |

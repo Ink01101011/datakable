@@ -18,7 +18,7 @@ import {
   VERSION,
   withFetcher,
   withSchema,
-} from './index'
+} from './react'
 
 /**
  * `docs/how-to-fix/` (D3, job datakable-docs-v1): each troubleshooting page's symptom is
@@ -643,7 +643,7 @@ describe('bundle-too-big.md', () => {
   it('the budget table is the §9.3 budgets of scripts/size-limits.mjs', async () => {
     const limits = (
       (await import('../../../scripts/size-limits.mjs' as string)) as {
-        default: { pkg: string; import: string[]; budget?: number }[]
+        default: { pkg: string; entry?: string; import: string[]; budget?: number }[]
       }
     ).default
     const page = fs.readFileSync(
@@ -651,12 +651,16 @@ describe('bundle-too-big.md', () => {
       'utf8',
     )
     const shown = [
-      ...page.matchAll(/^\| `(@datakable\/core|datakable)`: (.+?) \| ≤ ([\d.]+) KB \|$/gm),
+      ...page.matchAll(
+        /^\| `(@datakable\/core|datakable(?:\/react)?)`: (.+?) \| ≤ ([\d.]+) KB \|$/gm,
+      ),
     ]
     const budgets = limits.filter((l) => l.budget !== undefined)
     expect(shown.map((m) => Number(m[3]) * 1024)).toEqual(budgets.map((l) => l.budget))
     expect(shown.map((m) => m[1])).toEqual(
-      budgets.map((l) => (l.pkg === 'core' ? '@datakable/core' : 'datakable')),
+      budgets.map((l) =>
+        l.pkg === 'core' ? '@datakable/core' : `datakable${l.entry ? `/${l.entry}` : ''}`,
+      ),
     )
   })
 

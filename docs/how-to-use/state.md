@@ -185,7 +185,7 @@ In React, keep the slice in `useState` and pass it as `state`; `useDataTable` sy
 every render, so setting your state is the feed-back:
 
 ```tsx
-import { type PaginationState, useDataTable } from 'datakable'
+import { type PaginationState, useDataTable } from 'datakable/react'
 import { useState } from 'react'
 
 type User = { id: number; name: string }

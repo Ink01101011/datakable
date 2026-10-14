@@ -10,9 +10,9 @@ install and development code that a production build should remove.
   `process.env.NODE_ENV` with `"production"`. Vite, webpack, Next.js, Rollup with
   `@rollup/plugin-replace` and esbuild with `--define` do; see
   [`process is not defined`](process-is-not-defined.md).
-- **Which features?** `datakable`'s `createTable`, `useDataTable` and `<DataTable />` install the
-  whole preset when you pass no `features`: column filters, validity, search (with its fuzzy
-  search engine) and sorting and pagination.
+- **Which features?** `datakable`'s `createTable` and `datakable/react`'s `useDataTable` and
+  `<DataTable />` install the whole preset when you pass no `features`: column filters, validity,
+  search (with its fuzzy search engine) and sorting and pagination.
 - Use your bundler's analyser (for example `rollup-plugin-visualizer`, `source-map-explorer`, or
   esbuild's `--metafile`) to see the share of `@datakable/*`, `ex-search`, `exsorted` and
   `kk-debounce`.
@@ -25,8 +25,8 @@ dependencies and React) to these budgets:
 | `@datakable/core`: `createTable` | ≤ 15 KB |
 | `@datakable/core`: `createTable` + `columnFilters` + `sorting` + `pagination` | ≤ 24 KB |
 | `datakable`: `createTable` (default preset) | ≤ 27 KB |
-| `datakable`: `useDataTable` (default preset) | ≤ 28.5 KB |
-| `datakable`: `<DataTable />` (default preset) | ≤ 32.5 KB |
+| `datakable/react`: `useDataTable` (default preset) | ≤ 28.5 KB |
+| `datakable/react`: `<DataTable />` (default preset) | ≤ 32.5 KB |
 
 The dependencies add about 3.7 KB for search (`ex-search`), 0.8 KB for search typing
 (`kk-debounce`) and 1.2–2.4 KB for sorting (`exsorted`), gzip.
@@ -37,7 +37,7 @@ Pass `features` to install a subset of the preset; the others, and their depende
 bundled:
 
 ```tsx
-import { DataTable, pagination, sorting } from 'datakable'
+import { DataTable, pagination, sorting } from 'datakable/react'
 
 type User = { id: number; name: string; age: number }
 

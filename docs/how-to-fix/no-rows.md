@@ -72,7 +72,7 @@ matches.
 the rows after the filters and the search:
 
 ```tsx
-import { DataTable, useDataTable } from 'datakable'
+import { DataTable, useDataTable } from 'datakable/react'
 
 type Product = { sku: string; name: string; price: number }
 

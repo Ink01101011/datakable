@@ -1,5 +1,116 @@
 # datakable
 
+## 1.1.0
+
+### Minor Changes
+
+- 00ff267: Smaller production bundles: diagnostic details that are sentences in development (`fallback`,
+  `reason`, `problem`, `expected`) are now short keys in production, e.g.
+  `fallback: 'cells-undefined'` instead of `'the failed cells read as undefined'`, or
+  `reason: 'page-size|10'` (a key and its arguments) instead of `'pageSize was replaced by 10'`.
+  Codes, `where`, levels and every other detail are unchanged, and development builds read exactly
+  as before. To get the sentences back in production, import the messages once in the app entry:
+  `import 'datakable/messages'` (or `@datakable/core/messages`); the details then read exactly as in
+  development. The keys are listed in `packages/core/src/diagnostics/prose.ts`.
+
+### Patch Changes
+
+- 7090c8d: `styles.css` no longer fades the stale rows to `opacity: 0.6` while the table is busy over them
+  (refresh, server or debounced search): that dropped body text to 4.24:1 in the light theme (WCAG
+  1.4.3 needs 4.5:1), and flagged cells to 2.59:1. The rows keep full contrast; the "Updating…"
+  indicator signals the refresh and the rows get `cursor: progress`. Fixes #57.
+- 43bd2d3: `styles.css`: the search input's border used `--dk-border` (the table-rule colour), only 1.43:1
+  (light) / 1.92:1 (dark) against the background, below WCAG 1.4.11's 3:1 for a control boundary. It
+  now uses a new token, `--dk-control-border`: `#818b98` (3.45:1 on `#fff`) and `#6e7681` in the
+  dark set (4.12:1 on `#0d1117`). `--dk-border` still draws the table rules. Fixes #58.
+- 622333f: New development-only warning `DK_CONTROLLED_SLICE_DROPPED`: feeding a change back with only the
+  slice that changed (`table.setOptions({ state: { sorting } })`) while you control several slices
+  used to release the others silently, because `setOptions` replaces the whole `state` option. It
+  now names the dropped slice and the fix (`setOptions({ state: { ...current, sorting } })`, or pass
+  the slice as `undefined` to release it on purpose). Deliberate releases (`state: {}`, an explicit
+  `undefined`, React's `state` prop dropping a slice outside a feed-back) stay silent. Nothing changes
+  in production builds. Fixes #49.
+- c2509da: Documentation fixes from the 1.0.0 production validation (no code change):
+  
+  - Next.js app router: import `datakable/messages` from a `'use client'` module rendered by the
+    root layout; an import in `app/layout.tsx` (a server component) never reaches the browser.
+    Fixes #15.
+  - `docs/examples/nextjs-ssr.md` and the SSR guide load the page's data inside `<Suspense>`, so
+    the recipe builds with Next 16 `cacheComponents`. Fixes #17.
+  - Server mode: `filteredCount` and `totalCount` count the loaded page; keep the fetcher result's
+    `rowCount` for the server's total (new "Counting rows in server mode" section). Fixes #31.
+  - `createTable<Row>({ features })` is a compile error, not silently un-inferred features; the
+    printed error and its two fixes are in "Reading type errors" (section 7). Fixes #39.
+  - A server that is not bundled (Node, Nuxt/Nitro `node-server`) needs `NODE_ENV=production` at
+    run time, or it reports in development mode with raw row keys. Fixes #47.
+  - Nuxt / Nitro drops a side-effect-only `import '@datakable/core/messages'` from the server
+    bundle: install the text with `installMessages(...allMessages)` from a universal plugin.
+    Fixes #48.
+  - `setOptions({ state })` replaces the whole `state` option: feed back every controlled slice.
+    Fixes #49.
+  - A feature's option is reported at `feature "<name>"` with the option in `details.path`, not as
+    `options.<feature>.<option>`. Fixes #50.
+  - SSR with `data` and an async `searchFn` for an initial query lists the rows unsearched
+    (`data-status="pending"`), not the Loading state. Fixes #51.
+  
+  Also documented: development freezes arrays passed as filter values; `setSorting` compares
+  entries as JSON (key order matters); zero-config search covers only string, number and boolean
+  columns (`DK_SEARCH_COLUMN_SKIPPED` otherwise).
+- 8f79b5b: Packaging and type-resolution fixes:
+  
+  - The `./styles.css` exports of `datakable` and `@datakable/react` now carry a `types` condition
+    (an empty declaration per module format), so `import 'datakable/styles.css'` type-checks under
+    TypeScript 6, which checks side-effect imports by default. Fixes #34.
+  - A `typesVersions` fallback maps every subpath entry (`datakable/core`, `datakable/messages`,
+    `@datakable/core/pagination`, …, and the stylesheets) for `moduleResolution: node10`, which ignores
+    `exports`. Fixes #33.
+  - All three packages declare `engines.node: ">=18.18.0"` (the floor set by the runtime dependency
+    `kk-debounce`; the code itself targets ES2022). Fixes #37.
+  - The minimum TypeScript version, 5.4 (the types use `NoInfer`), is now documented, and the
+    published declarations are checked against it. Fixes #32.
+  - Every published `.js` / `.cjs` file carries exactly one `sourceMappingURL` comment (fixed in
+    1.0.1, now checked on every build). Fixes #35.
+- Updated dependencies [7090c8d]
+- Updated dependencies [e5e34cc]
+- Updated dependencies [43bd2d3]
+- Updated dependencies [a61b48e]
+- Updated dependencies [578b419]
+- Updated dependencies [152abc0]
+- Updated dependencies [59b5f7a]
+- Updated dependencies [f4e1b7e]
+- Updated dependencies [337d557]
+- Updated dependencies [3c9826d]
+- Updated dependencies [622333f]
+- Updated dependencies [c2509da]
+- Updated dependencies [b5752d4]
+- Updated dependencies [8f79b5b]
+- Updated dependencies [825a969]
+- Updated dependencies [b8d1e6c]
+- Updated dependencies [00ff267]
+- Updated dependencies [d4ffcf9]
+- Updated dependencies [169a7f7]
+- Updated dependencies [19300fa]
+- Updated dependencies [820038c]
+- Updated dependencies [b9cf577]
+- Updated dependencies [4879542]
+- Updated dependencies [addbf66]
+- Updated dependencies [7729717]
+- Updated dependencies [44ce4bc]
+- Updated dependencies [b61ee10]
+- Updated dependencies [2080355]
+- Updated dependencies [e3b6d3b]
+- Updated dependencies [9b693a6]
+- Updated dependencies [3082297]
+- Updated dependencies [66d10d6]
+- Updated dependencies [33a0d32]
+- Updated dependencies [55ad4bd]
+- Updated dependencies [91b163e]
+- Updated dependencies [6fc764f]
+- Updated dependencies [33a0d32]
+- Updated dependencies [760c769]
+  - @datakable/react@1.1.0
+  - @datakable/core@1.1.0
+
 ## 1.0.1
 
 ### Patch Changes
