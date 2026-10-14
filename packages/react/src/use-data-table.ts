@@ -244,7 +244,11 @@ export function useDataTable(options: Options): unknown {
     return () => {
       inst.mounted = false
       // Deferred: the StrictMode effect re-run mounts again synchronously and keeps the table.
-      queueMicrotask(() => release(inst))
+      queueMicrotask(() => {
+        if (inst.mounted || inst.destroyed) return
+        inst.destroyed = true
+        inst.table.destroy()
+      })
     }
   }, [inst])
 
@@ -259,7 +263,7 @@ export function useDataTable(options: Options): unknown {
   return view
 }
 
-/** Destroys the table unless it is mounted (or already destroyed). */
+/** Dev (React 18): destroys a table created in render unless it mounted (or was destroyed). */
 function release(inst: Instance) {
   if (inst.mounted || inst.destroyed) return
   inst.destroyed = true
