@@ -49,12 +49,15 @@ export const dataCheckMessages: DiagnosticMessages<
 > = {
   DK_COLUMN_PATH_NOT_FOUND: {
     problem: (d) =>
-      `columns[${d.index}] key "${d.column}" does not exist in any of ${firstRows(d.sampled)}` +
+      `columns[${d.index}] key "${d.column}" does not exist in ` +
+      (d.sampled === 1 ? 'the first row' : `any of the first ${d.sampled} rows`) +
       (d.suggestions[0] === undefined ? '' : ` (did you mean "${d.suggestions[0]}"?)`),
     impact: () => "the column reads undefined in every row and renders ''",
     fix: (d) => [
       ...d.suggestions.slice(0, 3).map((s) => `columns[${d.index}]: { key: '${s}' }`),
-      `or compute the value: columns[${d.index}]: { id: '${d.column}', accessor: (row) => … }`,
+      // "or" only after a suggested key; with none, this is the first (best) fix.
+      `${d.suggestions.length ? 'or ' : ''}compute the value: columns[${d.index}]: ` +
+        `{ id: '${d.column}', accessor: (row) => … }`,
       'or, if the field only appears in later rows, ignore this (only the first rows are checked)',
     ],
   },
