@@ -268,7 +268,7 @@ export function createTable<T, S extends TableState>(
     () => options.columns,
   )
   // Never silent (§8.6): in production (no option validator) an unwrapped schema would be ignored.
-  if (options.schema && !schemaIngest) unwrapped('schema', 'withSchema')
+  if (options.schema && !schemaIngest) unwrapped('schema', options.schema, 'withSchema')
 
   function sensitiveColumns(): string[] {
     const out: string[] = []
@@ -857,7 +857,7 @@ export function createTable<T, S extends TableState>(
     const factory = (fetcher as Partial<ServerFetcher<unknown>> | undefined)?.[SERVER_SOURCE]
     if (factory) server = use(factory)
     // Never silent (§8.6): in production an unwrapped fetcher would never run.
-    else if (fetcher) unwrapped('fetcher', 'withFetcher', phase)
+    else if (fetcher) unwrapped('fetcher', fetcher, 'withFetcher', 'server', phase)
     return server
   }
 
@@ -867,12 +867,20 @@ export function createTable<T, S extends TableState>(
    */
   function unwrapped(
     path: 'schema' | 'fetcher',
+    value: unknown,
     wrap: string,
+    entry: string = path,
     phase: 'init' | 'setOptions' = 'init',
   ): never {
     return throwConfigError(
       'DK_INVALID_OPTION',
-      { path, expected: `${wrap}(${path})`, received: path, suggestions: [], phase },
+      {
+        path,
+        expected: `${wrap}(${path}) from '@datakable/core/${entry}'`,
+        received: typeof value,
+        suggestions: [],
+        phase,
+      },
       { table: hub.table, trigger: phase },
     )
   }
