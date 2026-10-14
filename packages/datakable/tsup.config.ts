@@ -26,7 +26,8 @@ export default defineConfig([
     // styles.css is written by the config below, in parallel: keep it out of the clean.
     clean: ['!styles.css'],
     sourcemap: true,
-    // treeshake is off because rollup would strip the 'use client' directives.
+    // treeshake is off because rollup would strip the 'use client' directives (and append a second
+    // sourceMappingURL comment to every file, #35 — guarded by `pnpm check:dist`).
     target: 'es2022',
     splitting: false,
     external: ['react', 'react/jsx-runtime', '@datakable/core', '@datakable/react'],
