@@ -46,6 +46,10 @@ describe('detail prose keys (§8.2, §9.3)', () => {
     expect(expandProse('constructor', true)).toBe('constructor')
   })
 
+  it('a placeholder key without its argument expands to an empty argument, never throws', () => {
+    expect(expandProse('page-size', true)).toBe('pageSize was replaced by ')
+  })
+
   it('every sentence is non-empty and every key is a plain kebab name', () => {
     for (const [k, v] of Object.entries(proseMessages)) {
       expect(k).toMatch(/^[a-z][a-z0-9-]*$/)
