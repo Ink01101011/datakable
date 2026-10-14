@@ -316,7 +316,7 @@ function report(table: object, failures: readonly Failure[]) {
   for (const list of bySlot.values()) {
     const first = list[0] as Failure
     const rows = list.slice(0, 3).map((f) => f.row)
-    const fallback = 'those cells rendered ⚠'
+    const fallback = 'cells-warn' // prose key: 'those cells rendered ⚠'
     try {
       if (first.lost !== undefined) {
         // Deduped by the table per column and data reference, like the column cache's report.
@@ -436,9 +436,16 @@ function guard(
 ): ReactNode {
   if (typeof out !== 'object' || out === null) return out
   return (
-    <CellBoundary table={table} col={col} slot={slot} row={row.index} original={row.original}>
+    <Boundary
+      table={table}
+      col={col}
+      slot={slot}
+      row={row.index}
+      resetKey={row.original}
+      fallback={failedCell}
+    >
       {out}
-    </CellBoundary>
+    </Boundary>
   )
 }
 
@@ -562,13 +569,13 @@ function DataTableView(props: {
   // Worded unlike the visible parts ("No rows", "Searching…"), so a text query finds one element.
   const n = rowModel.filteredCount
   const count = `${n} row${n === 1 ? '' : 's'}`
-  const page = pager ? `age ${pager.pageIndex + 1} of ${Math.max(pager.pageCount, 1)}` : ''
+  const page = pager ? `${pager.pageIndex + 1} of ${Math.max(pager.pageCount, 1)}` : ''
   let said = ''
   if (searchState?.status === 'pending' || searchState?.status === 'searching') {
     said = 'Searching rows…'
   } else if (status === 'idle' && !loading) {
     // Server mode: `filteredCount` is the page's rows, so only the page (or "0 rows").
-    said = server && n ? `P${page}` : page ? `${count}, p${page}` : count
+    said = server && n ? `Page ${page}` : page ? `${count}, page ${page}` : count
   }
   const liveEl = useRef<HTMLDivElement>(null)
   const saidBefore = useRef<string | null>(null)
@@ -682,7 +689,7 @@ function DataTableView(props: {
           </tr>
         </thead>
         <tbody>
-          <BodyBoundary
+          <Boundary
             table={table}
             resetKey={rowModel}
             fallback={(retry) =>
@@ -701,7 +708,7 @@ function DataTableView(props: {
             }
           >
             {body}
-          </BodyBoundary>
+          </Boundary>
         </tbody>
       </table>
       {pager &&
@@ -731,14 +738,14 @@ function part<P extends object>(
 ): ReactNode {
   if (!Custom) return <Default {...props} />
   return (
-    <BodyBoundary
+    <Boundary
       table={table}
       slot={`components.${name}`}
       resetKey={Custom}
       fallback={() => <Default {...props} />}
     >
       <Custom {...props} />
-    </BodyBoundary>
+    </Boundary>
   )
 }
 
@@ -754,38 +761,63 @@ function stateRow(span: number, kind: string, content: ReactNode) {
 
 interface BoundaryProps {
   table: object
-  /** A part outside the body (`components.SearchInput`): reported as the slot. */
+  /**
+   * A part outside the body: `components.SearchInput` (reported as the slot). A cell boundary:
+   * `cell` / `invalidCell` (reported as `columns[<index>].<slot>`).
+   */
   slot?: string
-  /** A new value (the next row model) renders the body again. */
+  /** A cell boundary (`render:cell`): the cell's column. A new `def` renders a failed cell again. */
+  col?: Column
+  /** A cell boundary: the row's index in the data (`row.index`). */
+  row?: number
+  /** A new value (the next row model; a cell's row data) renders the children again. */
   resetKey: unknown
   fallback(retry: () => void): ReactNode
   children: ReactNode
 }
 
+interface BoundaryState {
+  failed: boolean
+  key: unknown
+  def: ColumnLike | undefined
+}
+
 /**
- * Catches a component that throws inside the body outside any cell boundary (§10: a
- * `components.Empty` / `Loading` / `Error` part): reports `DK_RENDER_FAILED` (`render:table`) and
- * shows the Error state; the header, search and pagination keep working.
+ * Catches a component that throws (`DK_RENDER_FAILED`) and renders `fallback` instead; the rest of
+ * the table keeps working. Three uses: the body outside any cell (`render:table`, §10: a
+ * `components.Empty` / `Loading` / `Error` part) shows the Error state; a custom search / pager
+ * part (`render:table` at `components.<name>`) is replaced by the default part; and one cell
+ * (`render:cell`, §3.4, with `col`): a component returned by `cell` / `invalidCell` renders `⚠` in
+ * that cell only (deduped per column). A cell boundary only wraps object content (see `guard`).
  */
-class BodyBoundary extends Component<BoundaryProps, { failed: boolean; key: unknown }> {
-  override state = { failed: false, key: this.props.resetKey }
+class Boundary extends Component<BoundaryProps, BoundaryState> {
+  override state: BoundaryState = {
+    failed: false,
+    key: this.props.resetKey,
+    def: this.props.col?.def,
+  }
 
   static getDerivedStateFromError() {
     return { failed: true }
   }
 
-  static getDerivedStateFromProps(props: BoundaryProps, state: { key: unknown }) {
-    return props.resetKey === state.key ? null : { failed: false, key: props.resetKey }
+  static getDerivedStateFromProps(props: BoundaryProps, state: BoundaryState) {
+    const def = props.col?.def
+    return props.resetKey === state.key && def === state.def
+      ? null
+      : { failed: false, key: props.resetKey, def }
   }
 
   override componentDidCatch(error: unknown) {
+    const { table, col, slot, row } = this.props
     try {
       emitTableDiagnostic(
-        this.props.table,
+        table,
         'DK_RENDER_FAILED',
         {
-          op: 'render:table',
-          ...(this.props.slot ? { slot: this.props.slot } : {}),
+          op: col ? 'render:cell' : 'render:table',
+          ...(slot ? { slot: col ? `columns[${col.index}].${slot}` : slot } : {}),
+          ...(col ? { column: col.id, row: row as number } : {}),
           ...(error instanceof Error ? { errorName: error.name } : {}),
         },
         { cause: error },
@@ -802,69 +834,8 @@ class BodyBoundary extends Component<BoundaryProps, { failed: boolean; key: unkn
   }
 }
 
-interface CellBoundaryProps {
-  table: object
-  col: Column
-  slot: 'cell' | 'invalidCell'
-  /** The row's index in the data (`row.index`). */
-  row: number
-  /** The row's data: a new object (or new columns) renders a failed cell again. */
-  original: unknown
-  children: ReactNode
-}
-
-interface CellBoundaryState {
-  failed: boolean
-  original: unknown
-  def: ColumnLike
-}
-
-/**
- * One cell's boundary (`render:cell`, §3.4): a component returned by `cell` / `invalidCell` that
- * throws renders `⚠` in that cell only and reports `DK_RENDER_FAILED` (deduped per column); the
- * other cells, rows and the table keep working. Only wraps object content (see `guard`).
- */
-class CellBoundary extends Component<CellBoundaryProps, CellBoundaryState> {
-  override state: CellBoundaryState = {
-    failed: false,
-    original: this.props.original,
-    def: this.props.col.def,
-  }
-
-  static getDerivedStateFromError() {
-    return { failed: true }
-  }
-
-  static getDerivedStateFromProps(props: CellBoundaryProps, state: CellBoundaryState) {
-    return props.original === state.original && props.col.def === state.def
-      ? null
-      : { failed: false, original: props.original, def: props.col.def }
-  }
-
-  override componentDidCatch(error: unknown) {
-    const { table, col, slot, row } = this.props
-    try {
-      emitTableDiagnostic(
-        table,
-        'DK_RENDER_FAILED',
-        {
-          op: 'render:cell',
-          slot: `columns[${col.index}].${slot}`,
-          column: col.id,
-          row,
-          ...(error instanceof Error ? { errorName: error.name } : {}),
-        },
-        { cause: error },
-      )
-    } catch {
-      // Not a table made by createTable: nothing to report to.
-    }
-  }
-
-  override render() {
-    return this.state.failed ? FAILED : this.props.children
-  }
-}
+/** A failed cell's fallback (one function for every cell boundary: no closure per cell). */
+const failedCell = () => FAILED
 
 // --- default parts (unstyled) --------------------------------------------------------------------
 

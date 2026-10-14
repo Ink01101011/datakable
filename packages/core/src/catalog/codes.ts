@@ -113,14 +113,19 @@ export const optionMessages: DiagnosticMessages<
 
 /** Codes owned by the options catalog (§3.5, §8.3). */
 export const optionDiagnostics = [
-  defineDiagnostic(
-    {
-      code: 'DK_UNKNOWN_OPTION',
-      level: 'warn',
-      where,
-    },
-    DEV && optionMessages.DK_UNKNOWN_OPTION,
-  ),
+  // Only the development option validator emits it: no definition in production.
+  ...(DEV
+    ? [
+        defineDiagnostic(
+          {
+            code: 'DK_UNKNOWN_OPTION',
+            level: 'warn',
+            where,
+          },
+          DEV && optionMessages.DK_UNKNOWN_OPTION,
+        ),
+      ]
+    : []),
   defineDiagnostic(
     {
       code: 'DK_INVALID_OPTION',

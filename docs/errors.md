@@ -220,6 +220,10 @@ Moved: [DK_CONTROLLED_WITHOUT_HANDLER](how-to-fix/errors.md#dk_controlled_withou
 
 Moved: [DK_CONTROLLED_NOT_FED_BACK](how-to-fix/errors.md#dk_controlled_not_fed_back).
 
+### DK_CONTROLLED_SLICE_DROPPED
+
+Moved: [DK_CONTROLLED_SLICE_DROPPED](how-to-fix/errors.md#dk_controlled_slice_dropped).
+
 ### DK_UNSTABLE_COLUMNS
 
 Moved: [DK_UNSTABLE_COLUMNS](how-to-fix/errors.md#dk_unstable_columns).

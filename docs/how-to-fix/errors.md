@@ -82,7 +82,10 @@ In development, the console prints one collapsed group per diagnostic:
 
 - The text builders are development-only (`process.env.NODE_ENV !== 'production'`): a production
   diagnostic keeps its `code`, `level`, `where` and `context`, and its `docs` URL carries
-  `?v=<version>&where=<where>`; `problem`, `impact` and `fix` are empty. Add
+  `?v=<version>&where=<where>`; `problem`, `impact` and `fix` are empty, and a detail that is a
+  sentence in development (`fallback`, `reason`, `problem`, `expected`) is a short key
+  (`fallback: 'cells-undefined'`, see
+  [Diagnostics have no text in production](diagnostics-without-text-in-production.md#what-production-keeps)). Add
   `import 'datakable/messages'` (or `@datakable/core/messages`) once to get the full text in
   production, in a module of the bundle that creates the tables (Next.js app router: a
   `'use client'` module, not `app/layout.tsx`; Nuxt / Nitro: `installMessages(...allMessages)`,
@@ -90,6 +93,7 @@ In development, the console prints one collapsed group per diagnostic:
 - **Development only** (absent from production bundles, never emitted there): the dev checks
   [`DK_DATA_MUTATED`](#dk_data_mutated),
   [`DK_CONTROLLED_NOT_FED_BACK`](#dk_controlled_not_fed_back),
+  [`DK_CONTROLLED_SLICE_DROPPED`](#dk_controlled_slice_dropped),
   [`DK_CALLBACK_BAD_RETURN`](#dk_callback_bad_return),
   [`DK_FEATURE_BAD_OUTPUT`](#dk_feature_bad_output),
   [`DK_FEATURE_MUTATED_INPUT`](#dk_feature_mutated_input),
@@ -212,6 +216,7 @@ To trace a production table, install it: `createTable({ interceptors: [tracer()]
 | [`DK_FEATURE_INCOMPATIBLE`](#dk_feature_incompatible) | error | Options and config |
 | [`DK_CONTROLLED_WITHOUT_HANDLER`](#dk_controlled_without_handler) | warn | Options and config |
 | [`DK_CONTROLLED_NOT_FED_BACK`](#dk_controlled_not_fed_back) | warn | Options and config |
+| [`DK_CONTROLLED_SLICE_DROPPED`](#dk_controlled_slice_dropped) | warn | Options and config |
 | [`DK_UNSTABLE_COLUMNS`](#dk_unstable_columns) | warn | Options and config |
 | [`DK_UNSTABLE_OPTION`](#dk_unstable_option) | warn | Options and config |
 | [`DK_STATE_UNKNOWN_KEY`](#dk_state_unknown_key) | warn | Options and config |
@@ -2087,6 +2092,67 @@ prints (development console):
           3. if you reject the change on purpose, disable the control that asks for it instead
   docs    https://github.com/Ink01101011/datakable/blob/main/docs/errors.md#dk_controlled_not_fed_back
   context trigger=api:toggleSort run=0 phase=client
+```
+
+### DK_CONTROLLED_SLICE_DROPPED
+
+`warn` · development only · fault test: [create-table.test.ts](../../packages/core/src/table/create-table.test.ts)
+
+**Problem.** You own several slices of the state and fed a change back with only the slice that changed: `table.setOptions({ state: { sorting } })`. `setOptions` replaces the whole `state` option, so every slice you left out (here `pagination`) is no longer controlled: the table now changes it on its own, without asking `onStateChange`, and your copy goes stale. Reported in development only, when a feed-back (a change the table asked for) passes some slices and omits others. `state: {}`, a slice passed as `undefined`, and an owner that stops passing a slice outside a feed-back (React's `state` prop) are deliberate releases and stay silent.
+
+**Common causes.**
+
+- Copying the one-slice feed-back example (`setOptions({ state: { sorting } })`) into a table that controls two slices.
+- One store watcher per slice, each calling `setOptions({ state: { <its slice> } })` (Vue refs, signals).
+
+**Fix.**
+
+- Pass every controlled slice each time: `table.setOptions({ state: { ...current, sorting } })`.
+- To release a slice on purpose, pass it as `undefined`: `table.setOptions({ state: { sorting, pagination: undefined } })`.
+
+**Example.**
+
+```ts
+import {
+  createTable,
+  type PaginationState,
+  pagination,
+  type SortingState,
+  sorting,
+} from '@datakable/core'
+
+type User = { id: number; name: string }
+const users: User[] = [
+  { id: 1, name: 'Ada' },
+  { id: 2, name: 'Grace' },
+]
+
+let mine: { sorting: SortingState<User>; pagination: PaginationState } = {
+  sorting: { by: [] },
+  pagination: { pageIndex: 0, pageSize: 10 },
+}
+const table = createTable({
+  data: users,
+  features: [sorting(), pagination()],
+  state: mine,
+  onStateChange: (updater) => {
+    mine = { ...mine, ...updater(mine) }
+    table.setOptions({ state: { sorting: mine.sorting } }) // pagination is left out
+  },
+})
+table.toggleSort('name')
+```
+
+prints (development console):
+
+```text
+⚠ [DataKable table#1] DK_CONTROLLED_SLICE_DROPPED: setOptions({ state }) fed back "sorting" without "pagination": setOptions replaces the whole state option, so "pagination" is no longer controlled
+  where   options.state.pagination
+  impact  the table now owns "pagination": its changes no longer reach onStateChange and your copy goes stale
+  fix     1. pass every controlled slice each time, e.g. table.setOptions({ state: { ...current, sorting } })
+          2. to release a slice on purpose, pass it as undefined: { pagination: undefined }
+  docs    https://github.com/Ink01101011/datakable/blob/main/docs/errors.md#dk_controlled_slice_dropped
+  context trigger=setOptions run=0 phase=client
 ```
 
 ### DK_UNSTABLE_COLUMNS

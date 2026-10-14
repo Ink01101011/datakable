@@ -128,7 +128,7 @@ function report(ctx: RowModelContext, c: Compiled, id: string, kind: string, ind
         column: id,
         rows: Array.from(failures.sample()),
         count: failures.count,
-        fallback: 'the failed rows are treated as non-matching',
+        fallback: 'rows-unmatched',
         ...(name === undefined ? {} : { errorName: name }),
       },
       { cause: first.error },

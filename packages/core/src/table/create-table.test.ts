@@ -357,6 +357,53 @@ describe('createTable: controlled state per slice', () => {
     })
   })
 
+  describe('DK_CONTROLLED_SLICE_DROPPED (development, #49)', () => {
+    /** Two controlled slices; the owner feeds back only the slice that changed (the #49 mistake). */
+    function owner(feedBack: (mine: Partial<S>, changed: string[]) => Partial<S>) {
+      let mine: Partial<S> = { sorting: [], page: 0 }
+      const ref: { t?: ReturnType<typeof make> } = {}
+      ref.t = make({
+        state: { ...mine },
+        onStateChange: (u) => {
+          const next = u(mine)
+          const changed = Object.keys(next).filter((k) => next[k as keyof S] !== mine[k as keyof S])
+          mine = { ...mine, ...next }
+          ref.t?.setOptions({ state: feedBack(mine, changed) })
+        },
+      })
+      return ref.t
+    }
+
+    it('feeding back one slice drops the other controlled slice: reported with the fix', () => {
+      const only = (mine: Partial<S>, changed: string[]) =>
+        Object.fromEntries(changed.map((k) => [k, mine[k as keyof S]])) as Partial<S>
+      const t = owner(only)
+      t.setState({ sorting: ['id'] })
+      expect(codes()).toEqual(['DK_CONTROLLED_SLICE_DROPPED'])
+      const d = seen[0] as Diagnostic
+      expect(d.level).toBe('warn')
+      expect(d.where).toEqual({ kind: 'option', path: 'state.page' })
+      expect(d.details).toEqual({ slices: ['page'], kept: ['sorting'] })
+      expect(d.fix.join('\n')).toContain('table.setOptions({ state: { ...current, sorting } })')
+      expect(d.fix.join('\n')).toContain('page: undefined')
+      // Behaviour is unchanged: `page` left control (the diagnostic only makes it visible).
+      expect(Object.keys(t.getOptions().state ?? {})).toEqual(['sorting'])
+    })
+
+    it('every slice fed back, an explicit undefined, state: {} and a drop outside a feed-back are silent', () => {
+      owner((mine) => ({ ...mine })).setState({ sorting: ['id'] })
+      // `page: undefined` releases it on purpose (a controlled-state value, not an optional key).
+      const release = (mine: Partial<S>) =>
+        ({ sorting: mine.sorting, page: undefined }) as unknown as Partial<S>
+      owner(release).setState({ sorting: ['id'] })
+      owner(() => ({})).setState({ sorting: ['id'] })
+      // An owner that stops passing a slice on purpose (React's state prop): no change was asked.
+      const t = make({ state: { sorting: [], page: 0 }, onStateChange: () => {} })
+      t.setOptions({ state: { sorting: ['id'] } })
+      expect(codes()).toEqual([])
+    })
+  })
+
   it('a throwing onStateChange drops the whole update (DK_CALLBACK_FAILED)', () => {
     const t = make({
       state: { sorting: [] },

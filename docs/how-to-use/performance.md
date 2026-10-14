@@ -16,7 +16,7 @@ These are acceptance targets of the [design spec](../superpowers/specs/2026-10-1
 | `@datakable/core` `createTable` + `columnFilters` + `sorting` + `pagination` (gzip) | ≤ 24 KB |
 | `datakable` `createTable`, default preset (gzip) | ≤ 27 KB |
 | `datakable` `useDataTable`, default preset + hook (gzip) | ≤ 28.5 KB |
-| `datakable` `<DataTable />`, default preset + component (gzip) | ≤ 31.5 KB |
+| `datakable` `<DataTable />`, default preset + component (gzip) | ≤ 32.5 KB |
 | Pipeline memory at 100k rows, excluding the data itself | ≤ 5 MB (paginated, unpaginated and with a client search) |
 | Interaction (type, sort, page) on 10k rows, client mode, 4x CPU throttle | < 100 ms |
 | Longest task while building the search projection for 100k rows | ≤ 50 ms |

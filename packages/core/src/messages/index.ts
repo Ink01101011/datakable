@@ -9,6 +9,7 @@
 import { optionMessages } from '../catalog/codes'
 import { installMessages } from '../diagnostics/catalog'
 import { coreMessages } from '../diagnostics/codes'
+import { proseMessages } from '../diagnostics/prose'
 import { redactionMessages } from '../diagnostics/redact'
 import { featureMessages } from '../feature/codes'
 import { columnFiltersMessages } from '../features/column-filters/codes'
@@ -50,6 +51,8 @@ export const allMessages: ReadonlyArray<Readonly<Record<string, unknown>>> = [
   sortingMessages,
   paginationMessages,
   envMessages,
+  // The detail sentences production keeps as keys (`fallback: 'cells-undefined'`).
+  proseMessages,
 ]
 
 installMessages(...allMessages)

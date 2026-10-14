@@ -84,7 +84,7 @@ function equals(fv: unknown): Compiled {
   }
   const type = typeof fv
   if (type === 'object' || type === 'function' || type === 'symbol') {
-    return bad('equals', 'a primitive or a Date', fv)
+    return bad('equals', 'prim-or-date', fv)
   }
   return {
     kind: 'test',
@@ -127,7 +127,7 @@ function inList(fv: unknown): Compiled {
     if (item === undefined || item === null) continue
     if (item instanceof Date) times.add(item.getTime())
     else if (typeof item === 'object' || typeof item === 'function') {
-      return bad('in', 'an array of primitives or Dates', item)
+      return bad('in', 'prims-or-dates', item)
     } else prims.add(item)
     types.add(typeName(item))
   }
@@ -163,12 +163,13 @@ function range(fv: unknown): Compiled {
   const { min: rawMin, max: rawMax } = fv as { min?: unknown; max?: unknown }
   const min = bound(rawMin)
   const max = bound(rawMax)
-  if (min === false) return bad('range', `${NUMERIC} or a valid Date bound`, rawMin)
-  if (max === false) return bad('range', `${NUMERIC} or a valid Date bound`, rawMax)
+  // `expected` prose keys (diagnostics/prose.ts).
+  if (min === false) return bad('range', 'range-bound', rawMin)
+  if (max === false) return bad('range', 'range-bound', rawMax)
   if (!min && !max) return OFF
   const family = (min || max) as { family: Family }
   if (min && max && min.family !== max.family) {
-    return bad('range', `min and max of the same type (${min.family})`, rawMax)
+    return bad('range', `same-type|${min.family}`, rawMax)
   }
   // Mixed number / bigint comparisons are exact in JS (`3n >= 2.5`).
   const lo = min ? (min.at as number) : undefined
