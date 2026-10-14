@@ -106,3 +106,25 @@ describe('the search box and pager are named after the caption (#59)', () => {
     expect(screen.getByRole('navigation', { name: 'Pagination' })).toBeTruthy()
   })
 })
+
+describe('paging to the first / last page keeps focus on the pager button (#55)', () => {
+  it('the unavailable button is aria-disabled, stays focusable and ignores activation', () => {
+    render(<DataTable data={users} features={[pagination()]} />)
+    const nav = screen.getByRole('navigation', { name: 'Pagination' })
+    const prev = within(nav).getByRole('button', { name: 'Previous page' }) as HTMLButtonElement
+    const next = within(nav).getByRole('button', { name: 'Next page' }) as HTMLButtonElement
+    expect(prev.getAttribute('aria-disabled')).toBe('true')
+    expect(next.getAttribute('aria-disabled')).toBeNull()
+    next.focus()
+    fireEvent.click(next)
+    fireEvent.click(next)
+    expect(nav.textContent).toContain('Page 3 of 3')
+    // A disabled element cannot hold focus (the browser moves it to <body>): never `disabled`.
+    expect(next.disabled).toBe(false)
+    expect(next.getAttribute('aria-disabled')).toBe('true')
+    expect(document.activeElement).toBe(next)
+    fireEvent.click(next)
+    expect(nav.textContent).toContain('Page 3 of 3')
+    expect(prev.getAttribute('aria-disabled')).toBeNull()
+  })
+})

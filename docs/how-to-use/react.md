@@ -210,7 +210,9 @@ It renders what the installed features provide:
 - **A search input** with `search()`, bound to `state.search.input`: typing calls `setSearch`,
   Enter `flushSearch`, Esc `clearSearch`, and a spinner shows while the search is `pending` or
   `searching`.
-- **A pager** with `pagination()`: previous / next buttons and "Page n of m".
+- **A pager** with `pagination()`: previous / next buttons and "Page n of m". At the first / last
+  page the unavailable button gets `aria-disabled="true"` (not `disabled`), so it keeps keyboard
+  focus.
 - **Names**: with a text `caption` ("Customers"), the search box is "Search Customers" and the
   pager "Customers pagination", so two tables on a page get distinct names.
 - **Cells** through the column's `cell`, else `format`, else the default formatter; flagged cells
@@ -346,6 +348,7 @@ export function Users({ users }: { users: User[] }) {
 | `data-invalid`, `aria-invalid` | flagged rows and their cells with issues | `'true'` |
 | `data-dk-invalid-marker` | the `⚠` of an invalid cell | — |
 | `data-dk-pagination`, `data-dk-page` | the pager `<nav>` and its "Page n of m" | — |
+| `aria-disabled` | the pager's previous / next button with no page to go to | `'true'` |
 | `data-dk-refresh` | the refresh indicator | — |
 
 For a default look, import `datakable/styles.css` (or `@datakable/react/styles.css`) once, in your

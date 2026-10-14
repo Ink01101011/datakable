@@ -81,7 +81,7 @@
   cursor: pointer;
 }
 
-:where([data-datakable] button:disabled) {
+:where([data-datakable] button:disabled, [data-datakable] button[aria-disabled="true"]) {
   opacity: 0.5;
   cursor: not-allowed;
 }

@@ -827,16 +827,30 @@ function DefaultSearchInput({
   )
 }
 
+/**
+ * `aria-disabled`, not `disabled`, at the first / last page: a disabled button loses focus (to
+ * `<body>`) the moment paging makes it unavailable (#55).
+ */
 function DefaultPagination(p: PaginationProps) {
   return (
     <nav aria-label={p.label} data-dk-pagination="">
-      <button type="button" aria-label="Previous page" disabled={!p.canPrev} onClick={p.prev}>
+      <button
+        type="button"
+        aria-label="Previous page"
+        aria-disabled={!p.canPrev || undefined}
+        onClick={p.canPrev ? p.prev : undefined}
+      >
         ‹
       </button>
       <span data-dk-page="">
         Page {p.pageIndex + 1} of {Math.max(p.pageCount, 1)}
       </span>
-      <button type="button" aria-label="Next page" disabled={!p.canNext} onClick={p.next}>
+      <button
+        type="button"
+        aria-label="Next page"
+        aria-disabled={!p.canNext || undefined}
+        onClick={p.canNext ? p.next : undefined}
+      >
         ›
       </button>
     </nav>
