@@ -51,12 +51,53 @@ Import the messages once in the app entry. Every diagnostic then has its full te
 in `onDiagnostic` and `toJSON()`; it adds the message text to your bundle.
 
 ```ts
-// In the app entry (main.tsx, _app.tsx, layout.tsx, …), once, before any table is created.
+// In the app entry (main.tsx, the pages router's _app.tsx, …), once, before any table is created.
 // Production builds then keep the full problem / impact / fix text of every diagnostic.
 import 'datakable/messages'
 ```
 
 With `@datakable/core` alone, import `@datakable/core/messages` instead.
+
+The import must be in a module of the bundle that creates the tables: the browser bundle for
+tables in client components, the server bundle for tables created on the server.
+
+### Next.js app router
+
+`app/layout.tsx` is a server component: an import there runs only in the server bundle, so the
+tables of client components still have no text in the browser. Import the messages in a
+`'use client'` module and render it once from the root layout:
+
+```tsx
+'use client'
+// app/datakable-messages.tsx — a client module: the import reaches the browser bundle (and the
+// server render of client components). An import in app/layout.tsx, a server component, does not.
+import 'datakable/messages'
+
+export function DatakableMessages() {
+  return null
+}
+```
+
+```tsx
+// app/layout.tsx — the root layout (a server component) renders the client module once.
+import type { ReactNode } from 'react'
+import { DatakableMessages } from './3-datakable-messages' // './datakable-messages' in your app
+
+export default function RootLayout({ children }: { children: ReactNode }) {
+  return (
+    <html lang="en">
+      <body>
+        <DatakableMessages />
+        {children}
+      </body>
+    </html>
+  )
+}
+```
+
+A table created in a server component (`createTable` in server code) needs the import in a server
+module too: add `import 'datakable/messages'` to the module that creates it. With the pages
+router, `pages/_app.tsx` is shared by the server and the browser, and one import there covers both.
 
 ## Related codes
 
