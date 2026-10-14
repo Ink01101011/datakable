@@ -53,6 +53,12 @@ export type SortingState<T> = { by: readonly SortEntry<T>[] }
 
 export type SortDirection = 'asc' | 'desc'
 
+/** Replaces the sort; an equal one keeps the slice (same reference, no notification, #21). */
+const setSort = (
+  ctx: { setState(u: (s: SortingState<unknown>) => SortingState<unknown>): void },
+  by: readonly SortEntry<unknown>[],
+) => ctx.setState((s) => (JSON.stringify(s.by) === JSON.stringify(by) ? s : { by: by.slice() }))
+
 export type SortingApi<T> = {
   /**
    * Cycles `id` asc → desc → none. Without `multi` the result is a single-column sort; with `multi`
@@ -324,8 +330,8 @@ export const sorting = (opts: SortingOptions = {}) => {
           else out.splice(i, 1)
           return { by: out }
         }),
-      setSorting: (by) => ctx.setState({ by: by.slice() }),
-      clearSorting: () => ctx.setState({ by: [] }),
+      setSorting: (by) => setSort(ctx, by),
+      clearSorting: () => setSort(ctx, []),
       getSortDirection: (id) => {
         const e = ctx.getState().by.find((x) => x.id === id)
         return e ? (e.desc ? 'desc' : 'asc') : false

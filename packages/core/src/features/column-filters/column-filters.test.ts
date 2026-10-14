@@ -128,6 +128,27 @@ describe('columnFilters: state and API', () => {
     expect(ids(t)).toEqual([0, 1, 2, 3, 4])
   })
 
+  it('no-op calls keep the slice reference and do not notify (#21)', () => {
+    const t = table()
+    const listener = vi.fn()
+    ;(t as unknown as { subscribe(l: () => void): void }).subscribe(listener)
+    const before = t.getState().columnFilters
+    t.resetColumnFilters()
+    t.setColumnFilter('age', undefined)
+    expect(t.getState().columnFilters).toBe(before)
+    const f = { type: 'equals', value: true }
+    t.setColumnFilter('on', f)
+    expect(listener).toHaveBeenCalledTimes(1)
+    const set = t.getState().columnFilters
+    t.setColumnFilter('on', f) // the same filter object again
+    t.setColumnFilter('age', undefined) // a column without a filter
+    expect(t.getState().columnFilters).toBe(set)
+    expect(listener).toHaveBeenCalledTimes(1)
+    t.resetColumnFilters()
+    expect(t.getState().columnFilters).toEqual({})
+    expect(listener).toHaveBeenCalledTimes(2)
+  })
+
   it('initialState.columnFilters applies at creation', () => {
     const t = table(rows, { name: { type: 'contains', value: 'ad' } })
     expect(ids(t)).toEqual([0, 3])
