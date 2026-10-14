@@ -236,7 +236,8 @@ console.log(byId.getRowModel().rows[0]?.key)
   indices change when rows are added or removed.
 - **Duplicates:** the first row keeps the key; later rows get `key#1`, `key#2`, … and the table
   reports `DK_DUPLICATE_ROW_KEY`, whose fix names fields that are unique across all rows. Keys are
-  compared as strings (as React keys and `explainRow` compare them), so `1` and `'1'` repeat.
+  compared as strings (as React keys and `explainRow` compare them), so `1` and `'1'` repeat. A
+  fallback never takes a key that another row really has: it moves on to the next free `#n`.
 - **Missing keys:** a row whose key is missing, `null`, `NaN` or not a string or number gets the
   fallback `#<index>` and the table reports `DK_MISSING_ROW_KEY`.
 - A `rowKey` function that throws gives that row the `#<index>` fallback and reports
