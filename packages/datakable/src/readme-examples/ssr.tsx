@@ -5,7 +5,7 @@ import {
   pagination,
   sorting,
   withFetcher,
-} from 'datakable'
+} from 'datakable/react'
 
 type User = { id: number; name: string }
 

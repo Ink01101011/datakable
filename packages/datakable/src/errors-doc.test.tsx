@@ -12,12 +12,13 @@ import {
   getDiagnosticDefinition,
   listDiagnosticCodes,
   VERSION,
-} from './index'
+} from './react'
 
 /**
  * `docs/how-to-fix/errors.md` (T38, §8.3, §11; moved from `docs/errors.md` by D3, which keeps a
- * stub there for the published docs URLs). The codes come from the real registries: `datakable` loads
- * `@datakable/core` and `@datakable/react`, which register every code they can emit. For each code
+ * stub there for the published docs URLs). The codes come from the real registries:
+ * `datakable/react` loads `@datakable/core` and `@datakable/react`, which register every code they
+ * can emit. For each code
  * CI fails without:
  * - a `## DK_*` section whose GitHub anchor is the one the diagnostic's `docs` URL links to, with
  *   the four parts problem / common causes / fix / example;

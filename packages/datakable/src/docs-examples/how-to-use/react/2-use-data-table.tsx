@@ -1,4 +1,4 @@
-import { type ColumnDef, useDataTable } from 'datakable'
+import { type ColumnDef, useDataTable } from 'datakable/react'
 import type { ReactNode } from 'react'
 
 type User = { id: number; name: string; email: string; age: number }
@@ -11,7 +11,7 @@ const columns: ColumnDef<User, ReactNode>[] = [
 ]
 
 export function Users({ users }: { users: User[] }) {
-  // `datakable`: the default preset (filters, validity, search, sorting, pagination).
+  // `datakable/react`: the default preset (filters, validity, search, sorting, pagination).
   const table = useDataTable({ data: users, rowKey: 'id', columns })
   const { rows, filteredCount } = table.rowModel
 

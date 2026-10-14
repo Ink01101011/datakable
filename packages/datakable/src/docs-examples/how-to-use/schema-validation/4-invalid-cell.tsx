@@ -1,4 +1,4 @@
-import { type ColumnDef, type StandardSchemaV1, useDataTable, withSchema } from 'datakable'
+import { type ColumnDef, type StandardSchemaV1, useDataTable, withSchema } from 'datakable/react'
 import type { ReactNode } from 'react'
 
 type User = { id: number; name: string; email: string }

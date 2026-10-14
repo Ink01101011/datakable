@@ -147,7 +147,7 @@ type is `unknown`: `format` and `sortFn` receive `unknown`, and `filter` allows 
 `contains`.
 
 ```tsx
-import { type ColumnDef, DataTable } from 'datakable'
+import { type ColumnDef, DataTable } from 'datakable/react'
 import type { ReactNode } from 'react'
 
 type User = { id: number; name: string; email: string; address: { city: string } }

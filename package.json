@@ -15,7 +15,7 @@
     "test:watch": "vitest",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "check:pkg": "pnpm -r --filter \"./packages/*\" check:pkg && pnpm check:dist && pnpm check:consumer && pnpm check:styles && pnpm check:rsc",
+    "check:pkg": "pnpm -r --filter \"./packages/*\" check:pkg && pnpm check:dist && pnpm check:consumer && pnpm check:styles && pnpm check:rsc && pnpm check:framework-free",
     "check:catalog": "pnpm --filter @datakable/core --filter @datakable/react check:catalog",
     "changeset": "changeset",
     "version-packages": "changeset version",
@@ -24,6 +24,7 @@
     "check:dist": "node scripts/check-dist.mjs",
     "check:styles": "node scripts/check-styles.mjs",
     "check:rsc": "node scripts/check-rsc.mjs",
+    "check:framework-free": "node scripts/check-framework-free.mjs",
     "size": "node scripts/size.mjs",
     "check:size": "node scripts/size.mjs --check",
     "check:budgets": "pnpm check:size && vitest run --config vitest.budgets.config.ts"

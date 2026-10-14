@@ -11,7 +11,7 @@ table is doing. `<DataTable />` writes both on its root element, so you can read
 browser's devtools without changing code:
 
 ```tsx
-import { DataTable } from 'datakable'
+import { DataTable } from 'datakable/react'
 
 type User = { id: number; name: string }
 

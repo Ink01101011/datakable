@@ -1,7 +1,7 @@
 import { pagination, sorting } from '@datakable/core'
 import { act, renderHook } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { useDataTable } from './index'
+import { useDataTable } from './react'
 
 type User = { id: number; name: string; age: number }
 const users: User[] = Array.from({ length: 25 }, (_, i) => ({

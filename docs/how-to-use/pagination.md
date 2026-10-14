@@ -58,7 +58,7 @@ The `pagination` slice (`PaginationState`) is `{ pageIndex: number; pageSize: nu
 A pager built on them (`<DataTable />` renders a default one):
 
 ```tsx
-import { useDataTable } from 'datakable'
+import { useDataTable } from 'datakable/react'
 
 type User = { id: number; name: string }
 

@@ -7,9 +7,9 @@ has its own page for its options and API.
 
 ## The default preset
 
-`datakable`'s `createTable`, `useDataTable` and `<DataTable />` install the default preset when you
-pass no `features`: `columnFilters()`, `validity()`, `search()`, `sorting()` and `pagination()`.
-Each table (each component instance in React) gets fresh instances of them.
+`datakable`'s `createTable` and `datakable/react`'s `useDataTable` and `<DataTable />` install the
+default preset when you pass no `features`: `columnFilters()`, `validity()`, `search()`, `sorting()`
+and `pagination()`. Each table (each component instance in React) gets fresh instances of them.
 
 ```ts
 import { createTable } from 'datakable'

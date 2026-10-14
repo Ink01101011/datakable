@@ -1,4 +1,9 @@
-import { type StandardSchemaV1, useDataTable, type ValidityState, withSchema } from 'datakable'
+import {
+  type StandardSchemaV1,
+  useDataTable,
+  type ValidityState,
+  withSchema,
+} from 'datakable/react'
 
 type User = { id: number; name: string; email: string }
 declare const UserSchema: StandardSchemaV1<unknown, User>

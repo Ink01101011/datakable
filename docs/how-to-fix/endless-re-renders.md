@@ -29,7 +29,7 @@ also reports the update of a component while another renders, which DataKable re
 effect or an event handler:
 
 ```tsx
-import { useDataTable } from 'datakable'
+import { useDataTable } from 'datakable/react'
 import { useEffect } from 'react'
 
 type Order = { id: number; customer: string; status: string }
@@ -101,7 +101,7 @@ and a new function inside it (`search({ searchFn })`) keeps running the first on
 derived data:
 
 ```tsx
-import { type ColumnDef, useDataTable } from 'datakable'
+import { type ColumnDef, useDataTable } from 'datakable/react'
 import { type ReactNode, useMemo } from 'react'
 
 type User = { id: number; name: string; age: number }

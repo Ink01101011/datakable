@@ -26,7 +26,7 @@ writeFileSync(join(dir, 'styled-react.js'), "import '@datakable/react/styles.css
 writeFileSync(join(dir, 'styled.css'), "@import 'datakable/styles.css';\n")
 writeFileSync(
   join(dir, 'plain.jsx'),
-  "import { DataTable } from 'datakable'\nexport const App = () => <DataTable data={[]} />\n",
+  "import { DataTable } from 'datakable/react'\nexport const App = () => <DataTable data={[]} />\n",
 )
 
 const bundle = (entry) =>

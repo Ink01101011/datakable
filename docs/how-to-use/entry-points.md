@@ -8,7 +8,7 @@ schema validation, the server source and async search.
 
 | Package | Use it when | Default features |
 | --- | --- | --- |
-| `datakable` | React apps that want the default preset | `columnFilters`, `validity`, `search`, `sorting`, `pagination` |
+| `datakable` | any app that wants the default preset; React on `datakable/react` | `columnFilters`, `validity`, `search`, `sorting`, `pagination` |
 | `@datakable/react` | React apps that choose every feature | none |
 | `@datakable/core` | no React, or your own bindings | none |
 
@@ -23,15 +23,40 @@ exports carry an empty declaration, so `import 'datakable/styles.css'` type-chec
 
 | Import | What it brings |
 | --- | --- |
-| `datakable` | `createTable`, `useDataTable` and `<DataTable />` that install the default preset when you pass no `features`, plus everything exported by `@datakable/react` and `@datakable/core` (features, `withSchema`, `withFetcher`, `withSearchFn`, `createDeferred`, `startTable`, types). |
+| `datakable` | Framework-free: `createTable` that installs the default preset when you pass no `features`, plus everything exported by `@datakable/core` (features, `withSchema`, `withFetcher`, `withSearchFn`, `createDeferred`, `startTable`, types). Imports no React. |
+| `datakable/react` | Everything `datakable` exports, plus `useDataTable` and `<DataTable />` that install the default preset, and the rest of `@datakable/react` (prop and component types, `renderMessages`, …). Needs React. |
 | `datakable/core` | `@datakable/core` unchanged: its `createTable` installs no features by default. |
-| `datakable/messages` | A side-effect import: the full diagnostic text in production builds, for core and React codes. |
+| `datakable/messages` | A side-effect import: the full diagnostic text in production builds, for core and React codes. Imports no React. |
 | `datakable/styles.css` | The optional stylesheet for `<DataTable />`. |
 
-Only the modules of `useDataTable` and `<DataTable />` carry a `"use client"` directive, so
-`createTable` and the rest also work in server code, and a bundle that uses only `createTable`
-contains no React. Call `useDataTable` from a client component in the Next.js app router
-([Getting started](getting-started.md#nextjs-app-router)).
+`react` is an optional peer dependency: `datakable`, `datakable/core` and `datakable/messages`
+work without React installed, also in plain Node.js with `--conditions=react-server`. Only the
+modules of `useDataTable` and `<DataTable />` carry a `"use client"` directive, so the rest of
+`datakable/react` also works in server code (through a bundler), and a bundle that uses only
+`createTable` contains no React. Call `useDataTable` from a client component in the Next.js app
+router ([Getting started](getting-started.md#nextjs-app-router)).
+
+### Migrating from 1.x
+
+2.0 moved the React API of `datakable` to `datakable/react` (#63); `@datakable/core` and
+`@datakable/react` moved to 2.0.0 with it (one version for the three packages) and their imports
+are unchanged. In a React app, import the hook, the component and their types from
+`datakable/react`:
+
+```diff
+- import { DataTable, useDataTable, type DataTableProps } from 'datakable'
++ import { DataTable, useDataTable, type DataTableProps } from 'datakable/react'
+```
+
+`datakable/react` also exports everything the root does, so replacing `'datakable'` with
+`'datakable/react'` in every import of a React app is enough. The names that left the root are
+`useDataTable`, `DataTable`, `UseDataTableOptions`, `UseDataTableResult`, `DataTableProps`,
+`DataTableOwnProps`, `DataTableSource`, `DataTableComponents`, `SearchInputProps`,
+`PaginationProps`, `EmptyProps`, `LoadingProps`, `ErrorProps`, `cellSlot`, `invalidCellSlot`,
+`reactDiagnostics`, `renderDiagnostics` and `renderMessages`; importing one of them from
+`datakable` is a TypeScript error (`Module '"datakable"' has no exported member 'useDataTable'`).
+`createTable`, the features, `datakable/core`, `datakable/messages` and `datakable/styles.css`
+are unchanged.
 
 ## `@datakable/react`
 
@@ -39,10 +64,11 @@ contains no React. Call `useDataTable` from a client component in the Next.js ap
 | --- | --- |
 | `@datakable/react` | `useDataTable` and `<DataTable />` with no features unless you pass them, their prop and component types (`DataTableComponents`, `SearchInputProps`, …), and everything exported by `@datakable/core`. The `<DataTable />` and `useDataTable` modules are marked `"use client"`; the rest also works in server code. |
 | `@datakable/react/styles.css` | The same optional stylesheet. |
+| `@datakable/react/messages` | A side-effect import: the full diagnostic text in production builds, for core and React codes (what `datakable/messages` installs). Imports no React. |
 
-With `@datakable/react`, `import '@datakable/core/messages'` keeps the text of core's codes in
-production; the text of the React codes (`renderMessages`) is installed by `datakable/messages`, or
-by `installMessages(renderMessages)` from `@datakable/react`.
+With `@datakable/react`, `import '@datakable/react/messages'` keeps the text of core's codes and of
+the React codes (`renderMessages`) in production; `import '@datakable/core/messages'` keeps core's
+only.
 
 ## `@datakable/core`
 
@@ -93,7 +119,7 @@ machinery the option needs, so a table that does not use the option does not bun
 | `fetcher` | `withFetcher(fetchUsers)` | `@datakable/core/server` |
 | `search({ searchFn })` | `withSearchFn(searchUsers)` | `@datakable/core/search-async` |
 
-Each wrapper is also exported by `@datakable/core` and `datakable`. An unwrapped value is a compile
+Each wrapper is also exported by `@datakable/core`, `datakable` and `datakable/react`. An unwrapped value is a compile
 error, and throws [`DK_INVALID_OPTION`](../how-to-fix/errors.md#dk_invalid_option) in every build.
 
 ## Pitfalls

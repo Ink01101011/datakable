@@ -16,7 +16,7 @@ npm install datakable react
 ```
 
 ```tsx
-import { DataTable } from 'datakable'
+import { DataTable } from 'datakable/react'
 
 type User = { id: number; name: string; email: string; age: number; city: string }
 
@@ -86,7 +86,7 @@ console.log(`${filteredCount} of ${totalCount}`) // '2 of 4'
 
 ## See also
 
-- [`datakable` README](../../packages/datakable/README.md) — `useDataTable`, `createTable`,
+- [`datakable` README](../../packages/datakable/README.md) — `createTable`, `useDataTable`,
   `<DataTable />`.
 - [Features](../../packages/core/README.md#features) — what the default preset installs.
 - [Getting started](../how-to-use/getting-started.md) — the zero-config table step by step.
