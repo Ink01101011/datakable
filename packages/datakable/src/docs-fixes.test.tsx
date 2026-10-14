@@ -79,6 +79,8 @@ describe('#47: code that is not bundled reads NODE_ENV when it runs', () => {
         return (await import('../../core/src/diagnostics/env')).DEV
       } finally {
         vi.unstubAllEnvs()
+        // Later imports evaluate core again, under the test's NODE_ENV.
+        vi.resetModules()
       }
     }
     expect(await load(undefined)).toBe(true) // e.g. `node .output/server/index.mjs`
@@ -193,5 +195,48 @@ describe('#51: SSR with data and an async searchFn for an initial query', () => 
     expect(prose('docs/how-to-fix/errors.md')).not.toContain(
       "The server HTML has `status: 'pending'` (`<DataTable />` renders its Loading state).",
     )
+  })
+})
+
+describe('review notes (no issue): what the guides now say', () => {
+  const rows = Array.from({ length: 30 }, (_, i) => ({ id: i + 1, name: `n${i}`, at: new Date(i) }))
+
+  it('development freezes an array passed as a filter value', async () => {
+    const { createTable } = await import('./index')
+    const table = createTable({ data: rows, rowKey: 'id' })
+    const ids = [1, 2]
+    table.setColumnFilter('id', { type: 'in', value: ids })
+    expect(() => ids.push(3)).toThrow(TypeError)
+    expect(prose('docs/how-to-use/column-filters.md')).toContain('freezes')
+  })
+
+  it('setSorting compares entries as JSON: another key order is a change', async () => {
+    const { createTable } = await import('./index')
+    const table = createTable({ data: rows, rowKey: 'id' })
+    table.setSorting([{ id: 'name', desc: false }])
+    const before = table.getState().sorting
+    table.nextPage()
+    table.setSorting([{ id: 'name', desc: false }])
+    expect(table.getState().sorting).toBe(before)
+    expect(table.getState().pagination.pageIndex).toBe(1)
+    table.setSorting([{ desc: false, id: 'name' }])
+    expect(table.getState().sorting).not.toBe(before)
+    expect(table.getState().pagination.pageIndex).toBe(0)
+    expect(prose('docs/how-to-use/sorting.md')).toContain('key order')
+  })
+
+  it('zero-config search covers string, number and boolean columns only', async () => {
+    const { createTable } = await import('./index')
+    const codes: string[] = []
+    const table = createTable({
+      data: rows,
+      rowKey: 'id',
+      onDiagnostic: (d) => void codes.push(d.code),
+    })
+    await table.setSearch('1970')
+    table.getRowModel()
+    expect(codes).toContain('DK_SEARCH_COLUMN_SKIPPED')
+    expect(prose('docs/examples/zero-config.md')).not.toContain('fuzzy matching over every column')
+    expect(prose('packages/core/README.md')).not.toContain('otherwise every column is, at weight 1')
   })
 })
