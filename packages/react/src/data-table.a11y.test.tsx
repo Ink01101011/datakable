@@ -68,3 +68,41 @@ describe('a failed cell has a text alternative (#60)', () => {
     expect(within(cell).getByRole('img', { name: 'Could not display this value' })).toBeTruthy()
   })
 })
+
+describe('the search box and pager are named after the caption (#59)', () => {
+  it('two tables on a page get distinct search and navigation names', () => {
+    const features = () => [search(), pagination()]
+    render(
+      <>
+        <Hooked caption="Customers" options={{ data: users, features: features() }} />
+        <Hooked caption="Suppliers" options={{ data: users, features: features() }} />
+      </>,
+    )
+    expect(screen.getAllByRole('searchbox').map((b) => b.getAttribute('aria-label'))).toEqual([
+      'Search Customers',
+      'Search Suppliers',
+    ])
+    expect(screen.getAllByRole('navigation').map((n) => n.getAttribute('aria-label'))).toEqual([
+      'Customers pagination',
+      'Suppliers pagination',
+    ])
+  })
+
+  it('without a text caption the names stay "Search" and "Pagination"; custom parts get the label', () => {
+    const seen: string[] = []
+    render(
+      <DataTable
+        data={users}
+        features={[search(), pagination()]}
+        components={{
+          SearchInput: (p) => {
+            seen.push(p.label)
+            return null
+          },
+        }}
+      />,
+    )
+    expect(seen.at(-1)).toBe('Search')
+    expect(screen.getByRole('navigation', { name: 'Pagination' })).toBeTruthy()
+  })
+})

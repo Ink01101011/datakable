@@ -211,6 +211,8 @@ It renders what the installed features provide:
   Enter `flushSearch`, Esc `clearSearch`, and a spinner shows while the search is `pending` or
   `searching`.
 - **A pager** with `pagination()`: previous / next buttons and "Page n of m".
+- **Names**: with a text `caption` ("Customers"), the search box is "Search Customers" and the
+  pager "Customers pagination", so two tables on a page get distinct names.
 - **Cells** through the column's `cell`, else `format`, else the default formatter; flagged cells
   (`invalidRows: 'flag'`) through `invalidCell`, else the raw value with a `⚠` marker.
 
@@ -302,8 +304,8 @@ export function Users({ users }: { users: User[] }) {
 
 | Component | Props |
 | --- | --- |
-| `SearchInput` | `SearchInputProps`: `value` (`state.search.input`), `status` (`'idle' \| 'pending' \| 'searching' \| 'error'`), `onChange(value)` (`setSearch`), `onSubmit()` (`flushSearch`), `onClear()` (`clearSearch`) |
-| `Pagination` | `PaginationProps`: `pageIndex`, `pageSize`, `pageCount`, `canPrev`, `canNext`, `prev()`, `next()`, `setPageIndex(index)`, `setPageSize(size)` |
+| `SearchInput` | `SearchInputProps`: `value` (`state.search.input`), `status` (`'idle' \| 'pending' \| 'searching' \| 'error'`), `onChange(value)` (`setSearch`), `onSubmit()` (`flushSearch`), `onClear()` (`clearSearch`), `label` (the accessible name: `'Search <caption>'` with a text `caption`, else `'Search'`) |
+| `Pagination` | `PaginationProps`: `pageIndex`, `pageSize`, `pageCount`, `canPrev`, `canNext`, `prev()`, `next()`, `setPageIndex(index)`, `setPageSize(size)`, `label` (`'<caption> pagination'` with a text `caption`, else `'Pagination'`) |
 | `Empty` | `EmptyProps`: `filtered` |
 | `Loading` | `LoadingProps`: `status` |
 | `Error` | `ErrorProps`: `status`, `reason` (`'load'` \| `'render'`), `retry()` (`'load'`: `refetch()`; `'render'`: renders the body again) |

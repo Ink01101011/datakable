@@ -62,6 +62,8 @@ export interface SearchInputProps {
   onSubmit(): void
   /** `clearSearch()` (Esc). */
   onClear(): void
+  /** The input's accessible name: `'Search <caption>'` with a text `caption`, else `'Search'`. */
+  label: string
 }
 
 /** Props of `components.Pagination` (the pagination feature's state and API). */
@@ -75,6 +77,8 @@ export interface PaginationProps {
   next(): void
   setPageIndex(index: number): void
   setPageSize(size: number): void
+  /** The pager's accessible name: `'<caption> pagination'` with a text `caption`, else `'Pagination'`. */
+  label: string
 }
 
 /** Props of `components.Empty`: shown when the table has loaded and has no rows to show. */
@@ -518,6 +522,9 @@ function DataTableView(props: {
   const failed = isInitialLoad && status === 'error'
   const span = Math.max(columns.length, 1)
   const retryLoad = () => void view.refetch()
+  // A text caption names the search box and the pager, so two tables get distinct names (#59).
+  const cap = props.caption
+  const named = typeof cap === 'string' || typeof cap === 'number' ? `${cap}` : ''
 
   const Empty = parts.Empty ?? DefaultEmpty
   const Loading = parts.Loading ?? DefaultLoading
@@ -577,6 +584,7 @@ function DataTableView(props: {
             onChange: (q) => void view.setSearch?.(q),
             onSubmit: () => void view.flushSearch?.(),
             onClear: () => view.clearSearch?.(),
+            label: named ? `Search ${named}` : 'Search',
           })}
         </div>
       )}
@@ -636,6 +644,7 @@ function DataTableView(props: {
           next: () => view.nextPage?.(),
           setPageIndex: (i) => view.setPageIndex?.(i),
           setPageSize: (n) => view.setPageSize?.(n),
+          label: named ? `${named} pagination` : 'Pagination',
         })}
     </div>
   )
@@ -791,12 +800,19 @@ class CellBoundary extends Component<CellBoundaryProps, CellBoundaryState> {
 
 // --- default parts (unstyled) --------------------------------------------------------------------
 
-function DefaultSearchInput({ value, status, onChange, onSubmit, onClear }: SearchInputProps) {
+function DefaultSearchInput({
+  value,
+  status,
+  onChange,
+  onSubmit,
+  onClear,
+  label,
+}: SearchInputProps) {
   return (
     <>
       <input
         type="search"
-        aria-label="Search"
+        aria-label={label}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
@@ -813,7 +829,7 @@ function DefaultSearchInput({ value, status, onChange, onSubmit, onClear }: Sear
 
 function DefaultPagination(p: PaginationProps) {
   return (
-    <nav aria-label="Pagination" data-dk-pagination="">
+    <nav aria-label={p.label} data-dk-pagination="">
       <button type="button" aria-label="Previous page" disabled={!p.canPrev} onClick={p.prev}>
         ‹
       </button>
