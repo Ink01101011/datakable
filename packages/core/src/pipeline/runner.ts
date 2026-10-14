@@ -1,6 +1,7 @@
 import { getValue } from '../column/get-value'
 import { keepDiagnostics } from '../diagnostics/catalog'
 import { DEV } from '../diagnostics/env'
+import { SLICED, sliceTimer } from '../diagnostics/trace-store'
 import type { Emit, Trigger } from '../diagnostics/types'
 import { featureDiagnostics } from '../feature/codes'
 import type { FeatureRuntime } from '../feature/runtime'
@@ -170,6 +171,7 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
     enabled: () => refresh !== undefined && last !== undefined && host.base().phase === 'client',
     trigger: () => host.base().trigger,
     done: (trigger) => refresh?.(trigger),
+    timed: (feature, ms) => sliceTimer.current?.(host.base(), feature, ms),
   })
 
   /** `Row.getValue` failures: one emit per failing cell, built only when a cell fails. */
@@ -378,6 +380,8 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
           )
           return input
         }
+        // The tracer adds the time of this sliced work to the step (#61).
+        if (waiting > waited) ctx.meta.set(SLICED, true)
         // Dev: a mutated input warns; a bad output passes the input through, not memoised.
         if (DEV && !checkStep(stepEmit, f.name, input, before, out, data.length)) return input
         ok = true

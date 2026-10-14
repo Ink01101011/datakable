@@ -8,8 +8,11 @@ make it redo work or keep everything in memory.
 
 - **The tracer** (development) times every pipeline step: `String(table.explain())` prints them
   (`search 28 1.1 ms`), and a step over one task's budget (50 ms) reports
-  [`DK_PERF_HINT`](errors.md#dk_perf_hint) with the step, the time and the row count. In
-  production, install it with `interceptors: [tracer()]`.
+  [`DK_PERF_HINT`](errors.md#dk_perf_hint) with the step, the time and the row count. Time-sliced
+  work counts too: a slice over 50 ms reports it (`a time slice of the "search" step took …`), and
+  `explain()` after the work shows the step's total over its runs
+  (`sorting 20000 2013.0 ms (sliced, 2 runs)`). In production, install it with
+  `interceptors: [tracer()]`.
 - **React renders:** the React profiler shows whether the time goes to DataKable's pipeline or to
   rendering rows.
 - **Memory:** a heap snapshot; DataKable's own structures should be small next to your data.

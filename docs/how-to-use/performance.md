@@ -142,7 +142,8 @@ export function Orders({ orders, onlyOpen }: { orders: Order[]; onlyOpen: boolea
 - **Search the columns that matter.** Give the searchable columns a `search` weight; when one
   column declares a weight, only the columns with one are searched. See [Search](search.md).
 - **Read `DK_PERF_HINT`.** In development, the tracer reports a pipeline step that took longer
-  than 50 ms, with its numbers and a suggestion. `explain()` shows the time per step. See
+  than 50 ms, with its numbers and a suggestion, and a time slice over 50 ms. `explain()` shows the
+  time per step (time-sliced work: the total over its runs). See
   [Diagnostics](diagnostics.md).
 
 ### Bundle only what you use
@@ -189,7 +190,8 @@ The full list of import paths is on [Entry points](entry-points.md).
 - **Mutating `data` in place** leaves the table on stale rows:
   [`DK_DATA_MUTATED`](../how-to-fix/errors.md#dk_data_mutated).
 - **A slow step** (a heavy `format`, a big client search): [`DK_PERF_HINT`](../how-to-fix/errors.md#dk_perf_hint)
-  names it; consider server mode or fewer searchable columns.
+  names it, and the column slot most of its time went to (`columns[0].format`); make that cheaper,
+  or consider server mode or fewer searchable columns.
 - **`status: 'pending'` after a big change** is time-sliced work in progress, not a hang; the
   previous rows stay on screen until it finishes.
 - **`scheduler.yield` missing** in an older browser falls back to `setTimeout`:

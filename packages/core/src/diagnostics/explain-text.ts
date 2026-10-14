@@ -21,7 +21,8 @@ export function formatTableExplanation(e: TableExplanation): string {
       continue
     }
     const flag = s.failed ? ' failed' : s.cached ? ' cached' : ''
-    parts.push(`${s.feature} ${s.output}${flag}${ms(s.ms)}`)
+    const sliced = s.runs ? ` (sliced, ${s.runs} runs)` : ''
+    parts.push(`${s.feature} ${s.output}${flag}${ms(s.ms)}${sliced}`)
   }
   if (e.page) parts.push(`page ${e.page.index + 1}/${e.page.count} (${e.visible})`)
   const open = e.diagnostics === 1 ? '1 open diagnostic' : `${e.diagnostics} open diagnostics`

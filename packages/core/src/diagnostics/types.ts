@@ -77,6 +77,11 @@ export interface EmitOptions {
   run?: number
   trigger?: Trigger
   phase?: Phase
+  /**
+   * Not printed by the default console sink (another table printed it in this process, #38). Still
+   * stored and delivered to `onDiagnostic`.
+   */
+  quiet?: boolean
 }
 
 /** Emits a catalog diagnostic; `details` is typed by `code` (see `DiagnosticCatalog`). */
