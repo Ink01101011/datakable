@@ -415,14 +415,15 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
     } finally {
       // Sliced work no step asked for in this run is stale: cancelled.
       slicer?.end()
-    }
-    if (result) model = result
-    else {
-      // pipeline:run failed: the boundary reported it; keep the last good rows.
-      const isInitialLoad = host.isInitialLoad()
-      model = last
-        ? { ...last.model, status: 'error', isInitialLoad }
-        : { rows: EMPTY, filteredCount: 0, totalCount: 0, status: 'error', isInitialLoad }
+      if (result) model = result
+      else {
+        // pipeline:run failed: the boundary reported it, or a strict throw is leaving the run
+        // (#43). Either way the last good rows with status 'error', never an empty 'idle' model.
+        const isInitialLoad = host.isInitialLoad()
+        model = last
+          ? { ...last.model, status: 'error', isInitialLoad }
+          : { rows: EMPTY, filteredCount: 0, totalCount: 0, status: 'error', isInitialLoad }
+      }
     }
     return model
   }

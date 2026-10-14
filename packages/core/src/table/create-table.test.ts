@@ -500,6 +500,14 @@ describe('createTable: diagnostics wiring', () => {
     })
     expect(() => t.setState({ page: 1 })).toThrow(DatakableError)
   })
+
+  it("strict: after getRowModel() throws, the model is the 'error' fallback, not empty 'idle' (#43)", () => {
+    const t = createTable({ data: [{ id: 1 }, { id: 1 }], rowKey: 'id', strict: true })
+    expect(() => t.getRowModel()).toThrow(/DK_DUPLICATE_ROW_KEY/)
+    // No good rows yet: empty with status 'error' (a later failed run keeps the last good rows).
+    expect(t.getRowModel()).toMatchObject({ rows: [], status: 'error' })
+    expect(t.getData()).toHaveLength(2)
+  })
 })
 
 describe('createTable: redaction mapping (diagnostics.redact, sensitive, rowKey)', () => {
