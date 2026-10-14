@@ -12,12 +12,23 @@ server render, starting state from the URL with `initialState`, server-fetched r
 
 - **Synchronous work runs.** Data is ingested (and validated by a synchronous schema),
   `initialState` applies, and client-mode features filter, search, sort and page the rows: the
-  HTML shows the same rows the browser will.
+  HTML shows the same rows the browser will, unless async work is pending (below).
 - **No async work starts.** The fetcher's first request and a `searchFn` for an initial query do
   not run during the render, and no timer is left behind. Until they start, the row model has
-  `status: 'pending'`, and on the server each deferred source reports `DK_SSR_ASYNC_DEFERRED`
-  (info). `<DataTable />` renders its Loading state for it, so the HTML is not an empty table.
-  After hydration, the work starts in a layout effect.
+  `status: 'pending'` (`data-status="pending"` on `<DataTable />`'s root), and on the server each
+  deferred source reports `DK_SSR_ASYNC_DEFERRED` (info; printed to the console, since
+  `useDataTable` delivers `onDiagnostic` calls after the commit, which a server render never
+  reaches). After hydration, the work starts in a layout effect. What the HTML shows depends on
+  whether the table has rows yet:
+  - **A fetcher without `initialData`:** no rows, so `<DataTable />` renders its Loading state and
+    the HTML is not an empty table.
+  - **With `data` and a `searchFn` for an initial query:** the table has rows, so it shows them,
+    unsearched, as it does while any later search is in flight (see
+    [Core concepts](core-concepts.md#status)). The browser replaces them with the matches when the
+    `searchFn` answers. To put the matches in the HTML, use the built-in matching (no
+    `searchFn`), which runs during the server render, or search on the server with
+    `search({ mode: 'server' })` and a fetcher whose first result you pass as `initialData`. To
+    hide the unsearched rows instead, style the body of `[data-status="pending"]`.
 - **Time-sliced work never runs** on the server or for the first row model (building a search
   index, ranking strings for a large sort), so it cannot make the two renders differ.
 

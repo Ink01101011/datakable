@@ -2343,15 +2343,17 @@ Needs a server render, then a hydration that differs from it; the injecting test
 
 `info` · fault test: [ssr.test.ts](../../packages/core/src/table/ssr.test.ts)
 
-**Problem.** Information: async work (the `fetcher`, or a `searchFn` for an initial query) does not run during a server render; it starts on the client after hydration. The server HTML has `status: 'pending'` (`<DataTable />` renders its Loading state).
+**Problem.** Information: async work (the `fetcher`, or a `searchFn` for an initial query) does not run during a server render; it starts on the client after hydration. The server HTML has `status: 'pending'`: with a fetcher and no rows yet, `<DataTable />` renders its Loading state; with `data` and a `searchFn`, it lists the rows unsearched until the `searchFn` answers in the browser.
 
 **Common causes.**
 
 - Server rendering a table with a `fetcher` and no `initialData`.
+- Server rendering a table with `data`, a `searchFn` and an initial query (from `initialState` or a controlled `search` slice).
 
 **Fix.**
 
 - Fetch on the server and pass the result as `initialData` (with `rowCount` for server pagination): the HTML has the rows, and hydration does not fetch again.
+- With `data` and a `searchFn`: use the built-in matching (no `searchFn`), which runs during the server render, or hide the unsearched rows while `data-status="pending"`.
 - Or accept the client-side loading state.
 
 **Example.**

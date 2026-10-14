@@ -155,3 +155,43 @@ describe('#50: a feature\'s option is reported at feature "<name>", the option i
     )
   })
 })
+
+describe('#51: SSR with data and an async searchFn for an initial query', () => {
+  it('the server HTML lists the rows unsearched, status pending, no Loading state', async () => {
+    const { createElement: h } = await import('react')
+    const { renderToString } = await import('react-dom/server')
+    const { DataTable, search, withSearchFn } = await import('./index')
+    const data = ['Ada Lovelace', 'Grace Hopper', 'Alan Turing', 'Adele Goldberg'].map(
+      (name, i) => ({ id: i + 1, name }),
+    )
+    let calls = 0
+    const searchFn = withSearchFn(async ({ query }: { query: string }) => {
+      calls++
+      return { keys: data.filter((r) => r.name.toLowerCase().includes(query)).map((r) => r.id) }
+    })
+    const codes: string[] = []
+    const html = renderToString(
+      h(DataTable, {
+        data,
+        rowKey: 'id',
+        features: [search({ searchFn })],
+        initialState: { search: { input: 'ad', query: 'ad', status: 'idle' } },
+        onDiagnostic: (d: { code: string }) => void codes.push(d.code),
+      } as never),
+    )
+    expect(html).toMatch(/data-status="pending"/)
+    expect(html).not.toContain('data-dk-state="loading"')
+    for (const name of ['Ada Lovelace', 'Grace Hopper', 'Alan Turing', 'Adele Goldberg']) {
+      expect(html).toContain(name)
+    }
+    expect(calls).toBe(0)
+    // Printed to the console; useDataTable delivers onDiagnostic after the commit (never on the server).
+    expect(codes).toEqual([])
+
+    const ssr = prose('docs/how-to-use/ssr.md')
+    expect(ssr).toContain('With `data` and a `searchFn` for an initial query:** the table has rows')
+    expect(prose('docs/how-to-fix/errors.md')).not.toContain(
+      "The server HTML has `status: 'pending'` (`<DataTable />` renders its Loading state).",
+    )
+  })
+})
