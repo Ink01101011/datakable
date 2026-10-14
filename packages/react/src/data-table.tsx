@@ -194,7 +194,6 @@ function ZeroConfig(props: DataTableOwnProps & { table?: undefined }) {
 /** Loose access to the installed features' APIs (the table is typed per feature set). */
 type Api = DataTableSource & {
   toggleSort?(id: string, opts?: { multi?: boolean }): void
-  getSortDirection?(id: string): 'asc' | 'desc' | false
   setSearch?(q: string): Promise<unknown>
   flushSearch?(): Promise<unknown>
   clearSearch?(): void
@@ -448,6 +447,31 @@ function bad(
   return WARN
 }
 
+type Page = { pageIndex: number; pageSize: number }
+
+/**
+ * The pager of the rendered snapshot, like the pagination API computes it live: the hydrating
+ * render must match the server HTML even when the table changed meanwhile (#16). Client mode
+ * pages over the row model's `filteredCount`; server mode over the fetched `rowCount`, which only
+ * the table knows (and no render changes).
+ */
+function pages(view: Api, page: Page, count: number) {
+  const features = (
+    view.getOptions() as { features?: readonly { stage?: string; mode?: string }[] }
+  ).features
+  if (features?.some((f) => f?.stage === 'paginate' && f.mode === 'server')) {
+    return {
+      ...page,
+      pageCount: view.getPageCount?.() ?? 0,
+      canPrev: view.canPrevPage?.() ?? false,
+      canNext: view.canNextPage?.() ?? false,
+    }
+  }
+  const pageCount = Math.ceil(count / page.pageSize)
+  const index = Math.min(page.pageIndex, Math.max(pageCount - 1, 0))
+  return { ...page, pageCount, canPrev: index > 0, canNext: index + 1 < pageCount }
+}
+
 const ariaSort = (dir: 'asc' | 'desc' | false) =>
   dir === 'asc' ? 'ascending' : dir === 'desc' ? 'descending' : 'none'
 
@@ -476,6 +500,8 @@ function DataTableView(props: {
   })
 
   const sortable = typeof view.toggleSort === 'function'
+  const sortBy = (state.sorting as { by: readonly { id: string; desc?: boolean }[] } | undefined)
+    ?.by
   const searchState = state.search as { input: string; status: SearchStatus } | undefined
   const paged = typeof view.getPageCount === 'function'
   // Loading (§6.6, §10): nothing to show yet and rows on their way — in flight, or deferred async
@@ -556,7 +582,9 @@ function DataTableView(props: {
           <tr>
             {columns.map((col) => {
               const canSort = sortable && col.def.sortable !== false
-              const dir = canSort ? (view.getSortDirection?.(col.id) ?? false) : false
+              // From the rendered state, not the live table (the hydrating render, #16).
+              const e = canSort ? sortBy?.find((x) => x.id === col.id) : undefined
+              const dir = e ? (e.desc ? 'desc' : 'asc') : false
               return (
                 <th
                   key={col.index}
@@ -596,11 +624,7 @@ function DataTableView(props: {
       </table>
       {paged &&
         part(table, 'Pagination', parts.Pagination, DefaultPagination, {
-          pageIndex: (state.pagination as { pageIndex: number }).pageIndex,
-          pageSize: (state.pagination as { pageSize: number }).pageSize,
-          pageCount: view.getPageCount?.() ?? 0,
-          canPrev: view.canPrevPage?.() ?? false,
-          canNext: view.canNextPage?.() ?? false,
+          ...pages(view, state.pagination as Page, rowModel.filteredCount),
           prev: () => view.prevPage?.(),
           next: () => view.nextPage?.(),
           setPageIndex: (i) => view.setPageIndex?.(i),
