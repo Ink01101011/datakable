@@ -188,12 +188,11 @@ export const pagination = (opts: PaginationOptions = {}) => {
       }
 
       /**
-       * The current slice and the page actually shown. An unknown count (a server count not
-       * fetched yet) clamps nothing.
+       * The current slice and the page actually shown (for `count` rows, default: the current
+       * count). An unknown count (a server count not fetched yet) clamps nothing.
        */
-      function current() {
+      function current(count = rowCount()) {
         const s = ctx.getState()
-        const count = rowCount()
         const index =
           count === undefined ? s.pageIndex : effectiveIndex(s.pageIndex, s.pageSize, count)
         return { s, count, index }
@@ -229,13 +228,21 @@ export const pagination = (opts: PaginationOptions = {}) => {
       // A slice given at creation (initialState / controlled state) is checked once, here.
       const fixed = sanitize(ctx.getState(), undefined)
       if (fixed) ctx.setState(fixed)
+      // ... and clamped to the last page, so the state never says "page 100 of 3" (#19). Client:
+      // the paged rows are a subset of `data`, whose length bounds the last page without running
+      // the pipeline here (restored filters leaving fewer rows: the listener below); no data yet
+      // clamps nothing. Server: a known `rowCount`.
+      const clamp = (count?: number) => {
+        const { s, index } = current(count)
+        if (index < s.pageIndex) ctx.setState({ ...s, pageIndex: index })
+      }
+      const n =
+        mode === 'server' ? internals.rowCount() : (table.getOptions().data as unknown[])?.length
+      if (n) clamp(n)
 
       // Clamp when the row count shrinks. A listener sees every change (data, async ingest,
       // filters with auto-reset off); its update is notified in the next round.
-      table.subscribe(() => {
-        const { s, index } = current()
-        if (index !== s.pageIndex) ctx.setState({ ...s, pageIndex: index })
-      })
+      table.subscribe(() => clamp())
 
       return {
         setPageIndex(index) {

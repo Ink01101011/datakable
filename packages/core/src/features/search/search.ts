@@ -243,6 +243,8 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
   }
   /** Per table: ends its timers, searches and waiters on `table:destroy`. */
   const instances = new WeakMap<object, () => void>()
+  /** Per table: finishes a restored `'pending'` / `'searching'` slice nothing works on (#22). */
+  const resumes = new WeakMap<object, () => void>()
   /** Per table: after each `pipeline:run`, whether the step waited on sliced work (#6). */
   const ran = new WeakMap<object, (waited: boolean) => void>()
   /** The step of the run in progress returned a stand-in (sliced work runs, §9.1). */
@@ -343,12 +345,18 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
     interceptors: [
       defineInterceptor({
         name: 'search',
-        on: ['table:destroy', 'pipeline:run'],
+        on: ['table:destroy', 'pipeline:run', 'table:init', 'state:dispatch', 'table:setOptions'],
         intercept(ctx, next) {
           const table = ctx.table as object
           if (ctx.op === 'table:destroy') {
             instances.get(table)?.()
             return next()
+          }
+          if (ctx.op !== 'pipeline:run') {
+            // A slice set from outside (initialState, setState, controlled state) is checked.
+            const out = next()
+            resumes.get(table)?.()
+            return out
           }
           const prev = waited
           waited = false
@@ -439,11 +447,14 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
         claim,
       })
 
+      /** A typing commit waits on the strategy's timer (the slice shows `'pending'`). */
+      let scheduled = false
       /**
        * Applies `query` (typing committed it, Enter, clear): at once, or with `searchFn` through a
        * request (the slice shows `'searching'`).
        */
       const applyQuery = (query: string, inp: string = input()) => {
+        scheduled = false
         if (session?.apply(query, inp)) return
         if (held[0]?.query !== query) release(SUPERSEDED)
         held.push(...claim(query))
@@ -467,6 +478,17 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
             : undefined
       /** The slice status while nothing new is applied: a search may still be in flight. */
       const resting = (): SearchStatus => (session?.busy() ? 'searching' : 'idle')
+      // A restored transient status (URL / storage restore through initialState, setState or a
+      // controlled slice) that nothing is working on would stay forever (#22). 'pending' commits the
+      // restored input (Enter mode: keeps it), 'searching' ends; a searchFn then runs for the query.
+      resumes.set(table, () => {
+        const s = ctx.getState()
+        const pending = s?.status === 'pending'
+        if (pending ? !scheduled : s?.status === 'searching' && !session?.busy()) {
+          const inp = toText(s.input)
+          write(inp, pending && strategy !== 'enter' ? target(inp) : toText(s.query), resting())
+        }
+      })
 
       instances.set(table, () => {
         timer?.cancel()
@@ -506,6 +528,7 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
           write(next, current, resting())
           return p
         }
+        scheduled = true
         write(next, current, 'pending')
         return p
       }
@@ -522,6 +545,7 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
         setSearch: (query) => commit(toText(query)),
         flushSearch: () => applyNow(input()),
         cancelSearch: () => {
+          scheduled = false
           timer?.cancel()
           session?.abort()
           supersede()

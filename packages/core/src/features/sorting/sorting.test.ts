@@ -52,6 +52,27 @@ describe('sorting — state and toggleSort', () => {
     expect(ids(t)).toEqual([0, 1, 2, 3, 4, 5])
   })
 
+  it('no-op clearSorting / setSorting keep the slice reference and do not notify (#21)', () => {
+    const t = make()
+    const listener = vi.fn()
+    t.subscribe(listener)
+    const before = t.getState().sorting
+    t.clearSorting()
+    t.setSorting([])
+    expect(t.getState().sorting).toBe(before)
+    expect(listener).not.toHaveBeenCalled()
+    t.setSorting([{ id: 'age', desc: true }])
+    expect(listener).toHaveBeenCalledTimes(1)
+    const sorted = t.getState().sorting
+    t.setSorting([{ id: 'age', desc: true }]) // a structurally equal array
+    expect(t.getState().sorting).toBe(sorted)
+    expect(listener).toHaveBeenCalledTimes(1)
+    t.setSorting([{ id: 'age', desc: false }])
+    t.clearSorting()
+    expect(t.getState().sorting.by).toEqual([])
+    expect(listener).toHaveBeenCalledTimes(3)
+  })
+
   it('cycles asc → desc → none on one column', () => {
     const t = make()
     t.toggleSort('age')
