@@ -458,8 +458,6 @@ function DataTableView(props: {
   const span = Math.max(columns.length, 1)
   const retryLoad = () => void view.refetch()
 
-  const Search = parts.SearchInput ?? DefaultSearchInput
-  const Pager = parts.Pagination ?? DefaultPagination
   const Empty = parts.Empty ?? DefaultEmpty
   const Loading = parts.Loading ?? DefaultLoading
   const ErrorState = parts.Error ?? DefaultError
@@ -509,13 +507,13 @@ function DataTableView(props: {
     >
       {searchState && (
         <div data-dk-search="" data-status={searchState.status}>
-          <Search
-            value={searchState.input}
-            status={searchState.status}
-            onChange={(q) => void view.setSearch?.(q)}
-            onSubmit={() => void view.flushSearch?.()}
-            onClear={() => view.clearSearch?.()}
-          />
+          {part(table, 'SearchInput', parts.SearchInput, DefaultSearchInput, {
+            value: searchState.input,
+            status: searchState.status,
+            onChange: (q) => void view.setSearch?.(q),
+            onSubmit: () => void view.flushSearch?.(),
+            onClear: () => view.clearSearch?.(),
+          })}
         </div>
       )}
       {!loading && !failed && status !== 'idle' && (
@@ -565,20 +563,43 @@ function DataTableView(props: {
           </BodyBoundary>
         </tbody>
       </table>
-      {paged && (
-        <Pager
-          pageIndex={(state.pagination as { pageIndex: number }).pageIndex}
-          pageSize={(state.pagination as { pageSize: number }).pageSize}
-          pageCount={view.getPageCount?.() ?? 0}
-          canPrev={view.canPrevPage?.() ?? false}
-          canNext={view.canNextPage?.() ?? false}
-          prev={() => view.prevPage?.()}
-          next={() => view.nextPage?.()}
-          setPageIndex={(i) => view.setPageIndex?.(i)}
-          setPageSize={(n) => view.setPageSize?.(n)}
-        />
-      )}
+      {paged &&
+        part(table, 'Pagination', parts.Pagination, DefaultPagination, {
+          pageIndex: (state.pagination as { pageIndex: number }).pageIndex,
+          pageSize: (state.pagination as { pageSize: number }).pageSize,
+          pageCount: view.getPageCount?.() ?? 0,
+          canPrev: view.canPrevPage?.() ?? false,
+          canNext: view.canNextPage?.() ?? false,
+          prev: () => view.prevPage?.(),
+          next: () => view.nextPage?.(),
+          setPageIndex: (i) => view.setPageIndex?.(i),
+          setPageSize: (n) => view.setPageSize?.(n),
+        })}
     </div>
+  )
+}
+
+/**
+ * A search / pager part (outside the body): a custom one that throws is replaced by the default
+ * part (`DK_RENDER_FAILED` at `components.<name>`) until another component is passed.
+ */
+function part<P extends object>(
+  table: object,
+  name: 'SearchInput' | 'Pagination',
+  Custom: ComponentType<P> | undefined,
+  Default: ComponentType<P>,
+  props: P,
+): ReactNode {
+  if (!Custom) return <Default {...props} />
+  return (
+    <BodyBoundary
+      table={table}
+      slot={`components.${name}`}
+      resetKey={Custom}
+      fallback={() => <Default {...props} />}
+    >
+      <Custom {...props} />
+    </BodyBoundary>
   )
 }
 
@@ -594,6 +615,8 @@ function stateRow(span: number, kind: string, content: ReactNode) {
 
 interface BoundaryProps {
   table: object
+  /** A part outside the body (`components.SearchInput`): reported as the slot. */
+  slot?: string
   /** A new value (the next row model) renders the body again. */
   resetKey: unknown
   fallback(retry: () => void): ReactNode
@@ -621,7 +644,11 @@ class BodyBoundary extends Component<BoundaryProps, { failed: boolean; key: unkn
       emitTableDiagnostic(
         this.props.table,
         'DK_RENDER_FAILED',
-        { op: 'render:table', ...(error instanceof Error ? { errorName: error.name } : {}) },
+        {
+          op: 'render:table',
+          ...(this.props.slot ? { slot: this.props.slot } : {}),
+          ...(error instanceof Error ? { errorName: error.name } : {}),
+        },
         { cause: error },
       )
     } catch {

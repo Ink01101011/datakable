@@ -3,6 +3,8 @@ import {
   type Diagnostic,
   type DiagnosticCode,
   getOperation,
+  pagination,
+  search,
   sorting,
 } from '@datakable/core'
 import { withSchema } from '@datakable/core/schema'
@@ -249,6 +251,45 @@ describe('React render slots × injection (§11)', () => {
     })
     expect(screen.getByText('nothing here')).toBeTruthy()
   })
+
+  // #26: the search and pager parts render outside the body; a throw there unmounted the root.
+  it.each([
+    ['SearchInput', { features: [search()] }, 'searchbox'],
+    ['Pagination', { features: [pagination()] }, 'navigation'],
+  ] as const)(
+    'a components.%s that throws: the default part, DK_RENDER_FAILED, the page survives',
+    async (part, options, role) => {
+      const { seen, onDiagnostic } = sink()
+      const Boom = (): ReactNode => {
+        throw new InjectedError()
+      }
+      render(
+        <main>
+          <h1>app shell</h1>
+          <DataTable
+            data={people()}
+            rowKey="id"
+            {...options}
+            onDiagnostic={onDiagnostic}
+            components={{ [part]: Boom }}
+          />
+        </main>,
+      )
+      await act(async () => {})
+      expect(screen.getByRole('heading').textContent).toBe('app shell')
+      const d = expectDiagnostic(
+        seen,
+        'DK_RENDER_FAILED',
+        `operation render:table at components.${part}`,
+      )
+      expect(d.context.cause).toBeInstanceOf(InjectedError)
+      expect(d.problem).toBe(`the components.${part} component threw InjectedError`)
+      expectNoRowData(seen)
+      // The default part stands in, bound to the table.
+      expect(screen.getByRole(role)).toBeTruthy()
+      expect(screen.getAllByRole('row')).toHaveLength(4)
+    },
+  )
 
   it('registers the render:* operations (§3.4) on the first render: sync, not hot', () => {
     render(<DataTable data={people()} />)
