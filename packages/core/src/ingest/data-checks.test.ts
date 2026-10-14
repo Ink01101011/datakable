@@ -201,6 +201,28 @@ describe('DK_COLUMN_PATH_NOT_FOUND (§5.3)', () => {
   })
 })
 
+describe('inherited Object.prototype members are not row data (#42)', () => {
+  it('a column key or rowKey naming one is not found and reads undefined', () => {
+    const seen: Diagnostic[] = []
+    const t = createTable({
+      data: [{ id: 1 }] as Record<string, unknown>[],
+      rowKey: 'constructor',
+      columns: [{ key: 'id' }, { key: 'constructor' }, { key: 'toString' }, { key: '__proto__' }],
+      onDiagnostic: (d) => seen.push(d),
+    })
+    const row = t.getRowModel().rows[0]
+    expect(['constructor', 'toString', '__proto__'].map((k) => row?.getValue(k))).toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ])
+    expect(seen.filter((d) => d.code === 'DK_COLUMN_PATH_NOT_FOUND').length).toBe(3)
+    const missing = seen.find((d) => d.code === 'DK_MISSING_ROW_KEY')
+    expect(missing?.details).toMatchObject({ path: 'constructor', valueType: 'undefined' })
+    expect(row?.key).toBe('#0')
+  })
+})
+
 describe('DK_COLUMN_PATH_PARTIAL (§5.3)', () => {
   it('info with count + sample indices of the rows that lack it', () => {
     const data = Array.from({ length: 10 }, (_, i) => (i % 3 === 0 ? { id: i } : { id: i, e: 'x' }))

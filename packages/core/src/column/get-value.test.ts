@@ -77,6 +77,21 @@ describe('getValue', () => {
     expect(getValue({ p: new Person('Bo') }, 'p.label')).toBe('#Bo')
   })
 
+  it('never reads inherited Object.prototype members (#42)', () => {
+    for (const k of ['constructor', '__proto__', 'toString', 'hasOwnProperty', 'valueOf']) {
+      expect(getValue({ id: 1 }, k)).toBeUndefined()
+      expect(getValue({ a: { id: 1 } }, `a.${k}`)).toBeUndefined()
+    }
+    expect(getValue({ a: [1] }, 'a.map')).toBeUndefined()
+    // Own members of the same names are data.
+    const own = JSON.parse('{"constructor":"c","__proto__":"p","toString":"t"}')
+    expect([
+      getValue(own, 'constructor'),
+      getValue(own, '__proto__'),
+      getValue(own, 'toString'),
+    ]).toEqual(['c', 'p', 't'])
+  })
+
   it('catches a throwing getter, returns undefined and reports the error', () => {
     const boom = new Error('boom')
     const bad = {
