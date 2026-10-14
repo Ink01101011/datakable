@@ -10,6 +10,7 @@ import {
   type InvalidRowsMode,
   keepDiagnostics,
   matchesSlot,
+  pipelineDiagnostics,
   type RowIssue,
   type RowModelStatus,
   type SearchStatus,
@@ -34,7 +35,7 @@ import {
 import { type UseDataTableOptions, useDataTable } from './use-data-table'
 
 // The codes this module emits (bundlers keep the definitions; see core's `keepDiagnostics`).
-keepDiagnostics(renderDiagnostics, boundaryDiagnostics, slotDiagnostics)
+keepDiagnostics(renderDiagnostics, boundaryDiagnostics, slotDiagnostics, pipelineDiagnostics)
 
 // The ops its boundaries stand for (§3.4: `render:table`, `render:cell`). Registered at import:
 // the dist is one file per module (T37), so hook-only bundles (`useDataTable` without
