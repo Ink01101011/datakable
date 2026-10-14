@@ -83,7 +83,9 @@ In development, the console prints one collapsed group per diagnostic:
   diagnostic keeps its `code`, `level`, `where` and `context`, and its `docs` URL carries
   `?v=<version>&where=<where>`; `problem`, `impact` and `fix` are empty. Add
   `import 'datakable/messages'` (or `@datakable/core/messages`) once to get the full text in
-  production.
+  production, in a module of the bundle that creates the tables (Next.js app router: a
+  `'use client'` module, not `app/layout.tsx`; Nuxt / Nitro: `installMessages(...allMessages)`,
+  see [Diagnostics have no text in production](diagnostics-without-text-in-production.md#fix-keep-the-text)).
 - **Development only** (absent from production bundles, never emitted there): the dev checks
   [`DK_DATA_MUTATED`](#dk_data_mutated),
   [`DK_CONTROLLED_NOT_FED_BACK`](#dk_controlled_not_fed_back),

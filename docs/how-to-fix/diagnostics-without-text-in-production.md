@@ -99,6 +99,30 @@ A table created in a server component (`createTable` in server code) needs the i
 module too: add `import 'datakable/messages'` to the module that creates it. With the pages
 router, `pages/_app.tsx` is shared by the server and the browser, and one import there covers both.
 
+### Nuxt and other Nitro servers
+
+Nitro (Nuxt's server) treats the packages it does not bundle as free of side effects, so it drops a
+side-effect-only `import '@datakable/core/messages'` (or `import 'datakable/messages'`) from the
+server bundle: tables rendered on the server have no text, while the browser has it. Install the
+messages with a call instead, which no bundler drops, from a universal plugin (server and client):
+
+```ts
+// plugins/datakable-messages.ts — a universal Nuxt plugin. The call keeps the messages in the
+// server bundle too; a side-effect-only import would be dropped there.
+import { installMessages } from '@datakable/core'
+import { allMessages } from '@datakable/core/messages'
+
+declare function defineNuxtPlugin(setup: () => void): unknown // auto-imported by Nuxt
+
+installMessages(...allMessages)
+
+export default defineNuxtPlugin(() => {})
+```
+
+The same form works with any bundler and in any SSR framework. With `datakable`, import
+`allMessages` from `datakable/messages` and also pass `renderMessages` (from `datakable`) to
+`installMessages`, for the React codes.
+
 ## Related codes
 
 Every code: see the [diagnostics reference](errors.md#index).

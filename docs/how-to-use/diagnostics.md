@@ -243,6 +243,12 @@ codes):
 import 'datakable/messages'
 ```
 
+The import must reach the bundle that creates the tables. In the Next.js app router, import it
+from a `'use client'` module, not from `app/layout.tsx`; under Nuxt / Nitro, call
+`installMessages(...allMessages)` instead of a side-effect import, which Nitro drops from the
+server bundle. See
+[Diagnostics have no text in production](../how-to-fix/diagnostics-without-text-in-production.md#fix-keep-the-text).
+
 **Development-only codes.** These checks are absent from production bundles and never reported
 there: the dev checks `DK_DATA_MUTATED`, `DK_CALLBACK_BAD_RETURN`, `DK_FEATURE_BAD_OUTPUT`,
 `DK_FEATURE_MUTATED_INPUT`, `DK_SORT_COMPARATOR_INVALID`, `DK_HOT_INTERCEPTOR`, React's

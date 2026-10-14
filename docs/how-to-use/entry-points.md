@@ -57,7 +57,7 @@ by `installMessages(renderMessages)` from `@datakable/react`.
 | `@datakable/core/schema` | `withSchema()`, `DatakableSchemaError` and the Standard Schema types: schema validation ([Schema validation](schema-validation.md)). |
 | `@datakable/core/server` | `withFetcher()` and the fetcher types: the server source ([Server mode](server-mode.md)). |
 | `@datakable/core/search-async` | `withSearchFn()` and the `searchFn` types: the async search engine ([Search](search.md)). |
-| `@datakable/core/messages` | A side-effect import: the full text of core's diagnostics in production builds. |
+| `@datakable/core/messages` | A side-effect import: the full text of core's diagnostics in production builds. Also exports `allMessages`, for `installMessages(...allMessages)` where a bundler drops side-effect imports (Nuxt / Nitro). |
 
 The JavaScript is published one file per source module and marked side-effect free (except the
 `messages` entries and the stylesheets), so a bundler keeps only what you use, whichever entry you
