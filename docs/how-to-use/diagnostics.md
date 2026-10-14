@@ -170,8 +170,10 @@ the fingerprint, `toJSON()`, every interceptor and every sink only ever see the 
 | `'keys'` | `'safe'` + raw row-key values | development |
 | `'full'` | `'keys'` + cell values | — |
 
-- A column with `sensitive: true` is never logged, at any level (its values become `[sensitive]`).
-  When the `rowKey` column is sensitive, row keys are hashed at every level.
+- A column with `sensitive: true` is never logged, at any level (its values become `[sensitive]`),
+  and neither is a column inside it (`contact.email` under a sensitive `contact`). When the
+  `rowKey` path is a sensitive column, points into one (`rowKey: 'contact.email'`) or contains one,
+  row keys are hashed at every level.
 - A function `redact(path, value)` adds your own rule on top of the default level: return a string
   to log instead of `value`, or `undefined` to keep the built-in policy for that field. `path` names
   the field: `where.key`, `details.value`, `details.keys.2`, `details.issues.0`, … Sensitive
