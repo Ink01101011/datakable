@@ -72,7 +72,31 @@ const RANK: readonly RowModelStatus[] = [
 const isThenable = (v: unknown): v is PromiseLike<unknown> =>
   v != null && typeof (v as { then?: unknown }).then === 'function'
 
-const freeze = <S extends object>(s: S): S => (DEV ? Object.freeze(s) : s)
+/** Objects already deep-frozen (dev): an unchanged slice is not walked again on the next commit. */
+const deepFrozen = DEV ? new WeakSet<object>() : undefined
+
+/**
+ * Freezes plain objects and arrays reachable from `v` (dev). Class instances (Date, Map, typed
+ * arrays, user classes) are left alone: freezing them would break their own methods.
+ */
+function deepFreeze(v: unknown): void {
+  if (v === null || typeof v !== 'object' || deepFrozen?.has(v)) return
+  const isArray = Array.isArray(v)
+  if (!isArray) {
+    const proto = Object.getPrototypeOf(v)
+    if (proto !== Object.prototype && proto !== null) return
+  }
+  deepFrozen?.add(v)
+  Object.freeze(v)
+  if (isArray) for (let i = 0; i < v.length; i++) deepFreeze(v[i])
+  else for (const k in v) deepFreeze((v as Record<string, unknown>)[k])
+}
+
+/** Snapshots and their slices are immutable in development (#20); production skips the walk. */
+const freeze = <S extends object>(s: S): S => {
+  if (DEV) deepFreeze(s)
+  return s
+}
 
 /** The row type: the schema output with a `schema` (§5.1), else `T`. */
 export type SchemaRow<T, Sch> = [Sch] extends [TableSchema] ? StandardSchemaV1.InferOutput<Sch> : T

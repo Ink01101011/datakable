@@ -23,9 +23,10 @@ and read with `getRowModel()` ([Core concepts](core-concepts.md#the-row-model)).
 
 ## Reading, changing and listening
 
-- `getState()` returns the current **snapshot**. Snapshots are immutable (frozen in development):
-  a change creates a new snapshot, and a snapshot keeps the same reference until a slice changes,
-  so you can compare slices with `===`.
+- `getState()` returns the current **snapshot**. Snapshots are immutable (in development the
+  snapshot and the plain objects and arrays in its slices are frozen, so a nested write throws a
+  `TypeError`): a change creates a new snapshot, and a snapshot keeps the same reference until a
+  slice changes, so you can compare slices with `===`.
 - `setState(updater)` merges a partial state, or the result of `(prev) => partial`, slice by slice.
   A slice you pass replaces that slice; slices you leave out are kept.
 - `subscribe(listener)` calls `listener(state, prev)` after each committed change and returns the
