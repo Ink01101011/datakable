@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineFeature } from '../feature/define'
 import type { AnyFeature } from '../feature/types'
+import { search } from '../features/search'
+import { sorting } from '../features/sorting'
 import { createTable } from '../table/create-table'
 import type { ExplainStep } from './explain'
 import type { Diagnostic } from './types'
@@ -85,5 +87,59 @@ describe('tracer: time-sliced work (#61)', () => {
     expect(hints()).toHaveLength(1)
     expect(hints()[0]?.details).toMatchObject({ feature: 'evens', ms: 80, sliced: true })
     expect(hints()[0]?.problem).toContain('a time slice of the "evens" step took 80.0 ms')
+  })
+})
+
+describe('tracer: DK_PERF_HINT names the slow column (#62)', () => {
+  it('a slow format under search: the hint names columns[0].format and its share', () => {
+    const t = createTable({
+      data: rows(2000),
+      features: [search()],
+      columns: [
+        {
+          key: 'name',
+          format: (v) => {
+            clock += 0.05
+            return String(v)
+          },
+        },
+        { key: 'id' },
+      ],
+      onDiagnostic,
+    })
+    t.getRowModel()
+    t.setSearch('n1')
+    t.getRowModel()
+    const [h] = hints()
+    expect(h?.details).toMatchObject({
+      feature: 'search',
+      slot: 'columns[0].format',
+      column: 'name',
+      share: 1,
+    })
+    expect(h?.problem).toContain('100 % of it in columns[0].format (column "name")')
+    expect(h?.fix[1]).toContain('make columns[0].format cheaper')
+  })
+
+  it('a slow accessor under sorting: the hint names columns[0].accessor', () => {
+    const t = createTable({
+      data: rows(2000),
+      features: [sorting()],
+      columns: [
+        {
+          id: 'label',
+          accessor: (u: { id: number }) => {
+            clock += 0.05
+            return `c-${u.id}`
+          },
+        },
+      ],
+      onDiagnostic,
+    })
+    t.getRowModel()
+    // An accessor column: its id is not a key of the row type.
+    t.toggleSort('label' as never)
+    t.getRowModel()
+    expect(hints()[0]?.details).toMatchObject({ slot: 'columns[0].accessor', column: 'label' })
   })
 })

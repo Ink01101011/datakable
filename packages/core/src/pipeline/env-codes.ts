@@ -26,6 +26,12 @@ declare module '../diagnostics/catalog' {
       budget: number
       /** One slice of the step's time-sliced work, run between pipeline runs (#61). */
       sliced?: boolean
+      /** The column slot at least half of the time went to, e.g. `columns[0].format` (#62). */
+      slot?: string
+      /** Its column id. */
+      column?: string
+      /** Its share of {@link ms}, 0.5 to 1. */
+      share?: number
     }
   }
 }
@@ -53,13 +59,18 @@ export const envMessages: DiagnosticMessages<'DK_ENV_FALLBACK' | 'DK_PERF_HINT'>
   DK_PERF_HINT: {
     problem: (d) =>
       `${d.sliced ? 'a time slice of ' : ''}the "${d.feature}" step took ${ms(d.ms)} on ` +
-      `${d.rows} rows, over the ${ms(d.budget)} budget of one task`,
+      `${d.rows} rows, over the ${ms(d.budget)} budget of one task` +
+      (d.slot
+        ? `; ${Math.round((d.share ?? 1) * 100)} % of it in ${d.slot} (column "${d.column}")`
+        : ''),
     impact: () => 'the page could not respond to input while it ran (a long task)',
     fix: (d) => [
       d.stage === 'none'
         ? `move the work of "${d.feature}" out of rowModel (precompute it, or run it in a Worker)`
         : `let the server do it: ${d.feature}({ mode: 'server' }) with options.fetcher`,
-      `make the per-row work of "${d.feature}" cheaper (precompute keys, avoid Intl / regex per row), or run it in a Worker`,
+      d.slot
+        ? `make ${d.slot} cheaper (precompute it, avoid Intl / regex per call), or run it in a Worker`
+        : `make the per-row work of "${d.feature}" cheaper (precompute keys, avoid Intl / regex per row), or run it in a Worker`,
     ],
   },
 }

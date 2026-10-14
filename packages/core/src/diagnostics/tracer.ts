@@ -11,7 +11,7 @@ import type { Emit } from './types'
  */
 export const STEP_BUDGET_MS = 50
 
-type Traced = 'pipeline:run' | 'pipeline:step' | 'state:dispatch'
+type Traced = 'pipeline:run' | 'pipeline:step' | 'state:dispatch' | 'column:batch'
 
 const now = (): number =>
   typeof performance === 'object' && typeof performance?.now === 'function'
@@ -27,25 +27,42 @@ const SEEN = 'tracer'
  * adds its own time and shows the total.
  */
 type Job = { stage: string; ms: number; runs: number }
-const jobs = new WeakMap<object, Map<string, Job>>()
 
-function jobsOf(table: object): Map<string, Job> {
-  let m = jobs.get(table)
-  if (!m) {
-    m = new Map()
-    jobs.set(table, m)
+/**
+ * Per table: its steps waiting on sliced work, and the time of each `column:batch` slot
+ * (`columns[0].format` → column id, ms) since the current step or slice began (#62).
+ */
+type Work = { jobs: Map<string, Job>; slots: Map<string, [string, number]> }
+const work = new WeakMap<object, Work>()
+
+function workOf(table: object): Work {
+  let w = work.get(table)
+  if (!w) {
+    w = { jobs: new Map(), slots: new Map() }
+    work.set(table, w)
   }
-  return m
+  return w
 }
 
+/** DK_PERF_HINT for a task over the budget, with the slot most of its time went to (#62). */
 function hint(
   emit: Emit,
+  w: Work,
   feature: string,
   stage: string,
   ms: number,
   rows: number,
   sliced: boolean,
 ) {
+  let slot: string | undefined
+  let top: [string, number] = ['', 0]
+  for (const [where, t] of w.slots) {
+    if (t[1] > top[1]) {
+      slot = where
+      top = t
+    }
+  }
+  w.slots.clear()
   if (ms <= STEP_BUDGET_MS) return
   emit('DK_PERF_HINT', {
     feature,
@@ -54,6 +71,8 @@ function hint(
     rows,
     budget: STEP_BUDGET_MS,
     ...(sliced ? { sliced } : {}),
+    // Named when it took at least half of the time.
+    ...(slot && top[1] * 2 >= ms ? { slot, column: top[0], share: Math.min(1, top[1] / ms) } : {}),
   })
 }
 
@@ -63,9 +82,10 @@ function onSlice(base: ContextBase, feature: string, ms: number) {
   const trace = readTrace(table)
   // Only for tables this tracer (or another) traces.
   if (!trace) return
-  const job = jobsOf(table).get(feature)
+  const w = workOf(table)
+  const job = w.jobs.get(feature)
   if (job) job.ms += ms
-  hint(base.emit, feature, job?.stage ?? '', ms, trace.steps.get(feature)?.input ?? 0, true)
+  hint(base.emit, w, feature, job?.stage ?? '', ms, trace.steps.get(feature)?.input ?? 0, true)
 }
 
 /**
@@ -80,12 +100,25 @@ export function tracer(): Interceptor<Traced> {
   sliceTimer.current = onSlice
   return {
     name: 'tracer',
-    on: ['pipeline:run', 'pipeline:step', 'state:dispatch'],
+    on: ['pipeline:run', 'pipeline:step', 'state:dispatch', 'column:batch'],
+    // column:batch: one timing per batch of a column, never per cell (§3.4).
+    hot: true,
     intercept(ctx, next) {
       const table = ctx.table
       if (ctx.meta.has(SEEN) || typeof table !== 'object' || table === null) return next()
       ctx.meta.set(SEEN, true)
       const start = now()
+      if (ctx.op === 'column:batch') {
+        try {
+          return next()
+        } finally {
+          const slots = workOf(table).slots
+          const t = slots.get(ctx.where)
+          const ms = now() - start
+          if (t) t[1] += ms
+          else slots.set(ctx.where, [ctx.input.column, ms])
+        }
+      }
       if (ctx.op === 'pipeline:run') {
         const trace: Trace = {
           run: ctx.run,
@@ -102,10 +135,12 @@ export function tracer(): Interceptor<Traced> {
         }
       }
       if (ctx.op === 'pipeline:step') {
+        const w = workOf(table)
+        w.slots.clear()
         const out = next() as Uint32Array
         const own = now() - start
         const { feature, stage, indices } = ctx.input
-        const pending = jobsOf(table)
+        const pending = w.jobs
         const job = pending.get(feature)
         let ms = own
         let runs: number | undefined
@@ -127,7 +162,7 @@ export function tracer(): Interceptor<Traced> {
           })
         }
         // One task: the step's own time.
-        hint(ctx.emit, feature, stage, own, indices.length, false)
+        hint(ctx.emit, w, feature, stage, own, indices.length, false)
         return out
       }
       try {
