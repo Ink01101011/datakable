@@ -593,6 +593,54 @@ describe('createTable: redaction mapping (diagnostics.redact, sensitive, rowKey)
     expect(seen[0]?.details.key).toMatch(/^h:[0-9a-f]{8}$/)
   })
 
+  it('a rowKey path into a sensitive column is hashed at every level (#45)', () => {
+    const data = [
+      { id: 1, contact: { email: 'ann@private.example' } },
+      { id: 2, contact: { email: 'ann@private.example' } },
+      { id: 3, contact: { email: 'cat@private.example' } },
+    ]
+    type C = (typeof data)[number]
+    for (const redact of [undefined, 'safe', 'keys', 'full'] as const) {
+      const got: Diagnostic[] = []
+      const t = createTable<C>({
+        data,
+        rowKey: 'contact.email',
+        columns: [{ key: 'id' }, { key: 'contact', sensitive: true, format: (c) => c.email }],
+        ...(redact ? { diagnostics: { redact } } : {}),
+        onDiagnostic: (d) => got.push(d),
+      })
+      t.getRowModel()
+      const dup = got.find((d) => d.code === 'DK_DUPLICATE_ROW_KEY')
+      expect(dup?.details.key).toMatch(/^h:[0-9a-f]{8}$/)
+      expect(JSON.stringify(dup)).not.toContain('@private.example')
+      expect(String(dup)).not.toContain('@private.example')
+      expect(JSON.stringify(t.explainRow('cat@private.example'))).not.toContain('@private.example')
+    }
+  })
+
+  it('a rowKey path above a sensitive column is hashed too (#45)', () => {
+    const t = make({
+      diagnostics: { redact: 'full' },
+      rowKey: 'contact' as never,
+      columns: [{ key: 'id' }, { key: 'contact.email' as never, sensitive: true }],
+      interceptors: [emitter({ column: 'id', value: 1, key: 'raw-key' })],
+    })
+    t.setState({ page: 1 })
+    const d = seen.find((x) => x.code === 'DK_TEST_TABLE_VALUE')
+    expect(d?.details.key).toMatch(/^h:[0-9a-f]{8}$/)
+  })
+
+  it('a value of a column inside a sensitive column is never logged (#45)', () => {
+    const t = make({
+      diagnostics: { redact: 'full' },
+      columns: [{ key: 'contact', sensitive: true } as never, { key: 'contact.email' as never }],
+      interceptors: [emitter({ column: 'contact.email', value: 'SECRET', key: 1 })],
+    })
+    t.setState({ page: 1 })
+    const d = seen.find((x) => x.code === 'DK_TEST_TABLE_VALUE')
+    expect(d?.details.value).toBe('[sensitive]')
+  })
+
   it('follows column changes made with setOptions', () => {
     const t = make({
       diagnostics: { redact: 'full' },

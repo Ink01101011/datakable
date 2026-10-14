@@ -35,7 +35,7 @@ export interface TableDiagnosticsOptions {
   /**
    * Redaction (§8.2): a level, or a custom `redact(path, value)` on top of the default level
    * (`'keys'` in development, `'safe'` in production). Columns with `sensitive: true` are never
-   * logged; a sensitive `rowKey` column is hashed at every level.
+   * logged; a `rowKey` path into a sensitive column is hashed at every level.
    */
   redact?: RedactLevel | RedactFn
 }

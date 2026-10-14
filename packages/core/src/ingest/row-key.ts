@@ -29,7 +29,8 @@ const typeOf = (v: unknown): string => {
  * change with filtering, sorting or paging:
  *
  * - a repeated key: the first row keeps it, later rows get `key#1`, `key#2`, …
- *   (`DK_DUPLICATE_ROW_KEY`, whose `fix` names fields that are unique across all rows);
+ *   (`DK_DUPLICATE_ROW_KEY`, whose `fix` names fields that are unique across all rows). Keys are
+ *   compared as strings (`1` repeats `'1'`), as React keys and `explainRow` compare them;
  * - a missing / `null` / non-string-or-number key: `#index` (`DK_MISSING_ROW_KEY`);
  * - a throwing `rowKey` function: `#index`, passed to `onThrow` (reported by the runner as
  *   `DK_CALLBACK_FAILED`, as in T09).
@@ -94,8 +95,9 @@ function keyReader(
 }
 
 /**
- * One pass over every row: returns the fallback keys (only the rows that need one) and emits the
- * key diagnostics. Kept apart from the returned reader so the scan's maps are not captured by it.
+ * One pass over every row, then one over the rows that need a fallback key: returns those keys
+ * and emits the key diagnostics. Kept apart from the returned reader so the scan's maps are not
+ * captured by it.
  */
 function scan(
   data: readonly unknown[],
@@ -103,54 +105,57 @@ function scan(
   read: Read,
   emit: Emit,
 ): Map<number, RowKey> | undefined {
-  /** Every key handed out so far (raw keys and fallbacks) → the row that holds it. */
-  const taken = new Map<RowKey, number>()
-  /** Repeated raw key → the next `#n` to try. */
-  const suffix = new Map<RowKey, number>()
-  /** Only the rows that got a fallback key. */
-  let fallbacks: Map<number, RowKey> | undefined
-  /** `base#n` for the first free `n ≥ from` (a fallback can collide with a real key). */
-  const free = (base: RowKey, from: number): [RowKey, number] => {
-    let s = from
-    let k: RowKey = `${base}#${s++}`
-    while (taken.has(k)) k = `${base}#${s++}`
-    return [k, s]
-  }
-
+  /** Every key handed out so far (raw keys and fallbacks), as a string → the row that holds it. */
+  const taken = new Map<string, number>()
+  /** Repeated raw key, as a string → the next `#n` to try. */
+  const suffix = new Map<string, number>()
   const missing = { count: 0, rows: [] as number[], valueType: '' }
   const dup = { count: 0, key: undefined as RowKey | undefined, rows: [] as number[], shared: 0 }
+  /** Rows that need a fallback: [index, the base it is built on (`#index` or the repeated key)]. */
+  const pending: [number, string][] = []
 
   for (let i = 0; i < data.length; i++) {
     const raw = read(data[i], i)
-    let key: RowKey
+    const str = String(raw)
     if (!usable(raw)) {
       if (raw !== THREW) {
         if (missing.count === 0) missing.valueType = typeOf(raw)
         if (missing.rows.length < SAMPLE) missing.rows.push(i)
         missing.count++
       }
-      key = `#${i}`
-      if (taken.has(key)) key = free(key, 1)[0]
-    } else if (taken.has(raw)) {
+      pending.push([i, `#${i}`])
+    } else if (taken.has(str)) {
       dup.count++
       if (dup.key === undefined) {
         dup.key = raw
-        dup.rows.push(taken.get(raw) as number)
+        dup.rows.push(taken.get(str) as number)
         dup.shared = 1
       }
-      if (raw === dup.key) {
+      if (str === String(dup.key)) {
         dup.shared++
         if (dup.rows.length < SAMPLE) dup.rows.push(i)
       }
-      const [k, next] = free(raw, suffix.get(raw) ?? 1)
-      suffix.set(raw, next)
-      key = k
+      suffix.set(str, 1)
+      pending.push([i, str])
     } else {
-      taken.set(raw, i)
-      continue
+      taken.set(str, i)
+    }
+  }
+  const groups = suffix.size
+
+  // Fallbacks only once every real key is taken, so none takes the key of a later row: `base#n`
+  // for the first free `n` (a missing row's `#index` itself when free).
+  let fallbacks: Map<number, RowKey> | undefined
+  for (const [i, base] of pending) {
+    let key = base
+    if (taken.has(key)) {
+      let n = suffix.get(base) ?? 1
+      do key = `${base}#${n++}`
+      while (taken.has(key))
+      suffix.set(base, n)
     }
     taken.set(key, i)
-    if (fallbacks === undefined) fallbacks = new Map()
+    fallbacks ??= new Map()
     fallbacks.set(i, key)
   }
 
@@ -166,7 +171,7 @@ function scan(
         rows: dup.rows,
         shared: dup.shared,
         count: dup.count,
-        groups: suffix.size,
+        groups,
         total: data.length,
         unique: found.unique,
         ...(found.pair === undefined ? {} : { pair: found.pair }),
