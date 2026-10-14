@@ -177,7 +177,18 @@ esbuild app.tsx --bundle --define:process.env.NODE_ENV='"production"'
 ```
 
 Without a replacement, unbundled browser code throws `ReferenceError: process is not defined`, as
-React and Redux do. Node needs nothing.
+React and Redux do.
+
+Server code that is not bundled reads the variable when it runs, so a production server must set
+it: plain Node, a Nuxt / Nitro `node-server` build (Nitro copies `@datakable/core` into
+`.output/server/node_modules` instead of bundling it), or Next.js `standalone` output with
+external packages. Without it, DataKable runs in development mode there: full checks, a console
+group per diagnostic, and raw row keys in diagnostics (the `'keys'` redaction instead of
+`'safe'`):
+
+```sh
+NODE_ENV=production node .output/server/index.mjs
+```
 
 In development (any value other than `'production'`) you get the full checks: unknown and invalid
 options, data checks, the tracer behind `explain()`, and complete diagnostic text. Production

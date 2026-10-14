@@ -213,6 +213,10 @@ table.setColumnFilter('city', { type: 'equals', value: 'Bangkok' }) // fetches a
 - **A filter from saved state, or on a nested path of a zero-config table, does nothing**: the id
   is not a column (renamed, or never listed in `columns`) —
   [`DK_STATE_UNKNOWN_KEY`](../how-to-fix/errors.md#dk_state_unknown_key).
+- **Changing an array after passing it as a filter value**: in development the table freezes the
+  state it stores, including the arrays inside it, so `ids.push(3)` after
+  `setColumnFilter('id', { type: 'in', value: ids })` throws a `TypeError`. Pass a new array
+  (`setColumnFilter('id', { type: 'in', value: [...ids, 3] })`); production does not freeze.
 - **A `custom` fn throws**: [`DK_CALLBACK_FAILED`](../how-to-fix/errors.md#dk_callback_failed).
 - **`range` on a string column does not compile**:
   [filter kind not allowed](../how-to-fix/reading-type-errors.md#3-filter-kind-not-allowed-for-the-value-type).

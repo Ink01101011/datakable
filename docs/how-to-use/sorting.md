@@ -250,6 +250,10 @@ table.toggleSort('nmae')
   default comparator, a row whose `sortBy` throws sorts last.
 - **Why this algorithm?** Turn on `sorting({ debug: true })` and read
   [DK_SORT_STRATEGY](../how-to-fix/errors.md#dk_sort_strategy).
+- **`setSorting` with the same sort written in another key order.** An equal sort keeps the slice
+  (no notification, no page reset), but entries are compared as JSON, so key order matters:
+  `{ desc: false, id: 'name' }` is a change after `{ id: 'name', desc: false }`, which notifies and
+  sends the table back to page 0 (`autoResetPageIndex`). Write entries as `{ id, desc }`.
 - **Sort seems to do nothing in server mode.** Core does not sort there: your fetcher (or your own
   request) must apply `sort`.
 

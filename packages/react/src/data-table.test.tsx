@@ -143,14 +143,18 @@ describe('<DataTable /> (§10)', () => {
       expect(box.value).toBe('anan')
       const wrapper = container.querySelector('[data-dk-search]') as HTMLElement
       expect(wrapper.getAttribute('data-status')).toBe('pending')
-      expect(within(wrapper).getByRole('status')).toBeTruthy()
+      // The spinner is decorative; the root's live region says it (#54).
+      expect(wrapper.querySelector('[data-dk-spinner]')).toBeTruthy()
+      const live = container.querySelector('[aria-live="polite"]') as HTMLElement
+      expect(live.textContent).toBe('Searching rows…')
       expect(names()).toEqual(['Mali', 'Anan', 'Ploy'])
       await act(async () => {
         fireEvent.keyDown(box, { key: 'Enter' })
       })
       expect(names()).toEqual(['Anan'])
       expect(wrapper.getAttribute('data-status')).toBe('idle')
-      expect(within(wrapper).queryByRole('status')).toBeNull()
+      expect(wrapper.querySelector('[data-dk-spinner]')).toBeNull()
+      expect(live.textContent).toBe('1 row')
     } finally {
       vi.useRealTimers()
     }
@@ -163,12 +167,13 @@ describe('<DataTable /> (§10)', () => {
     const prev = within(nav).getByRole('button', { name: 'Previous page' }) as HTMLButtonElement
     const next = within(nav).getByRole('button', { name: 'Next page' }) as HTMLButtonElement
     expect(nav.textContent).toContain('Page 1 of 3')
-    expect(prev.disabled).toBe(true)
+    // aria-disabled, not disabled: the button keeps focus at the first / last page (#55).
+    expect(prev.getAttribute('aria-disabled')).toBe('true')
     expect(bodyRows()).toHaveLength(10)
     fireEvent.click(next)
     fireEvent.click(next)
     expect(nav.textContent).toContain('Page 3 of 3')
-    expect(next.disabled).toBe(true)
+    expect(next.getAttribute('aria-disabled')).toBe('true')
     expect(bodyRows()).toHaveLength(5)
     fireEvent.click(prev)
     expect(nav.textContent).toContain('Page 2 of 3')

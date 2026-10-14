@@ -64,8 +64,10 @@ console.log(`${filteredCount} of ${totalCount}`) // '2 of 4'
   appear: `id`, `name`, `email`, `age`, `city`. The header is the key.
 - Each header is a button: click to sort ascending, again for descending, a third time for no sort.
   Shift+click adds a second sort key. The `<th>` carries `aria-sort`.
-- A search input above the table: fuzzy matching over every column, applied as you type. Enter
-  applies it at once, Esc clears it.
+- A search input above the table: fuzzy matching over the string, number and boolean columns
+  (here all of them), applied as you type. Enter applies it at once, Esc clears it. A column of
+  dates, arrays or objects is searched only with a `search` weight
+  ([`DK_SEARCH_COLUMN_SKIPPED`](../how-to-fix/errors.md#dk_search_column_skipped) in development).
 - Ten rows per page, with Previous / Next buttons below the table.
 - No styles: the table renders plain HTML with `data-*` hooks. Import `datakable/styles.css` for a
   default look ([Theming](theming.md)).

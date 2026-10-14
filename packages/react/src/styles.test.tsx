@@ -219,3 +219,75 @@ describe('styles.css packaging (§12)', () => {
     }
   })
 })
+
+// WCAG contrast, computed from the shipped tokens (light: the first block, dark: the
+// prefers-color-scheme block). https://www.w3.org/TR/WCAG21/#dfn-contrast-ratio
+describe('styles.css contrast (WCAG 2.1 AA)', () => {
+  const block = (src: string) =>
+    Object.fromEntries([...src.matchAll(/(--dk-[a-z-]+)\s*:\s*([^;]+);/g)].map((m) => [m[1], m[2]]))
+  const light = block(code.slice(0, code.indexOf('}')))
+  const darkAt = code.indexOf('prefers-color-scheme: dark')
+  const dark = { ...light, ...block(code.slice(darkAt, code.indexOf('}', darkAt))) }
+  const rgb = (hex: string) => {
+    const h = hex.trim().slice(1)
+    const full = h.length === 3 ? [...h].map((c) => c + c).join('') : h
+    return [0, 2, 4].map((i) => Number.parseInt(full.slice(i, i + 2), 16))
+  }
+  const lum = (c: number[]) => {
+    const [r, g, b] = c.map((v) => {
+      const s = v / 255
+      return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
+    }) as [number, number, number]
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+  }
+  const ratio = (a: number[], b: number[]) => {
+    const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p) as [number, number]
+    return (x + 0.05) / (y + 0.05)
+  }
+  /** `c` drawn at `alpha` over `under`. */
+  const over = (c: number[], under: number[], alpha: number) =>
+    c.map((v, i) => Math.round(v * alpha + (under[i] as number) * (1 - alpha)))
+  /** The declarations of the rule whose selector contains `sel`. */
+  const rule = (sel: string) => {
+    const at = code.indexOf(sel)
+    return code.slice(code.indexOf('{', at) + 1, code.indexOf('}', at))
+  }
+  const themes = { light, dark } as Record<string, Record<string, string>>
+
+  it.each(['light', 'dark'])(
+    '%s: body text stays ≥ 4.5:1 while busy over stale rows (#57)',
+    (t) => {
+      const v = themes[t] as Record<string, string>
+      const busy = rule('[aria-busy="true"]:not([data-initial-load="true"]) tbody')
+      const alpha = Number(/opacity\s*:\s*([\d.]+)/.exec(busy)?.[1] ?? 1)
+      const page = rgb(v['--dk-bg'] as string)
+      // Text / background pairs inside tbody: rows, hovered rows, state rows, flagged rows and cells.
+      const pairs = [
+        ['--dk-fg', '--dk-bg'],
+        ['--dk-fg', '--dk-subtle'],
+        ['--dk-muted', '--dk-bg'],
+        ['--dk-muted', '--dk-subtle'],
+        ['--dk-fg', '--dk-danger-bg'],
+        ['--dk-danger', '--dk-danger-bg'],
+        ['--dk-danger', '--dk-bg'],
+      ] as const
+      for (const [fg, bg] of pairs) {
+        const back = over(rgb(v[bg] as string), page, alpha)
+        const text = over(rgb(v[fg] as string), page, alpha)
+        expect(ratio(text, back), `${fg} on ${bg} at opacity ${alpha}`).toBeGreaterThanOrEqual(4.5)
+      }
+    },
+  )
+
+  it.each(['light', 'dark'])(
+    '%s: the search input border is ≥ 3:1 against the background (#58)',
+    (t) => {
+      const v = themes[t] as Record<string, string>
+      const border = /border\s*:[^;]*var\((--dk-[a-z-]+)\)/.exec(
+        rule('[data-dk-search] input'),
+      )?.[1]
+      const r = ratio(rgb(v[border as string] as string), rgb(v['--dk-bg'] as string))
+      expect(r, `${border} on --dk-bg`).toBeGreaterThanOrEqual(3)
+    },
+  )
+})

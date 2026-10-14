@@ -170,7 +170,8 @@ With a `fetcher`, `pageIndex` and `pageSize` go to it and each page change fetch
   reports [DK_ROW_COUNT_MISSING](../how-to-fix/errors.md#dk_row_count_missing) and treats `data.length` as
   the total: one page, `canNextPage()` is `false`. Pass `rowCount`.
 - **Counting rows with `rows.length`.** It is the size of the current page; use
-  `rowModel.filteredCount` for "N results".
+  `rowModel.filteredCount` for "N results". In server mode `filteredCount` is the page too: use
+  the server's `rowCount` ([Counting rows in server mode](server-mode.md#counting-rows-in-server-mode)).
 - **The page jumps to 0.** That is `autoResetPageIndex` after a filter, query or sort change; turn
   it off with `pagination({ autoResetPageIndex: false })`.
 
