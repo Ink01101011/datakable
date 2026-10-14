@@ -24,6 +24,7 @@ import {
 } from '@datakable/core'
 import {
   type ReactNode,
+  version as reactVersion,
   useCallback,
   useEffect,
   useInsertionEffect,
@@ -188,9 +189,22 @@ export function useDataTable<
 >
 export function useDataTable(options: Options): unknown {
   const ref = useRef<Instance | null>(null)
-  // Created during the first render (React keeps the ref across the StrictMode double render),
-  // deferred: its async work (fetcher, searchFn) starts in the mount effect, never on the server.
-  if (ref.current === null) ref.current = createInstance(options)
+  // Created during the first render, deferred: its async work (fetcher, searchFn) starts in the
+  // mount effect, never on the server.
+  if (ref.current === null) {
+    ref.current = createInstance(options)
+    // React 18's development StrictMode discards the first mount render, ref included (React 19
+    // keeps it): that render's table never mounts, so release it once the render is over. A
+    // render that commits after this (one that yielded) gets a new table at mount (`recreate`).
+    if (
+      process.env.NODE_ENV !== 'production' &&
+      typeof window !== 'undefined' &&
+      reactVersion.startsWith('18.')
+    ) {
+      const inst = ref.current
+      queueMicrotask(() => release(inst))
+    }
+  }
   const inst = ref.current
   const table = inst.table
   const [, rerender] = useReducer((n: number) => n + 1, 0)
@@ -230,11 +244,7 @@ export function useDataTable(options: Options): unknown {
     return () => {
       inst.mounted = false
       // Deferred: the StrictMode effect re-run mounts again synchronously and keeps the table.
-      queueMicrotask(() => {
-        if (inst.mounted || inst.destroyed) return
-        inst.destroyed = true
-        inst.table.destroy()
-      })
+      queueMicrotask(() => release(inst))
     }
   }, [inst])
 
@@ -247,6 +257,13 @@ export function useDataTable(options: Options): unknown {
   })
 
   return view
+}
+
+/** Destroys the table unless it is mounted (or already destroyed). */
+function release(inst: Instance) {
+  if (inst.mounted || inst.destroyed) return
+  inst.destroyed = true
+  inst.table.destroy()
 }
 
 function createInstance(options: Options): Instance {
