@@ -238,14 +238,15 @@ describe('search(): client matching (§6.3)', () => {
   })
 
   it('matches across chunks of rows like over the whole (case folded per chunk)', async () => {
-    const data = Array.from({ length: 10_000 }, (_, i) => ({ id: i, name: `Item ${i}` }))
+    // One searchable column: 16,384 rows per chunk (CELLS), so 40k rows are three chunks.
+    const data = Array.from({ length: 40_000 }, (_, i) => ({ id: i, name: `Item ${i}` }))
     const t = createTable({
       data,
       columns: [{ key: 'name', search: 1 }, { key: 'id' }],
       features: [search({ threshold: 0.75, fuzzyMaxDistance: 0 })],
     })
-    await t.setSearch('ITEM 9999')
-    expect(t.getRowModel().rows.map((r) => r.index)).toEqual([9999])
+    await t.setSearch('ITEM 39999')
+    expect(t.getRowModel().rows.map((r) => r.index)).toEqual([39999])
     await t.setSearch('item 500')
     expect(t.getRowModel().rows.map((r) => r.index)).toEqual([
       500, 5000, 5001, 5002, 5003, 5004, 5005, 5006, 5007, 5008, 5009,

@@ -1,6 +1,7 @@
 import { createDefaultFeatures, createTable } from '@datakable/core'
 import { describe, expect, it } from 'vitest'
 import { measureHeap } from './measure'
+import { mixedUsers } from './mixed-users'
 
 // §9.3 "Pipeline memory at 100k rows (excluding source data) ≤ 5 MB" with the REAL default preset
 // (columnFilters, validity, search, sorting, pagination) from the built `@datakable/core`, in
@@ -18,35 +19,6 @@ const makeData = (): R[] =>
   Array.from({ length: N }, (_, i) => ({ id: i, age: (i * 7919) % 100, name: `name ${i}` }))
 
 const BUDGET_MB = 5
-
-const CITIES = ['Bangkok', 'กรุงเทพมหานคร', 'Chiang Mai', 'São Paulo', 'Zürich', '東京']
-const TAGS = ['admin', 'beta', 'vip', 'ลูกค้า', 'früh', '🔥']
-
-/** The PVT shape (#27): ten mixed-type fields, nullish / NaN numbers, Date | string, arrays. */
-const mixedUsers = () =>
-  Array.from({ length: N }, (_, i) => {
-    const id = i + 1
-    const ms = Date.UTC(2015, 0, 1) + ((i * 7919) % 3650) * 86_400_000 + ((i * 104729) % 86_400_000)
-    return {
-      id,
-      name: `user ${(i * 2654435761) % N}`,
-      age:
-        id % 17 === 0
-          ? null
-          : id % 19 === 0
-            ? undefined
-            : id % 23 === 0
-              ? Number.NaN
-              : 18 + (i % 62),
-      city: CITIES[i % CITIES.length] as string,
-      email: `user${id}@example.com`,
-      joined: id % 2 === 0 ? new Date(ms) : new Date(ms).toISOString(),
-      balance: id % 25 === 0 ? `${9007199254740993n + BigInt(id)}` : ((i * 7919) % 1_000_000) / 100,
-      tags: TAGS.filter((_, k) => (i >> k) % 3 === 0).slice(0, 3),
-      address: { street: `${1 + (i % 999)} Sukhumvit Rd`, geo: { lat: i % 90, lng: i % 180 } },
-      isActive: i % 10 > 2,
-    }
-  })
 
 function preset(data: R[]) {
   return createTable({ data, rowKey: 'id', features: createDefaultFeatures(), onDiagnostic() {} })
@@ -96,7 +68,7 @@ describe('§9.3 pipeline memory, real default preset, 100k rows (dist, productio
   // searched column still costs its values array (8 bytes per row in Node), so the budget holds
   // for a few searched columns: five primitive columns are held to it, seven and all ten printed.
   it(`zero-config search, 5 mixed primitive columns: ≤ ${BUDGET_MB} MB (7 and 10 printed)`, async () => {
-    const data = mixedUsers()
+    const data = mixedUsers(N)
     const five = data.map(({ id, name, age, balance, isActive }) => ({
       id,
       name,

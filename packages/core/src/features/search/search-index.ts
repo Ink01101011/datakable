@@ -2,7 +2,7 @@ import { ExSearch, Scorer } from 'ex-search'
 import { DEV } from '../../diagnostics/env'
 import type { Emit } from '../../diagnostics/types'
 import type { RowModelContext } from '../../feature/types'
-import { nullishOf } from '../../pipeline/column-cache'
+import { nullishOf, type SlicedFormatting } from '../../pipeline/column-cache'
 import { resolveColumns } from '../../pipeline/columns'
 import { arrayIndex } from '../../pipeline/row'
 import { detectCapability, hasCapability } from '../../versioning/capability'
@@ -37,8 +37,14 @@ export interface SearchIndex {
   match(rows: Uint32Array, query: string): Generator<undefined, Uint32Array, undefined>
 }
 
-/** Rows per chunk between two `yield`s of the matching job. */
+/** Rows per chunk between two `yield`s of a scan (one value per row). */
 const CHUNK = 4096
+
+/**
+ * Cells (rows × searchable columns) matched per chunk between two `yield`s (#40): a table with
+ * many searchable columns matches fewer rows per chunk, so a chunk stays a few milliseconds.
+ */
+const CELLS = 16_384
 
 interface Key {
   readonly name: string
@@ -85,57 +91,37 @@ function numberReader(values: Float64Array): Read {
   }
 }
 
-/** A value the default formatter shows as `String(v)` (or `''` when nullish): not an object. */
-const isPrimitive = (v: unknown) => v === null || (typeof v !== 'object' && typeof v !== 'function')
-
 /**
  * A column of primitives (strings, numbers, booleans, … mixed or not) without `format`: its formatted
- * value read on the fly (#27), as the default formatter shows it, instead of a cached string per
- * row. All strings: the values themselves. `undefined` when a value is an object (a `Date`, an
- * array): those are formatted once, by the column cache.
+ * value read on the fly (#27), as the default formatter shows it (`String(v)`, `''` when nullish),
+ * instead of a cached string per row. `undefined` when a value is an object (a `Date`, an array):
+ * those are formatted once, by the column cache.
  */
 function primitiveReader(values: readonly unknown[]): Read | undefined {
-  let strings = true
-  for (let r = 0; r < values.length; r++) {
-    const v = values[r]
-    if (typeof v === 'string') continue
-    if (!isPrimitive(v)) return undefined
-    strings = false
+  for (const v of values) {
+    if (v !== null && (typeof v === 'object' || typeof v === 'function')) return undefined
   }
-  if (strings) return (r) => values[r] as string
   return (r) => {
     const v = values[r]
-    return typeof v === 'string' ? v : v === null || v === undefined ? '' : String(v)
+    return v === null || v === undefined ? '' : String(v)
   }
-}
-
-/** `s` may change under NFC: it has a code unit from U+0300 (combining marks and up). */
-function mayDenormalize(s: string): boolean {
-  for (let i = 0; i < s.length; i++) if (s.charCodeAt(i) >= 0x300) return true
-  return false
 }
 
 /**
  * Reads one column's values in NFC (#30), normalised once here, never per keystroke: the rows whose
  * value is not NFC (rare: NFD input from macOS, Thai or Vietnamese keyboards) keep their NFC form
- * in a sparse map; every other row reads through `read` unchanged. Time-sliced by `CHUNK` rows.
+ * in a sparse map; every other row reads through `read` unchanged. Only values with a code unit
+ * from U+0300 (combining marks and up) can change. Time-sliced by `CHUNK` rows.
  */
 function* nfc(size: number, read: Read): Generator<undefined, Read, undefined> {
-  let over: Map<number, string> | undefined
+  const over = new Map<number, string>()
   for (let r = 0; r < size; r++) {
     const v = read(r)
-    if (mayDenormalize(v)) {
-      const n = v.normalize('NFC')
-      if (n !== v) {
-        over ??= new Map()
-        over.set(r, n)
-      }
-    }
+    const n = /[\u0300-\uffff]/.test(v) ? v.normalize('NFC') : v
+    if (n !== v) over.set(r, n)
     if (r % CHUNK === CHUNK - 1) yield
   }
-  if (!over) return read
-  const map = over
-  return (r) => map.get(r) ?? read(r)
+  return over.size ? (r) => over.get(r) ?? read(r) : read
 }
 
 /**
@@ -162,20 +148,21 @@ export function* buildIndex(
     const w = (col.def as { search?: unknown }).search
     const weight = declared ? (typeof w === 'number' && w > 0 ? w : 0) : 1
     if (weight === 0) continue
-    let read: Read | undefined
-    let raw: Read | undefined
-    if (!col.format) {
-      const values = ctx.getColumnValues(col.id)
-      if (values instanceof Float64Array) read = numberReader(values)
-      else if (values) raw = primitiveReader(values)
+    let read: Read
+    const values = col.format ? undefined : ctx.getColumnValues(col.id)
+    if (values) yield // reading a column is a task of its own (#40)
+    if (values instanceof Float64Array) read = numberReader(values)
+    else {
+      let raw = values && primitiveReader(values)
+      if (!raw) {
+        // Time-sliced in a table run (#40): dates or a heavy `format` are not one long task.
+        const sliced = (ctx as RowModelContext & SlicedFormatting).formattedSliced
+        const formatted = sliced ? yield* sliced(col.id) : ctx.getFormattedValues(col.id)
+        if (!formatted) continue
+        raw = (r) => formatted[r] ?? ''
+      }
+      read = yield* nfc(ctx.data.length, raw)
     }
-    if (!read && !raw) {
-      const formatted = ctx.getFormattedValues(col.id)
-      if (!formatted) continue
-      raw = (r) => formatted[r] ?? ''
-    }
-    if (!read && raw) read = yield* nfc(ctx.data.length, raw)
-    if (!read) continue
     keys.push({ name: `c${keys.length}`, weight })
     reads.push(read)
     yield
@@ -194,12 +181,14 @@ export function* buildIndex(
 /** Matches `rows` chunk by chunk (`score` decides alone, so chunks match like the whole). */
 function* chunked(
   rows: Uint32Array,
+  columns: number,
   matchChunk: (chunk: Uint32Array) => Hit[],
 ): Generator<undefined, Uint32Array, undefined> {
-  if (rows.length <= CHUNK) return rankHits(matchChunk(rows))
+  const size = Math.max(256, Math.floor(CELLS / columns))
+  if (rows.length <= size) return rankHits(matchChunk(rows))
   const hits: Hit[] = []
-  for (let k = 0; k < rows.length; k += CHUNK) {
-    for (const h of matchChunk(rows.subarray(k, k + CHUNK))) hits.push(h)
+  for (let k = 0; k < rows.length; k += size) {
+    for (const h of matchChunk(rows.subarray(k, k + size))) hits.push(h)
     yield
   }
   return rankHits(hits)
@@ -282,7 +271,7 @@ function exSearchIndex(
   return {
     match(rows, query) {
       const folded = fold(query)
-      return chunked(rows, (chunk) => {
+      return chunked(rows, keys.length, (chunk) => {
         // Set per chunk, like the view: another job may have matched in between.
         q = folded
         view.show(chunk)
@@ -307,7 +296,7 @@ function containsIndex(
   return {
     match(rows, query) {
       const q = fold(query)
-      return chunked(rows, (chunk) => {
+      return chunked(rows, keys.length, (chunk) => {
         const hits: Hit[] = []
         for (let j = 0; j < chunk.length; j++) {
           const r = chunk[j] as number

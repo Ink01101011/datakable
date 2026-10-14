@@ -56,15 +56,17 @@ pnpm check:budgets  # sizes against their limits, then the memory and interactio
   integer and date keys go to tim / counting / radix sort, and from 10k rows a string column is
   sorted by precomputed collation ranks instead of calling `Intl.Collator` per comparison. See
   [Sorting](sorting.md).
-- **Time-slicing.** Work that can take more than 50 ms on large data (the search projection, the
-  collation ranks) runs in slices of a few milliseconds, yielding through `scheduler.yield()` (or
-  `setTimeout` where it is missing, `DK_ENV_FALLBACK`). Meanwhile the row model keeps the previous
+- **Time-slicing.** Work that can take more than 50 ms on large data (the search projection,
+  including formatting the searchable columns, and the collation ranks) runs in slices of a few
+  milliseconds, yielding through `scheduler.yield()` (or `setTimeout` where it is missing,
+  `DK_ENV_FALLBACK`). Meanwhile the row model keeps the previous
   rows with `status: 'pending'`, and it updates when the work is done. Slicing only happens in the
   browser after the first row model; the server and the first render compute synchronously.
 - **Cell callbacks per column, not per cell.** Your `format`, `accessor`, filter `fn` and `sortBy`
   run in one `column:batch` per column per pipeline run, with an inline `try/catch`; interceptors
-  and the error boundary see one call per column. Failures are recorded as numbers, and text is
-  built only when something failed.
+  and the error boundary see one call per column (when search formats a column time-sliced, one
+  call per batch of 512 rows). Failures are recorded as numbers, reported once per column, and
+  text is built only when something failed.
 - **Bounded memory.** The diagnostics buffer keeps 100 entries, the tracer keeps the last run
   (counts, never rows), and `getInvalidRows()` stores indices and issues, not copies.
 - **Development-only machinery.** Option validation, data checks, version checks, the tracer and
