@@ -116,7 +116,7 @@ export default [
     name: 'datakable: DataTable (default preset + <DataTable />)',
     pkg: 'datakable',
     import: ['DataTable'],
-    ...budget(31.5, 'datakable DataTable'),
+    ...budget(32.5, 'datakable DataTable'),
     smoke: `const html = server.renderToString(React.createElement(DataTable, { data: ${rows}, rowKey: 'id', ${initialSort} })); return html.indexOf('>a<') < html.indexOf('>b<') && html.includes('>b<') ? 'a before b' : html`,
     expect: 'a before b',
     // R11: 39 → 39.5 KB for T34's per-cell error boundaries + the hook's inline-data loop fix.
@@ -126,6 +126,10 @@ export default [
     // RB: 29,506 B with the production unwrapped-option guard (+113 B); stays 29 KB.
     // #5 (user decision 2026-10-13): 29 → 31.5 KB (31,916 B). The earlier sizes were measured on a
     // bundle that threw (esbuild --minify dropped the feature runtime); this one runs (`smoke`).
-    limit: 31.5 * KB,
+    // Issues #14-#62 (user decision 2026-10-14): 31.5 → 32.5 KB (32,863 B). After the SIZE savings
+    // and moving production diagnostic prose to the messages, the remaining growth is the a11y,
+    // hydration and render-fault fixes (#16 #18 #23 #26 #54-#60); cutting every a11y fix would
+    // still leave it ~180 B over.
+    limit: 32.5 * KB,
   },
 ]
