@@ -60,8 +60,15 @@ export function createConsoleSink(o: ConsoleSinkOptions): (d: Diagnostic) => voi
       return
     }
     const { header, body } = formatDiagnostic(d)
+    const log = d.level === 'error' ? 'error' : d.level === 'warn' ? 'warn' : 'info'
+    // Runtimes without console groups (the Edge Runtime: log/info/warn/error/debug only) get the
+    // same text as one call.
+    if (typeof console.groupCollapsed !== 'function' || typeof console.groupEnd !== 'function') {
+      console[log](`${header}\n${body}`)
+      return
+    }
     console.groupCollapsed(header)
-    ;(d.level === 'error' ? console.error : d.level === 'warn' ? console.warn : console.info)(body)
+    console[log](body)
     console.groupEnd()
   }
 }
