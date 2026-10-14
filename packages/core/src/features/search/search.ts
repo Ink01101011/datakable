@@ -235,8 +235,8 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
     throwConfigError('DK_INVALID_OPTION', {
       path: 'searchFn',
       feature: 'search',
-      expected: 'withSearchFn(searchFn)',
-      received: 'searchFn',
+      expected: "withSearchFn(searchFn) from '@datakable/core/search-async'",
+      received: typeof opts.searchFn,
       suggestions: [],
       phase: 'init',
     })

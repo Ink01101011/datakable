@@ -17,6 +17,11 @@ declare module '../diagnostics/catalog' {
       /** Versions of every registered core copy, in registration order (this copy last). */
       versions: string[]
     }
+    DK_DUPLICATE_CORE_SAME_VERSION: {
+      version: string
+      /** Copies of core registered so far (this copy included), all of `version`. */
+      copies: number
+    }
     DK_VERSION_MISMATCH: {
       /** The fixed-group package whose version differs, e.g. `@datakable/react`. */
       package: string
@@ -64,6 +69,7 @@ const newest = (a: string, b: string): string => {
 export const versioningMessages: DiagnosticMessages<
   | 'DK_DEPRECATED'
   | 'DK_DUPLICATE_CORE'
+  | 'DK_DUPLICATE_CORE_SAME_VERSION'
   | 'DK_VERSION_MISMATCH'
   | 'DK_DEP_INCOMPATIBLE'
   | 'DK_FEATURE_INCOMPATIBLE'
@@ -90,6 +96,20 @@ export const versioningMessages: DiagnosticMessages<
       'dedupe it: pnpm dedupe (npm dedupe), and align @datakable/react and datakable to one version',
       'or force one version: "pnpm": { "overrides": { "@datakable/core": "<version>" } } in ' +
         'package.json (npm "overrides", yarn "resolutions")',
+    ],
+  },
+  DK_DUPLICATE_CORE_SAME_VERSION: {
+    problem: (d) =>
+      `@datakable/core ${d.version} is loaded ${d.copies} times, all this version: its ESM and ` +
+      "CJS builds, a bundler's layers (Next.js dev: RSC, SSR, route handlers), a hot reload, or " +
+      'two installs of it',
+    impact: () =>
+      'tables work, each with its own copy; a DatakableError thrown by one copy is not an ' +
+      'instanceof the classes of the other, and a browser bundle with both ships core twice',
+    fix: () => [
+      'compare errors by their .code (e.g. err.code === "DK_INVALID_OPTION"), not instanceof',
+      'mixed import and require of @datakable/core in one Node process: use one of them',
+      'in a browser bundle, find the second install: pnpm why @datakable/core, then pnpm dedupe',
     ],
   },
   DK_VERSION_MISMATCH: {
@@ -156,6 +176,14 @@ export const versioningDiagnostics = [
       where: () => CREATE,
     },
     DEV && versioningMessages.DK_DUPLICATE_CORE,
+  ),
+  defineDiagnostic(
+    {
+      code: 'DK_DUPLICATE_CORE_SAME_VERSION',
+      level: 'info',
+      where: () => CREATE,
+    },
+    DEV && versioningMessages.DK_DUPLICATE_CORE_SAME_VERSION,
   ),
   defineDiagnostic(
     {

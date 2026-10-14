@@ -28,6 +28,10 @@ export const FIXTURES: Record<string, Fixture> = {
     why: 'needs two copies of @datakable/core in one bundle (versioning.test.ts loads core twice)',
     details: { versions: ['1.2.0', '1.3.1'] },
   },
+  DK_DUPLICATE_CORE_SAME_VERSION: {
+    why: 'needs core evaluated twice in one process (versioning.test.ts loads core three times)',
+    details: { version: '1.2.0', copies: 2 },
+  },
   DK_HYDRATION_MISMATCH: {
     why: 'needs a server render, then a hydration whose state differs (react/src/hydrate.test.tsx)',
     details: { slices: ['sorting'] },

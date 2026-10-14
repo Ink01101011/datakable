@@ -50,22 +50,24 @@ describe('global registry', () => {
     expect(reg.cores.map((c) => c.version)).toEqual([VERSION])
   })
 
-  it('two core copies in one process → DK_DUPLICATE_CORE on the second copy', async () => {
-    const a = await loadCore()
+  /** A core of another version already registered in this process (a second install). */
+  const otherVersionLoaded = (version = '0.9.0') => {
+    g[KEY] = { v: 1, cores: [{ version }], packages: {}, reported: new Set() }
+  }
+
+  it('two core copies of different versions → DK_DUPLICATE_CORE on the second copy', async () => {
     const b = await loadCore()
-    expect(a.createTable).not.toBe(b.createTable)
-    a.createTable({ data: [], onDiagnostic })
-    expect(codes()).not.toContain('DK_DUPLICATE_CORE')
+    expect(b.createTable).not.toBe(createTable)
+    otherVersionLoaded()
     b.createTable({ data: [], onDiagnostic })
     const [d] = of('DK_DUPLICATE_CORE')
     expect(d?.level).toBe('error')
-    expect(d?.details).toEqual({ versions: [VERSION, VERSION] })
+    expect(d?.details).toEqual({ versions: ['0.9.0', VERSION] })
     expect(d?.where).toEqual({ kind: 'operation', op: 'createTable' })
     expect(d?.fix.join('\n')).toContain('pnpm why @datakable/core')
     expect(d?.fix.join('\n')).toContain('overrides')
-    // Once per copy: more tables from either copy stay quiet.
+    // Once per copy: more tables from it stay quiet.
     b.createTable({ data: [], onDiagnostic })
-    a.createTable({ data: [], onDiagnostic })
     expect(of('DK_DUPLICATE_CORE')).toHaveLength(1)
   })
 
@@ -78,10 +80,35 @@ describe('global registry', () => {
   it('DK_DUPLICATE_CORE does not throw (the table still works) unless strict', async () => {
     const a = await loadCore()
     const b = await loadCore()
-    a.createTable({ data: [] })
+    otherVersionLoaded()
     expect(() => b.createTable({ data: [1], onDiagnostic })).not.toThrow()
+    otherVersionLoaded()
+    expect(() => a.createTable({ data: [], strict: true })).toThrow(/DK_DUPLICATE_CORE/)
+  })
+
+  // #14: ESM + CJS builds of one install, a Next.js dev server's layers (RSC / SSR / route
+  // handlers) and HMR each evaluate core again: one version, not a duplicate install.
+  it('copies of the same version: no DK_DUPLICATE_CORE, one info, never thrown by strict (#14)', async () => {
+    const a = await loadCore()
+    const b = await loadCore()
     const c = await loadCore()
-    expect(() => c.createTable({ data: [], strict: true })).toThrow(/DK_DUPLICATE_CORE/)
+    a.createTable({ data: [], onDiagnostic })
+    b.createTable({ data: [], onDiagnostic, strict: true })
+    expect(() => c.createTable({ data: [], onDiagnostic, strict: true })).not.toThrow()
+    expect(codes()).not.toContain('DK_DUPLICATE_CORE')
+    const same = of('DK_DUPLICATE_CORE_SAME_VERSION')
+    expect(same).toHaveLength(1)
+    expect(same[0]?.level).toBe('info')
+    expect(same[0]?.details).toEqual({ version: VERSION, copies: 2 })
+    expect(same[0]?.fix.join('\n')).toContain('.code')
+    // A copy of another version later is still reported, with every version.
+    const d = await loadCore()
+    const reg = g[KEY] as { cores: { version: string }[] }
+    reg.cores.unshift({ version: '0.9.0' })
+    d.createTable({ data: [], onDiagnostic })
+    expect(of('DK_DUPLICATE_CORE')[0]?.details).toEqual({
+      versions: ['0.9.0', VERSION, VERSION, VERSION, VERSION],
+    })
   })
 
   it('a malformed registry left by someone else never throws', () => {

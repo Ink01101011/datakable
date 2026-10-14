@@ -264,6 +264,10 @@ Moved: [DK_DEPRECATED](how-to-fix/errors.md#dk_deprecated).
 
 Moved: [DK_DUPLICATE_CORE](how-to-fix/errors.md#dk_duplicate_core).
 
+### DK_DUPLICATE_CORE_SAME_VERSION
+
+Moved: [DK_DUPLICATE_CORE_SAME_VERSION](how-to-fix/errors.md#dk_duplicate_core_same_version).
+
 ### DK_VERSION_MISMATCH
 
 Moved: [DK_VERSION_MISMATCH](how-to-fix/errors.md#dk_version_mismatch).

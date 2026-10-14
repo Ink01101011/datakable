@@ -23,7 +23,9 @@
   "type": "module",
   "sideEffects": [
     "./dist/messages/index.js",
-    "./dist/messages/index.cjs"
+    "./dist/messages/index.cjs",
+    "./dist/diagnostics/process-guard.js",
+    "./dist/diagnostics/process-guard.cjs"
   ],
   "engines": {
     "node": ">=18.18.0"

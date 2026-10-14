@@ -1,7 +1,8 @@
 # `process is not defined`
 
-The browser throws `ReferenceError: process is not defined` when the page loads, from a
-DataKable file. DataKable reads `process.env.NODE_ENV` so that a bundler can replace it with a
+The browser throws `ReferenceError: [DataKable] process is not defined: replace
+process.env.NODE_ENV at build time …` when the page loads (DataKable 1.0.0 threw the bare
+`ReferenceError: process is not defined`, from a DataKable file). DataKable reads `process.env.NODE_ENV` so that a bundler can replace it with a
 constant and remove development-only code from production builds — the same convention React and
 Redux use. Code that reaches the browser without that replacement fails on the first read.
 

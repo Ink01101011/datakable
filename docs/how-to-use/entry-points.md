@@ -101,6 +101,9 @@ error, and throws [`DK_INVALID_OPTION`](../how-to-fix/errors.md#dk_invalid_optio
 - **Two copies of `@datakable/core`** in one bundle (for example, mismatched versions installed
   side by side) break the shared registry and double the size; development builds report
   [`DK_DUPLICATE_CORE`](../how-to-fix/errors.md#dk_duplicate_core). Deduplicate the dependency.
+  One version loaded twice (its ESM and CJS builds, a Next.js dev server's layers) is only an
+  info:
+  [`DK_DUPLICATE_CORE_SAME_VERSION`](../how-to-fix/errors.md#dk_duplicate_core_same_version).
 - **`createTable` from `@datakable/core` or `datakable/core` has no features**: `toggleSort` and the
   other feature methods do not exist until you pass `features` (or `defaultFeatures`).
 - **Importing `datakable/messages` everywhere** adds the full message text to your production

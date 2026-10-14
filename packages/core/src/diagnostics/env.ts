@@ -1,3 +1,6 @@
+// The helpful error when `process` is missing (#36); evaluated before the read below.
+import './process-guard'
+
 // No @types/node in core: declare just what is read.
 declare const process: { env: { NODE_ENV?: string } }
 

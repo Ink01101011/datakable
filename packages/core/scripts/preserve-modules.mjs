@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 
-const ENV_IMPORT = /^import \{ DEV \} from '(?:\.\.?\/)+(?:diagnostics\/)?env'\n/m
+const ENV_IMPORT = /^import \{ DEV \} from '((?:\.\.?\/)+(?:diagnostics\/)?)env'\n/m
 const NODE_ENV = '(process.env.NODE_ENV !== "production")'
 
 /**
@@ -13,7 +13,9 @@ const NODE_ENV = '(process.env.NODE_ENV !== "production")'
  * drops the unused ones.
  *
  * It also writes the `DEV` flag (`diagnostics/env`) out as `process.env.NODE_ENV !== "production"`
- * at every use. A consumer's bundler replaces `process.env.NODE_ENV`, and esbuild then folds
+ * at every use, and keeps a side-effect import of `diagnostics/process-guard` in its place: without
+ * a bundler (no `process`) that module is evaluated before any read and throws a DataKable error
+ * naming the fix (#36); a bundler drops it. A consumer's bundler replaces `process.env.NODE_ENV`, and esbuild then folds
  * `DEV && messages.DK_X` / `if (DEV)` while parsing each module, so message objects and dev-only
  * code are never linked into a production bundle. An imported `DEV` binding (or a module-level
  * `const` in a file with imports) is folded only when printing, after tree shaking has already
@@ -39,7 +41,9 @@ export const preserveModules = {
       const src = await readFile(args.path, 'utf8')
       if (!ENV_IMPORT.test(src)) return undefined
       return {
-        contents: src.replace(ENV_IMPORT, '').replace(/\bDEV\b/g, NODE_ENV),
+        contents: src
+          .replace(ENV_IMPORT, (_, dir) => `import '${dir}process-guard'\n`)
+          .replace(/\bDEV\b/g, NODE_ENV),
         loader: 'ts',
       }
     })
