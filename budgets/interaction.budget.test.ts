@@ -2,6 +2,7 @@
 import { createDefaultFeatures, createTable } from '@datakable/core'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { throttleClock, trackTasks } from './measure'
+import { mixedUsers } from './mixed-users'
 
 // §9.3 interaction budgets under a 4x CPU throttle (T37), on the built `@datakable/core` in
 // production mode, in a browser phase (happy-dom: `document` exists, so the table time-slices
@@ -57,7 +58,13 @@ function table(n: number) {
   t.getRowModel() // the first row model is never sliced (hydration parity)
   return t
 }
-type T = ReturnType<typeof table>
+/** What {@link interact} drives: any table with search, whatever its row type. */
+type T = {
+  getRowModel(): { readonly status: string }
+  subscribe(listener: () => void): () => void
+  setSearch(query: string): Promise<unknown>
+  flushSearch(): Promise<unknown>
+}
 
 /** Runs one interaction to completion; its tasks (throttled ms). */
 async function interact(t: T, label: string, act: () => void) {
@@ -140,6 +147,23 @@ describe(`§9.3 longest task at 100k rows, CPU throttle ${THROTTLE}x (browser ph
     expect(first.yields).toBeGreaterThan(0)
     expect(first.longest).toBeLessThanOrEqual(LONG_TASK_MS)
     const next = await interact(t, '100k type, next query', type(t, 'name 123'))
+    expect(next.longest).toBeLessThanOrEqual(LONG_TASK_MS)
+    expect(t.getRowModel().filteredCount).toBeGreaterThan(0)
+  })
+
+  it(`building the projection over mixed zero-config columns: every task ≤ ${LONG_TASK_MS} ms (#40)`, async () => {
+    // Dates, arrays, nullable numbers: the per-column formatting is sliced too, not one task each.
+    const t = createTable({
+      data: mixedUsers(100_000),
+      rowKey: 'id',
+      features: createDefaultFeatures(),
+      onDiagnostic() {},
+    })
+    t.getRowModel()
+    const first = await interact(t, '100k mixed type, first query (projection)', type(t, 'bangkok'))
+    expect(first.yields).toBeGreaterThan(0)
+    expect(first.longest).toBeLessThanOrEqual(LONG_TASK_MS)
+    const next = await interact(t, '100k mixed type, next query', type(t, 'zürich'))
     expect(next.longest).toBeLessThanOrEqual(LONG_TASK_MS)
     expect(t.getRowModel().filteredCount).toBeGreaterThan(0)
   })

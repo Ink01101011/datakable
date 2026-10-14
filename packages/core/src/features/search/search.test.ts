@@ -207,15 +207,46 @@ describe('search(): client matching (§6.3)', () => {
     expect(clean.getRowModel().rows.map((r) => r.index)).toEqual([2])
   })
 
+  it('a column of mixed primitives matches what the default formatter shows (#27)', async () => {
+    const data = [
+      { v: 'abc' },
+      { v: 42 },
+      { v: true },
+      { v: null },
+      { v: undefined },
+      { v: 10n },
+      { v: 'TRUE' },
+      { v: false },
+    ]
+    const t = createTable({
+      data,
+      features: [search({ threshold: 0.9, fuzzyMaxDistance: 0 })],
+    })
+    const at = () => t.getRowModel().rows.map((r) => r.index)
+    await t.setSearch('true')
+    expect(at()).toEqual([2, 6])
+    await t.setSearch('42')
+    expect(at()).toEqual([1])
+    await t.setSearch('10')
+    expect(at()).toEqual([5])
+    await t.setSearch('false')
+    expect(at()).toEqual([7])
+    await t.setSearch('null')
+    expect(at()).toEqual([])
+    await t.setSearch('undefined')
+    expect(at()).toEqual([])
+  })
+
   it('matches across chunks of rows like over the whole (case folded per chunk)', async () => {
-    const data = Array.from({ length: 10_000 }, (_, i) => ({ id: i, name: `Item ${i}` }))
+    // One searchable column: 16,384 rows per chunk (CELLS), so 40k rows are three chunks.
+    const data = Array.from({ length: 40_000 }, (_, i) => ({ id: i, name: `Item ${i}` }))
     const t = createTable({
       data,
       columns: [{ key: 'name', search: 1 }, { key: 'id' }],
       features: [search({ threshold: 0.75, fuzzyMaxDistance: 0 })],
     })
-    await t.setSearch('ITEM 9999')
-    expect(t.getRowModel().rows.map((r) => r.index)).toEqual([9999])
+    await t.setSearch('ITEM 39999')
+    expect(t.getRowModel().rows.map((r) => r.index)).toEqual([39999])
     await t.setSearch('item 500')
     expect(t.getRowModel().rows.map((r) => r.index)).toEqual([
       500, 5000, 5001, 5002, 5003, 5004, 5005, 5006, 5007, 5008, 5009,
@@ -303,6 +334,30 @@ describe('search(): client matching (§6.3)', () => {
     await t.setSearch('  bob ')
     expect(ids(t)).toEqual([2])
     expect(t.getState().search.input).toBe('  bob ')
+  })
+
+  it('NFC and NFD spellings match each other, like the contains filter (#30)', async () => {
+    const data = [
+      { id: 0, name: 'Zoë' }, // NFC
+      { id: 1, name: 'Zoë' }, // NFD
+      { id: 2, name: 'Zoe' },
+      { id: 3, name: 'กำ' }, // Thai, NFC-stable
+    ]
+    for (const caseSensitive of [false, true]) {
+      const t = createTable({
+        data,
+        onDiagnostic,
+        columns: [{ key: 'name' }],
+        features: [search({ caseSensitive, fuzzyMaxDistance: 0 })],
+      })
+      const zo = caseSensitive ? 'Zo' : 'zo'
+      await t.setSearch(`${zo}ë`)
+      expect(ids(t), `NFC query, caseSensitive ${caseSensitive}`).toEqual([0, 1])
+      await t.setSearch(`${zo}ë`)
+      expect(ids(t), `NFD query, caseSensitive ${caseSensitive}`).toEqual([0, 1])
+      await t.setSearch('กำ')
+      expect(ids(t)).toEqual([3])
+    }
   })
 })
 

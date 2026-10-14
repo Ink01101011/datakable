@@ -99,6 +99,31 @@ describe('typing: debounce (debouncedSignal)', () => {
     expect(slice(t).query).toBe('bob')
   })
 
+  it('leading: a dropped keystroke settles superseded when the silence window ends (#28)', async () => {
+    const t = make({ strategy: 'debounce', wait: { ms: 50 }, behavior: 'leading' })
+    const log: string[] = []
+    for (const q of ['b', 'bo', 'bob']) {
+      void t.setSearch(q).then((r) => log.push(`${q}:${r.status}`))
+    }
+    await vi.advanceTimersByTimeAsync(49)
+    expect(log).toEqual(['b:applied', 'bo:superseded'])
+    await vi.advanceTimersByTimeAsync(1)
+    expect(log).toEqual(['b:applied', 'bo:superseded', 'bob:superseded'])
+    // The input is kept: flushSearch() still applies it.
+    expect(slice(t)).toEqual({ input: 'bob', query: 'b', status: 'idle' })
+    await expect(t.flushSearch()).resolves.toEqual({ status: 'applied' })
+    expect(slice(t).query).toBe('bob')
+  })
+
+  it('leading: flushSearch within the silence window applies the dropped keystroke (#28)', async () => {
+    const t = make({ strategy: 'debounce', wait: 200, behavior: 'leading' })
+    void t.setSearch('b')
+    const dropped = t.setSearch('bo')
+    void t.flushSearch()
+    await expect(dropped).resolves.toEqual({ status: 'applied' })
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
   it('flushSearch (Enter) applies the input now; the timer does not fire again', () => {
     const t = make({ strategy: 'debounce', wait: 200 })
     void t.setSearch('cara')

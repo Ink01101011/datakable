@@ -360,7 +360,8 @@ createTable({
 - An interceptor that throws is reported as `DK_INTERCEPTOR_FAILED` and skipped: when it threw
   before calling `next()`, the chain continues without it; after, the result `next()` produced is
   kept, so the operation never runs twice.
-- `column:batch` is **hot**: it runs once per column per pipeline run, never per cell. An
+- `column:batch` is **hot**: it runs once per column per pipeline run, never per cell (`rows` says
+  which rows; when search formats a large column time-sliced, once per batch of rows). An
   interceptor on it (directly or through `on: '*'`) must set `hot: true`; without it, development
   reports `DK_HOT_INTERCEPTOR` with the measured cost (the interceptor still runs).
 - `options.interceptors` is synced by `setOptions` (and by `useDataTable`): a new list recompiles

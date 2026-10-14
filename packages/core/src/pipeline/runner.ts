@@ -13,7 +13,7 @@ import { type ContextBase, createContext } from '../intercept/context'
 import { FALLBACK } from '../intercept/fallbacks'
 import type { InterceptorRuntime } from '../intercept/runtime'
 import type { TableState } from '../table/types'
-import type { ColumnCache } from './column-cache'
+import type { ColumnCache, SlicedFormatting } from './column-cache'
 import { type ResolvedColumn, type ResolvedColumns, resolveColumns } from './columns'
 import { checkStep, indexPrint, stepDiagnostics } from './dev-checks'
 import { allRows } from './indices'
@@ -307,7 +307,7 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
     const { run: runId, trigger } = host.base()
     lastRun = { run: runId, trigger, steps: records }
 
-    const rowModelContext = (name: string): RowModelContext => ({
+    const rowModelContext = (name: string): RowModelContext & SlicedFormatting => ({
       name,
       data,
       emit: stepEmit,
@@ -321,6 +321,10 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
       getFormattedValues: (id) => {
         const col = cols.byId.get(id)
         return col ? cache.formatted(data, col) : undefined
+      },
+      *formattedSliced(id) {
+        const col = cols.byId.get(id)
+        return col ? yield* cache.formattedSliced(data, col) : undefined
       },
       batch: (id, slot, rows, body) => {
         const col = cols.byId.get(id)
