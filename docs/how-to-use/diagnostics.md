@@ -182,7 +182,9 @@ the fingerprint, `toJSON()`, every interceptor and every sink only ever see the 
   `code`) only, since their messages embed URLs, tokens and values. The error itself is
   `context.cause`, passed to `onDiagnostic` only.
 - Schema issue messages embed the received value, so under `'safe'` and `'keys'` they are replaced
-  by the issue path and DataKable's own text.
+  by the issue path and DataKable's own text. When the table has a `sensitive` column they are
+  replaced at every level, `'full'` included: any message (a root-level refinement, another
+  field's) may quote the sensitive value.
 - `'full'` in a production build still applies, and reports `DK_UNSAFE_REDACTION`.
 - Row-key hashes are unsalted 32-bit FNV-1a hashes: pseudonymisation, not anonymisation. Treat
   hashed diagnostics as personal data wherever the keys are.

@@ -143,7 +143,9 @@ function underSensitive(r: Redactor, path: string): boolean {
 
 /**
  * A schema issue as `{ path, message }`. Validators embed received values in their messages, so
- * under `'safe'` / `'keys'` (and for sensitive columns) the message is DataKable's own text.
+ * under `'safe'` / `'keys'` the message is DataKable's own text. So it is at every level when the
+ * table has a sensitive column: any message (a root-level refinement, another field's) may embed
+ * its value (#46).
  */
 export function scrubSchemaIssue(
   issue: unknown,
@@ -161,7 +163,7 @@ export function scrubSchemaIssue(
     path = ''
   }
   const own = `invalid value at ${path || '(root)'}`
-  if (underSensitive(r, path)) return { path, message: own }
+  if (r.sensitive.size > 0) return { path, message: own }
   const c = custom(r, fieldPath, i.message)
   if (c !== undefined) return { path, message: c }
   return { path, message: r.level === 'full' && typeof i.message === 'string' ? i.message : own }

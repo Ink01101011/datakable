@@ -127,6 +127,8 @@ text, `toJSON()` and every sink):
   hashes: anyone who knows a key can hash it and find its diagnostics, and short or enumerable keys
   (sequential ids, emails from a known list) can be recovered by hashing candidates. Treat hashed
   diagnostics as personal data wherever the keys are.
+- Schema issue messages are replaced by DataKable's own text under `'safe'` and `'keys'`, and at
+  every level when the table has a `sensitive` column (a message may quote its value).
 - Thrown errors are logged as `error.name` (and `code`) only: messages of validators, fetchers and
   engines embed values. The error itself is `context.cause`, passed to `onDiagnostic` only (never
   to the console or `toJSON()`). Schema issue messages are replaced by the issue path and
