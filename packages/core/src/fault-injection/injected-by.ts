@@ -55,6 +55,7 @@ export const injectedBy: Readonly<Record<string, string>> = {
   DK_ROW_COUNT_MISSING: 'features/pagination/pagination.test.ts',
   DK_SCHEMA_CRASHED: HARNESS,
   DK_SCHEMA_INVALID_ROW: 'ingest/schema.test.ts',
+  DK_SEARCH_COLUMN_SKIPPED: 'features/search/search.test.ts',
   DK_SEARCH_FAILED: HARNESS,
   DK_SORT_COMPARATOR_INVALID: HARNESS,
   DK_SORT_STRATEGY: 'features/sorting/strategy.test.ts',

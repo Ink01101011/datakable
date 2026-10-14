@@ -10,6 +10,7 @@ import {
   type InvalidRowsMode,
   keepDiagnostics,
   matchesSlot,
+  pipelineDiagnostics,
   type RowIssue,
   type RowModelStatus,
   type SearchStatus,
@@ -34,7 +35,7 @@ import {
 import { type UseDataTableOptions, useDataTable } from './use-data-table'
 
 // The codes this module emits (bundlers keep the definitions; see core's `keepDiagnostics`).
-keepDiagnostics(renderDiagnostics, boundaryDiagnostics, slotDiagnostics)
+keepDiagnostics(renderDiagnostics, boundaryDiagnostics, slotDiagnostics, pipelineDiagnostics)
 
 // The ops its boundaries stand for (§3.4: `render:table`, `render:cell`). Registered at import:
 // the dist is one file per module (T37), so hook-only bundles (`useDataTable` without
@@ -194,7 +195,6 @@ function ZeroConfig(props: DataTableOwnProps & { table?: undefined }) {
 /** Loose access to the installed features' APIs (the table is typed per feature set). */
 type Api = DataTableSource & {
   toggleSort?(id: string, opts?: { multi?: boolean }): void
-  getSortDirection?(id: string): 'asc' | 'desc' | false
   setSearch?(q: string): Promise<unknown>
   flushSearch?(): Promise<unknown>
   clearSearch?(): void
@@ -238,6 +238,9 @@ interface Failure {
   /** Bad return: what the contract expects and the type received. */
   expected?: string
   received?: string
+  /** A value the default formatter cannot render (`DK_UNRENDERABLE_VALUE`): its type. */
+  lost?: string
+  index?: number
 }
 
 const WARN = '⚠'
@@ -293,7 +296,7 @@ const tableOf = (view: object): object =>
 function report(table: object, failures: readonly Failure[]) {
   const bySlot = new Map<string, Failure[]>()
   for (const f of failures) {
-    const k = `${f.slot}\0${f.expected === undefined ? 'throw' : 'return'}`
+    const k = `${f.slot}\0${f.lost ? '' : f.expected === undefined ? 'throw' : 'return'}`
     const list = bySlot.get(k)
     if (list) list.push(f)
     else bySlot.set(k, [f])
@@ -303,7 +306,16 @@ function report(table: object, failures: readonly Failure[]) {
     const rows = list.slice(0, 3).map((f) => f.row)
     const fallback = 'those cells rendered ⚠'
     try {
-      if (first.expected === undefined) {
+      if (first.lost !== undefined) {
+        // Deduped by the table per column and data reference, like the column cache's report.
+        emitTableDiagnostic(table, 'DK_UNRENDERABLE_VALUE', {
+          column: first.column,
+          index: first.index as number,
+          count: list.length,
+          rows,
+          valueType: first.lost,
+        })
+      } else if (first.expected === undefined) {
         const e = first.error
         emitTableDiagnostic(
           table,
@@ -333,6 +345,15 @@ function report(table: object, failures: readonly Failure[]) {
       // Not a table made by createTable (a hand-made `table` prop): nothing to report to.
     }
   }
+}
+
+/**
+ * The value `defaultFormat` could not render in the current cell (an object, array or function,
+ * never `undefined`). One module-level callback: no closure per cell.
+ */
+let lost: unknown
+const onLost = (v: unknown) => {
+  lost = v
 }
 
 /**
@@ -379,7 +400,14 @@ function cellContent(
       bad(failures, col, row, slot, 'a string', out)
       return defaultFormat(value)
     }
-    return defaultFormat(value)
+    const text = defaultFormat(value, onLost)
+    if (lost !== undefined) {
+      const { id: column, index } = col
+      const type = Array.isArray(lost) ? 'array' : typeof lost
+      failures.push({ slot: `columns[${index}]`, column, index, row: row.index, lost: type })
+      lost = undefined
+    }
+    return text
   } catch (error) {
     failures.push({ slot: `columns[${col.index}].${slot}`, column: col.id, row: row.index, error })
     return WARN
@@ -420,6 +448,31 @@ function bad(
   return WARN
 }
 
+type Page = { pageIndex: number; pageSize: number }
+
+/**
+ * The pager of the rendered snapshot, like the pagination API computes it live: the hydrating
+ * render must match the server HTML even when the table changed meanwhile (#16). Client mode
+ * pages over the row model's `filteredCount`; server mode over the fetched `rowCount`, which only
+ * the table knows (and no render changes).
+ */
+function pages(view: Api, page: Page, count: number) {
+  const features = (
+    view.getOptions() as { features?: readonly { stage?: string; mode?: string }[] }
+  ).features
+  if (features?.some((f) => f?.stage === 'paginate' && f.mode === 'server')) {
+    return {
+      ...page,
+      pageCount: view.getPageCount?.() ?? 0,
+      canPrev: view.canPrevPage?.() ?? false,
+      canNext: view.canNextPage?.() ?? false,
+    }
+  }
+  const pageCount = Math.ceil(count / page.pageSize)
+  const index = Math.min(page.pageIndex, Math.max(pageCount - 1, 0))
+  return { ...page, pageCount, canPrev: index > 0, canNext: index + 1 < pageCount }
+}
+
 const ariaSort = (dir: 'asc' | 'desc' | false) =>
   dir === 'asc' ? 'ascending' : dir === 'desc' ? 'descending' : 'none'
 
@@ -448,6 +501,8 @@ function DataTableView(props: {
   })
 
   const sortable = typeof view.toggleSort === 'function'
+  const sortBy = (state.sorting as { by: readonly { id: string; desc?: boolean }[] } | undefined)
+    ?.by
   const searchState = state.search as { input: string; status: SearchStatus } | undefined
   const paged = typeof view.getPageCount === 'function'
   // Loading (§6.6, §10): nothing to show yet and rows on their way — in flight, or deferred async
@@ -458,8 +513,6 @@ function DataTableView(props: {
   const span = Math.max(columns.length, 1)
   const retryLoad = () => void view.refetch()
 
-  const Search = parts.SearchInput ?? DefaultSearchInput
-  const Pager = parts.Pagination ?? DefaultPagination
   const Empty = parts.Empty ?? DefaultEmpty
   const Loading = parts.Loading ?? DefaultLoading
   const ErrorState = parts.Error ?? DefaultError
@@ -500,6 +553,9 @@ function DataTableView(props: {
     })
   }
 
+  // The server runs no effects: report now (setting state is a no-op there).
+  if (typeof window === 'undefined' && failures.length > 0) report(table, failures)
+
   return (
     <div
       data-datakable=""
@@ -509,13 +565,13 @@ function DataTableView(props: {
     >
       {searchState && (
         <div data-dk-search="" data-status={searchState.status}>
-          <Search
-            value={searchState.input}
-            status={searchState.status}
-            onChange={(q) => void view.setSearch?.(q)}
-            onSubmit={() => void view.flushSearch?.()}
-            onClear={() => view.clearSearch?.()}
-          />
+          {part(table, 'SearchInput', parts.SearchInput, DefaultSearchInput, {
+            value: searchState.input,
+            status: searchState.status,
+            onChange: (q) => void view.setSearch?.(q),
+            onSubmit: () => void view.flushSearch?.(),
+            onClear: () => view.clearSearch?.(),
+          })}
         </div>
       )}
       {!loading && !failed && status !== 'idle' && (
@@ -527,7 +583,9 @@ function DataTableView(props: {
           <tr>
             {columns.map((col) => {
               const canSort = sortable && col.def.sortable !== false
-              const dir = canSort ? (view.getSortDirection?.(col.id) ?? false) : false
+              // From the rendered state, not the live table (the hydrating render, #16).
+              const e = canSort ? sortBy?.find((x) => x.id === col.id) : undefined
+              const dir = e ? (e.desc ? 'desc' : 'asc') : false
               return (
                 <th
                   key={col.index}
@@ -565,20 +623,39 @@ function DataTableView(props: {
           </BodyBoundary>
         </tbody>
       </table>
-      {paged && (
-        <Pager
-          pageIndex={(state.pagination as { pageIndex: number }).pageIndex}
-          pageSize={(state.pagination as { pageSize: number }).pageSize}
-          pageCount={view.getPageCount?.() ?? 0}
-          canPrev={view.canPrevPage?.() ?? false}
-          canNext={view.canNextPage?.() ?? false}
-          prev={() => view.prevPage?.()}
-          next={() => view.nextPage?.()}
-          setPageIndex={(i) => view.setPageIndex?.(i)}
-          setPageSize={(n) => view.setPageSize?.(n)}
-        />
-      )}
+      {paged &&
+        part(table, 'Pagination', parts.Pagination, DefaultPagination, {
+          ...pages(view, state.pagination as Page, rowModel.filteredCount),
+          prev: () => view.prevPage?.(),
+          next: () => view.nextPage?.(),
+          setPageIndex: (i) => view.setPageIndex?.(i),
+          setPageSize: (n) => view.setPageSize?.(n),
+        })}
     </div>
+  )
+}
+
+/**
+ * A search / pager part (outside the body): a custom one that throws is replaced by the default
+ * part (`DK_RENDER_FAILED` at `components.<name>`) until another component is passed.
+ */
+function part<P extends object>(
+  table: object,
+  name: 'SearchInput' | 'Pagination',
+  Custom: ComponentType<P> | undefined,
+  Default: ComponentType<P>,
+  props: P,
+): ReactNode {
+  if (!Custom) return <Default {...props} />
+  return (
+    <BodyBoundary
+      table={table}
+      slot={`components.${name}`}
+      resetKey={Custom}
+      fallback={() => <Default {...props} />}
+    >
+      <Custom {...props} />
+    </BodyBoundary>
   )
 }
 
@@ -594,6 +671,8 @@ function stateRow(span: number, kind: string, content: ReactNode) {
 
 interface BoundaryProps {
   table: object
+  /** A part outside the body (`components.SearchInput`): reported as the slot. */
+  slot?: string
   /** A new value (the next row model) renders the body again. */
   resetKey: unknown
   fallback(retry: () => void): ReactNode
@@ -621,7 +700,11 @@ class BodyBoundary extends Component<BoundaryProps, { failed: boolean; key: unkn
       emitTableDiagnostic(
         this.props.table,
         'DK_RENDER_FAILED',
-        { op: 'render:table', ...(error instanceof Error ? { errorName: error.name } : {}) },
+        {
+          op: 'render:table',
+          ...(this.props.slot ? { slot: this.props.slot } : {}),
+          ...(error instanceof Error ? { errorName: error.name } : {}),
+        },
         { cause: error },
       )
     } catch {

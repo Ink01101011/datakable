@@ -3,6 +3,9 @@ import { defineConfig } from 'vitest/config'
 
 const src = (pkg: string) =>
   fileURLToPath(new URL(`./packages/${pkg}/src/index.ts`, import.meta.url))
+/** React 18 (apps/react18): for the behaviours React 19 changed (StrictMode keeps refs, #25). */
+const react18 = (path: string) =>
+  fileURLToPath(new URL(`./apps/react18/node_modules/${path}`, import.meta.url))
 const coreSrc = (path: string) =>
   fileURLToPath(new URL(`./packages/core/src/${path}`, import.meta.url))
 
@@ -68,12 +71,31 @@ export default defineConfig({
           name: 'react',
           environment: 'happy-dom',
           include: ['packages/react/**/*.test.{ts,tsx}', 'packages/datakable/**/*.test.{ts,tsx}'],
+          exclude: ['**/*.react18.test.{ts,tsx}', '**/node_modules/**'],
           typecheck: {
             include: [
               'packages/react/**/*.test-d.{ts,tsx}',
               'packages/datakable/**/*.test-d.{ts,tsx}',
             ],
           },
+        },
+      },
+      {
+        extends: true,
+        // The same sources rendered by React 18 (its StrictMode discards the first mount render).
+        resolve: {
+          alias: [
+            { find: /^react$/, replacement: react18('react/index.js') },
+            { find: /^react\/(jsx-runtime|jsx-dev-runtime)$/, replacement: react18('react/$1.js') },
+            { find: /^react-dom$/, replacement: react18('react-dom/index.js') },
+            { find: /^react-dom\/(client|server)$/, replacement: react18('react-dom/$1.js') },
+          ],
+        },
+        test: {
+          name: 'react18',
+          environment: 'happy-dom',
+          include: ['packages/react/**/*.react18.test.{ts,tsx}'],
+          typecheck: { enabled: false },
         },
       },
       {

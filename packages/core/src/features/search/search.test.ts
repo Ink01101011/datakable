@@ -269,6 +269,86 @@ describe('search(): client matching (§6.3)', () => {
     expect(ids(t)).toEqual([4])
   })
 
+  it('no column declares a weight: only columns of primitives are searched (#27)', async () => {
+    // Zero-config (derived columns) over a Date, an array and an object column.
+    const data = [
+      { id: 0, name: 'Ada', joined: new Date(Date.UTC(2020, 0, 1)), tags: ['red'], at: { c: 'x' } },
+      {
+        id: 1,
+        name: 'Red',
+        joined: new Date(Date.UTC(2021, 0, 1)),
+        tags: ['blue'],
+        at: { c: 'y' },
+      },
+    ]
+    const t = createTable({ data, onDiagnostic, features: [search({ threshold: 0.9 })] })
+    await t.setSearch('red')
+    expect(t.getRowModel().rows.map((r) => r.index)).toEqual([1])
+    await t.setSearch('2020')
+    expect(t.getRowModel().rows.map((r) => r.index)).toEqual([])
+    // Dev only: each skipped column is located, with the opt-in as the fix (once per build).
+    const skipped = seen.filter((d) => d.code === 'DK_SEARCH_COLUMN_SKIPPED')
+    expect(skipped.map((d) => [d.level, d.where])).toEqual([
+      ['info', { kind: 'column', index: 2, id: 'joined' }],
+      ['info', { kind: 'column', index: 3, id: 'tags' }],
+      ['info', { kind: 'column', index: 4, id: 'at' }],
+    ])
+    expect(skipped[0]?.fix[0]).toContain("{ key: 'joined', search: 1 }")
+    // A weight opts a Date / array column in (and makes the weighted columns the searched ones).
+    const opted = createTable({
+      data,
+      onDiagnostic,
+      columns: [
+        { key: 'name', search: 1 },
+        { key: 'tags', search: 1 },
+        { key: 'joined', search: 1, format: (d: Date) => String(d.getUTCFullYear()) },
+      ],
+      features: [search({ threshold: 0.9 })],
+    })
+    await opted.setSearch('red')
+    expect(opted.getRowModel().rows.map((r) => r.index)).toEqual([0, 1])
+    await opted.setSearch('2020')
+    expect(opted.getRowModel().rows.map((r) => r.index)).toEqual([0])
+    expect(seen.filter((d) => d.code === 'DK_SEARCH_COLUMN_SKIPPED')).toHaveLength(3)
+    // Without any weight, a `format` alone does not opt a Date or an accessor's arrays in.
+    const formatted = createTable({
+      data,
+      onDiagnostic,
+      columns: [
+        { key: 'name' },
+        { key: 'joined', format: (d: Date) => String(d.getUTCFullYear()) },
+        { id: 'list', accessor: (r: (typeof data)[number]) => r.tags },
+      ],
+      features: [search({ threshold: 0.9 })],
+    })
+    await formatted.setSearch('2020')
+    expect(formatted.getRowModel().rows.map((r) => r.index)).toEqual([])
+    await formatted.setSearch('red')
+    expect(formatted.getRowModel().rows.map((r) => r.index)).toEqual([1])
+    expect(seen.filter((d) => d.code === 'DK_SEARCH_COLUMN_SKIPPED').length).toBe(5)
+  })
+
+  it('a key column is read from the rows while matching; a throwing read goes through the cache', async () => {
+    let throws = false
+    const row = (id: number, name: string) => ({
+      id,
+      get name() {
+        if (throws && id === 1) throw new Error('getter')
+        return name
+      },
+    })
+    const data = [row(0, 'Ada'), row(1, 'Bob')]
+    const t = createTable({ data, onDiagnostic, features: [search({ threshold: 0.9 })] })
+    await t.setSearch('bob')
+    expect(t.getRowModel().rows.map((r) => r.index)).toEqual([1])
+    // A read that throws while the index is built: the column cache reads (and reports) it.
+    throws = true
+    const u = createTable({ data, onDiagnostic, features: [search({ threshold: 0.9 })] })
+    await u.setSearch('ada')
+    expect(u.getRowModel().rows.map((r) => r.index)).toEqual([0])
+    expect(codes()).toContain('DK_CALLBACK_FAILED')
+  })
+
   it('accessor columns are searchable', async () => {
     const t = createTable({
       data: users,

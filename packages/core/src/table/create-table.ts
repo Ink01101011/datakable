@@ -5,7 +5,7 @@ import { keepDiagnostics } from '../diagnostics/catalog'
 import { DEV } from '../diagnostics/env'
 import { type ExplainHost, explainRow, explainTable } from '../diagnostics/explain'
 import { createDiagnostics } from '../diagnostics/hub'
-import type { RedactionOptions } from '../diagnostics/redact'
+import { pathsOverlap, type RedactionOptions } from '../diagnostics/redact'
 import { tracer } from '../diagnostics/tracer'
 import type { Trigger } from '../diagnostics/types'
 import { runtimeFor } from '../feature/runtime'
@@ -228,8 +228,11 @@ export function createTable<T, S extends TableState>(
     ...(typeof redactOption === 'string' ? { level: redactOption } : {}),
     ...(typeof redactOption === 'function' ? { redact: redactOption } : {}),
     sensitiveColumns,
-    rowKeySensitive: () =>
-      typeof options.rowKey === 'string' && sensitiveColumns().includes(options.rowKey),
+    // A rowKey path into (or above) a sensitive column reads its data too (#45).
+    rowKeySensitive: () => {
+      const k = options.rowKey
+      return typeof k === 'string' && sensitiveColumns().some((c) => pathsOverlap(k, c))
+    },
   }
   const hub = createDiagnostics({
     ...(options.name === undefined ? {} : { name: options.name }),
@@ -937,6 +940,7 @@ export function createTable<T, S extends TableState>(
 
   setTableInternals(table, {
     features: pipeline,
+    name: options.name,
     rowCount: () => (typeof options.fetcher === 'function' ? server?.rowCount() : options.rowCount),
     hasFetcher: () => typeof options.fetcher === 'function',
     emit: hub.emit,

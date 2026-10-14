@@ -414,6 +414,48 @@ describe('schema issue redaction (§8.2, T26)', () => {
     expect(JSON.stringify(find('DK_SCHEMA_INVALID_ROW')?.details)).toContain('SECRET-AGE')
   })
 
+  it("'full' never logs a message that may embed a sensitive column's value (#46)", () => {
+    const SSN = '123-45-6789'
+    type R = { id: number; ssn: string; age: number }
+    const schema = withSchema({
+      '~standard': {
+        version: 1,
+        vendor: 'x1',
+        validate: (r: unknown) => {
+          const row = r as R
+          return row.age < 0
+            ? {
+                issues: [
+                  { message: `age ${row.age} of ${row.ssn} is negative`, path: ['age'] },
+                  { message: `record for ${row.ssn} is inconsistent` },
+                  { message: `ssn ${row.ssn} is suspicious`, path: ['ssn'] },
+                ],
+              }
+            : { value: row }
+        },
+      },
+    } as never)
+    for (const redact of ['keys', 'full'] as const) {
+      seen = []
+      const t = createTable({
+        data: [{ id: 1, ssn: SSN, age: -1 }],
+        rowKey: 'id',
+        schema,
+        invalidRows: 'flag',
+        columns: [{ key: 'id' }, { key: 'ssn', sensitive: true }, { key: 'age' }],
+        diagnostics: { redact },
+        onDiagnostic,
+      } as never)
+      ;(t as { getRowModel(): unknown }).getRowModel()
+      const d = find('DK_SCHEMA_INVALID_ROW') as Diagnostic
+      expect(JSON.stringify(d), redact).not.toContain(SSN)
+      expect(String(d), redact).not.toContain(SSN)
+      const explained = (t as { explainRow(k: number): unknown }).explainRow(1)
+      expect(JSON.stringify(explained), redact).not.toContain(SSN)
+      expect(d.details.issues).toEqual([{ path: 'age', message: 'invalid value at age' }])
+    }
+  })
+
   it('the issues on rows and getInvalidRows keep the validator text (developer API)', () => {
     const t = createTable({
       schema: withSchema(userSchema),

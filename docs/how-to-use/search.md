@@ -43,8 +43,12 @@ table.clearSearch() // empties input and query: every row again
 ```
 
 - **Which columns.** When any column declares a `search` weight, only the columns with a weight
-  above 0 are searched. When no column declares one (including zero-config columns), every column
-  is searched at weight 1.
+  above 0 are searched. When no column declares one (including zero-config columns), the columns
+  of strings, numbers and booleans (nullable) are searched at weight 1. A column of dates, arrays
+  or other objects is searched only with a `search` weight: formatting it would keep a string per
+  row (see [Performance](performance.md)). Development builds report
+  [`DK_SEARCH_COLUMN_SKIPPED`](../how-to-fix/errors.md#dk_search_column_skipped) for each such
+  column, with the fix.
 - **What is matched.** The formatted cell values: the column's `format`, else the default
   formatter (so a `Date` is matched as the user sees it, and arrays are joined). Matching is
   fuzzy (Levenshtein distance up to `fuzzyMaxDistance`) and case-insensitive unless

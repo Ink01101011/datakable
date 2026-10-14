@@ -12,6 +12,8 @@
 //   `useDataTable` must stay client references.
 // - A bundle of `createTable` alone from `datakable` must not contain React (#9): React is only in
 //   the modules of `<DataTable />` and `useDataTable`, which the bundler drops when unused.
+// - A production bundle that keeps every export of the `"use client"` modules (what a server
+//   import makes of them) holds no diagnostic text builder (#52).
 // Run after `pnpm build`.
 import assert from 'node:assert/strict'
 import { mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
@@ -181,12 +183,56 @@ import 'datakable/messages'
       )
   }
 
+  // 4. Message text (#52): a server module importing a "use client" module makes it a client
+  // reference, and the bundler keeps every one of its exports in the client chunk. A production
+  // bundle of all their exports must not hold a text builder (`DK_X:{problem`), which only
+  // `datakable/messages` installs.
+  const clientModules = []
+  for (const [pkg, name] of [
+    ['react', '@datakable/react'],
+    ['datakable', 'datakable'],
+  ]) {
+    const dist = join(root, 'packages', pkg, 'dist')
+    for (const file of readdirSync(dist, { recursive: true })) {
+      if (!String(file).endsWith('.js')) continue
+      // Through the links above, so the packages resolve each other as installed.
+      if (USE_CLIENT.test(readFileSync(join(dist, file), 'utf8')))
+        clientModules.push(join(dir, 'node_modules', name, 'dist', String(file)))
+    }
+  }
+  const kept = await esbuild.build({
+    stdin: {
+      contents: clientModules
+        .map((f, i) => `export * as m${i} from ${JSON.stringify(f)}`)
+        .join('\n'),
+      resolveDir: dir,
+      loader: 'js',
+    },
+    bundle: true,
+    format: 'esm',
+    platform: 'browser',
+    minify: true,
+    define: { 'process.env.NODE_ENV': '"production"' },
+    external: ['react', 'react-dom'],
+    preserveSymlinks: true,
+    write: false,
+    logLevel: 'silent',
+  })
+  const builders = [...new Set(kept.outputFiles[0].text.match(/DK_[A-Z_]+:\{problem/g) ?? [])]
+  if (builders.length > 0)
+    failures.push(
+      `a production bundle of every export of the "use client" modules (${clientModules.length}) ` +
+        `holds message text: ${builders.join(', ')}. Fix: do not export a message object from a ` +
+        '"use client" module (or one it re-exports); read it only behind the NODE_ENV guard in ' +
+        'the module that defines it.',
+    )
+
   if (failures.length > 0) {
     console.error(`check:rsc failed:\n${failures.map((f) => `- ${f}`).join('\n')}`)
     process.exit(1)
   }
   console.log(
     'check:rsc ok: @datakable/react, datakable and datakable/messages load in a server module; ' +
-      'a createTable-only bundle of datakable has no React',
+      'a createTable-only bundle of datakable has no React; client references carry no message text',
   )
 }

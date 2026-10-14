@@ -24,6 +24,7 @@ import {
 } from '@datakable/core'
 import {
   type ReactNode,
+  version as reactVersion,
   useCallback,
   useEffect,
   useInsertionEffect,
@@ -188,9 +189,22 @@ export function useDataTable<
 >
 export function useDataTable(options: Options): unknown {
   const ref = useRef<Instance | null>(null)
-  // Created during the first render (React keeps the ref across the StrictMode double render),
-  // deferred: its async work (fetcher, searchFn) starts in the mount effect, never on the server.
-  if (ref.current === null) ref.current = createInstance(options)
+  // Created during the first render, deferred: its async work (fetcher, searchFn) starts in the
+  // mount effect, never on the server.
+  if (ref.current === null) {
+    ref.current = createInstance(options)
+    // React 18's development StrictMode discards the first mount render, ref included (React 19
+    // keeps it): that render's table never mounts, so release it once the render is over. A
+    // render that commits after this (one that yielded) gets a new table at mount (`recreate`).
+    if (
+      process.env.NODE_ENV !== 'production' &&
+      typeof window !== 'undefined' &&
+      reactVersion.startsWith('18.')
+    ) {
+      const inst = ref.current
+      queueMicrotask(() => release(inst))
+    }
+  }
   const inst = ref.current
   const table = inst.table
   const [, rerender] = useReducer((n: number) => n + 1, 0)
@@ -247,6 +261,13 @@ export function useDataTable(options: Options): unknown {
   })
 
   return view
+}
+
+/** Dev (React 18): destroys a table created in render unless it mounted (or was destroyed). */
+function release(inst: Instance) {
+  if (inst.mounted || inst.destroyed) return
+  inst.destroyed = true
+  inst.table.destroy()
 }
 
 function createInstance(options: Options): Instance {
@@ -408,8 +429,9 @@ function checkHydration(inst: Instance) {
  * are new on every render (`data: [{ … }]` with nested objects) re-ingest but never hang.
  */
 function sync(inst: Instance, options: Options, selfCaused: boolean) {
-  // Written out (not a module-level flag) so bundlers fold it while parsing (§8.2).
-  if (process.env.NODE_ENV !== 'production') checkUnstable(inst, options)
+  // Written out (not a module-level flag) so bundlers fold it while parsing (§8.2). The re-render
+  // a sync causes is not counted: under `<DataTable columns>` it reuses the props (count reset).
+  if (process.env.NODE_ENV !== 'production' && !selfCaused) checkUnstable(inst, options)
   const prev = inst.synced
   if (!selfCaused) inst.selfData = false
   let partial: Record<string, unknown> | undefined

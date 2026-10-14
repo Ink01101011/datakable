@@ -46,12 +46,16 @@ pnpm check:budgets  # sizes against their limits, then the memory and interactio
   columns a step needs (a filter, a sort, search). An all-number column is stored as a
   `Float64Array`. The cache is keyed by the data array in a `WeakMap`, so it is released with the
   data.
-- **Search** builds its matcher once per data and columns (not per keystroke), over the column
-  cache, and matches a chunk of rows at a time. A searchable column of strings, numbers or other
-  primitives without `format` keeps no formatted copy: it is stringified while matching. A column
-  with `format`, or with dates, arrays or objects, keeps its formatted strings in the column cache
-  (repeated strings share one copy), and every searchable column keeps its values array: memory
-  grows with the number of searchable columns, so give the columns that matter a `search` weight.
+- **Search** builds its matcher once per data and columns (not per keystroke) and matches a chunk
+  of rows at a time. A searchable key column of strings, numbers or booleans without `format` is
+  read from the rows and stringified while matching: search keeps no copy of it (no values array,
+  no formatted strings). An accessor column of primitives reads the column cache's values the same
+  way. A column with `format`, or a date, array or object column given a `search` weight, keeps
+  its formatted strings in the column cache (repeated strings share one copy): those are the
+  columns whose memory grows with the row count. Without any `search` weight, only the columns of
+  primitives are searched (see [Search](search.md)), so a zero-config table keeps nothing per row
+  for search: 1.5 MB in all for 100k rows of ten mixed-type fields (strings, nullable numbers,
+  booleans, dates, arrays, nested objects), measured in Node, production build.
 - **Sorting** picks a stable algorithm per sort from one scan of the keys (`algorithm: 'auto'`):
   integer and date keys go to tim / counting / radix sort, and from 10k rows a string column is
   sorted by precomputed collation ranks instead of calling `Intl.Collator` per comparison. See
@@ -140,9 +144,11 @@ export function Orders({ orders, onlyOpen }: { orders: Order[]; onlyOpen: boolea
   Beyond that, or when the data is not on the client, set `mode: 'server'` on the features and
   load pages with a `fetcher`. See [Server mode](server-mode.md).
 - **Search the columns that matter.** Give the searchable columns a `search` weight; when one
-  column declares a weight, only the columns with one are searched. See [Search](search.md).
+  column declares a weight, only the columns with one are searched. Each weighted date, array or
+  `format` column keeps a formatted string per row. See [Search](search.md).
 - **Read `DK_PERF_HINT`.** In development, the tracer reports a pipeline step that took longer
-  than 50 ms, with its numbers and a suggestion. `explain()` shows the time per step. See
+  than 50 ms, with its numbers and a suggestion, and a time slice over 50 ms. `explain()` shows the
+  time per step (time-sliced work: the total over its runs). See
   [Diagnostics](diagnostics.md).
 
 ### Bundle only what you use
@@ -189,7 +195,8 @@ The full list of import paths is on [Entry points](entry-points.md).
 - **Mutating `data` in place** leaves the table on stale rows:
   [`DK_DATA_MUTATED`](../how-to-fix/errors.md#dk_data_mutated).
 - **A slow step** (a heavy `format`, a big client search): [`DK_PERF_HINT`](../how-to-fix/errors.md#dk_perf_hint)
-  names it; consider server mode or fewer searchable columns.
+  names it, and the column slot most of its time went to (`columns[0].format`); make that cheaper,
+  or consider server mode or fewer searchable columns.
 - **`status: 'pending'` after a big change** is time-sliced work in progress, not a hang; the
   previous rows stay on screen until it finishes.
 - **`scheduler.yield` missing** in an older browser falls back to `setTimeout`:

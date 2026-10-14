@@ -143,6 +143,52 @@ describe('rowKey: DK_DUPLICATE_ROW_KEY', () => {
     expect(new Set(keys(t)).size).toBe(3)
   })
 
+  it("1 and '1' are the same key (compared as strings, like React keys and explainRow) (#24)", () => {
+    const t = createTable({
+      data: [
+        { id: 1, n: 'number one' },
+        { id: '1', n: 'string one' },
+      ],
+      rowKey: 'id',
+      onDiagnostic,
+    })
+    expect(keys(t)).toEqual([1, '1#1'])
+    expect(codes()).toEqual(['DK_DUPLICATE_ROW_KEY'])
+    expect(seen[0]?.details).toMatchObject({ key: '1', rows: [0, 1], shared: 2, count: 1 })
+    expect(t.explainRow('1').index).toBe(0)
+    expect(t.explainRow('1#1').index).toBe(1)
+  })
+
+  it("a field unique only by type (1 vs '1') is never suggested (#24)", () => {
+    const data = [
+      { id: 7, code: 1, uuid: 'a' },
+      { id: 7, code: '1', uuid: 'b' },
+    ]
+    expect(findUniqueFields(data, 'id').unique).toEqual(['uuid'])
+  })
+
+  it('a fallback never takes the real, unique key of a later row (#29)', () => {
+    const t = createTable({
+      data: [{ id: '1' }, { id: '1' }, { id: '1#1' }],
+      rowKey: 'id',
+      onDiagnostic,
+    })
+    expect(keys(t)).toEqual(['1', '1#2', '1#1'])
+    expect(t.explainRow('1#1').index).toBe(2)
+    expect(seen[0]?.details).toMatchObject({ key: '1', rows: [0, 1], count: 1 })
+  })
+
+  it('a missing-key fallback #index never takes a later real key (#29)', () => {
+    const t = createTable({
+      data: [{ id: null }, { id: 2 }, { id: '#0' }] as { id: unknown }[],
+      rowKey: 'id' as never,
+      onDiagnostic,
+    })
+    expect(keys(t)).toEqual(['#0#1', 2, '#0'])
+    expect(t.explainRow('#0').index).toBe(2)
+    expect(codes()).toEqual(['DK_MISSING_ROW_KEY'])
+  })
+
   it('several duplicated values: one diagnostic with the group count', () => {
     const t = createTable({ data: users([1, 1, 2, 2, 3]), rowKey: 'id', onDiagnostic })
     expect(keys(t)).toEqual([1, '1#1', 2, '2#1', 3])

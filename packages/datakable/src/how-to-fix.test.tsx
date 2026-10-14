@@ -283,7 +283,11 @@ describe('search-finds-nothing-or-is-slow.md', () => {
       ],
       rowKey: 'id',
       columns: [
-        { key: 'joined', format: (d) => (d.getUTCFullYear() > 2022 ? 'recent' : 'archived') },
+        {
+          key: 'joined',
+          search: 1,
+          format: (d) => (d.getUTCFullYear() > 2022 ? 'recent' : 'archived'),
+        },
       ],
     })
     await t.setSearch('RECENT')

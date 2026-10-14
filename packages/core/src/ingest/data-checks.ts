@@ -32,7 +32,8 @@ function probe(row: object, segs: readonly string[]): number {
     if (cur === null || cur === undefined) return PRESENT
     if (typeof cur !== 'object') return ABSENT
     const seg = segs[i] as string
-    if (!(seg in cur)) return ABSENT
+    // An inherited Object.prototype member is not data (`getValue` reads `undefined`, #42).
+    if (!(seg in cur) || (seg in Object.prototype && !Object.hasOwn(cur, seg))) return ABSENT
     if (i < segs.length - 1) cur = (cur as Record<string, unknown>)[seg]
   }
   return PRESENT

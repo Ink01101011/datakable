@@ -65,9 +65,12 @@ empty.
 
 ## The column is not searched
 
-With no `search` weight on any column, every displayable column is searched at weight 1. As soon
-as **one** column has a `search` weight, only the columns with a weight are searched. A column
-added later without a weight is silently not searchable.
+With no `search` weight on any column, the columns of strings, numbers and booleans are searched
+at weight 1; a column of dates, arrays or other objects is not (development builds report
+[`DK_SEARCH_COLUMN_SKIPPED`](errors.md#dk_search_column_skipped) for it, with the column). Give
+such a column a `search` weight to search it. As soon as **one** column has a `search` weight,
+only the columns with a weight are searched. A column added later without a weight is silently
+not searchable.
 
 ```ts
 import { createTable } from 'datakable'
@@ -98,8 +101,9 @@ prints:
 ["Ada"]
 ```
 
-Search matches the **formatted** value: a column with `format: (d) => d.toLocaleDateString()` is
-searched as that text, not as the raw `Date`; an object column is searched through its `format`.
+Search matches the **formatted** value: a date column with `search: 1` and
+`format: (d) => d.toLocaleDateString()` is searched as that text, not as the raw `Date`; an
+object column is searched through its `format`.
 
 ## The match is too strict
 
@@ -130,6 +134,7 @@ responsive. When a step still takes longer than one task (50 ms), development bu
 ## Related codes
 
 [`DK_SEARCH_FAILED`](errors.md#dk_search_failed) ·
+[`DK_SEARCH_COLUMN_SKIPPED`](errors.md#dk_search_column_skipped) ·
 [`DK_PERF_HINT`](errors.md#dk_perf_hint) ·
 [`DK_UNSTABLE_OPTION`](errors.md#dk_unstable_option) ·
 [`DK_OPTION_NO_EFFECT`](errors.md#dk_option_no_effect) (a `search` with no searchable column)

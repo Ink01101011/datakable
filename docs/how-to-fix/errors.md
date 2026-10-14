@@ -119,13 +119,16 @@ text, `toJSON()` and every sink):
 | `'keys'` | `'safe'` + raw row-key values | development |
 | `'full'` | `'keys'` + cell values | — (warns in production: [`DK_UNSAFE_REDACTION`](#dk_unsafe_redaction)) |
 
-- A column with `sensitive: true` is never logged, at any level; a `rowKey` column that is
-  sensitive is hashed at every level. A function `redact: (path, value) => string | undefined` adds
+- A column with `sensitive: true` (and any column inside it) is never logged, at any level; row
+  keys are hashed at every level when the `rowKey` path is a sensitive column, points into one or
+  contains one. A function `redact: (path, value) => string | undefined` adds
   your own rules.
 - **Row-key hashes are pseudonymisation, not anonymisation.** They are unsalted 32-bit FNV-1a
   hashes: anyone who knows a key can hash it and find its diagnostics, and short or enumerable keys
   (sequential ids, emails from a known list) can be recovered by hashing candidates. Treat hashed
   diagnostics as personal data wherever the keys are.
+- Schema issue messages are replaced by DataKable's own text under `'safe'` and `'keys'`, and at
+  every level when the table has a `sensitive` column (a message may quote its value).
 - Thrown errors are logged as `error.name` (and `code`) only: messages of validators, fetchers and
   engines embed values. The error itself is `context.cause`, passed to `onDiagnostic` only (never
   to the console or `toJSON()`). Schema issue messages are replaced by the issue path and
@@ -179,6 +182,7 @@ To trace a production table, install it: `createTable({ interceptors: [tracer()]
 | [`DK_SORT_COMPARATOR_INVALID`](#dk_sort_comparator_invalid) | warn | Features |
 | [`DK_SORT_STRATEGY`](#dk_sort_strategy) | info | Features |
 | [`DK_SEARCH_FAILED`](#dk_search_failed) | error | Features |
+| [`DK_SEARCH_COLUMN_SKIPPED`](#dk_search_column_skipped) | info | Features |
 | [`DK_INVALID_PAGINATION`](#dk_invalid_pagination) | warn | Features |
 | [`DK_INVALID_VALIDITY`](#dk_invalid_validity) | warn | Features |
 | [`DK_FETCH_FAILED`](#dk_fetch_failed) | error | Async |
@@ -469,7 +473,7 @@ prints (development console):
 
 `warn` · fault test: [pipeline.test.ts](../../packages/core/src/pipeline/pipeline.test.ts)
 
-**Problem.** Cells of a column hold objects, arrays or functions, which the default formatter cannot turn into text. Those cells render `''` and match no search.
+**Problem.** Cells of a column hold objects, arrays or functions, which the default formatter cannot turn into text. Those cells render `''` and match no search. Reported once per column and data: when the column is first searched (`count` over every row), or when `<DataTable />` renders such a cell (`count` over the rendered rows).
 
 **Common causes.**
 
@@ -495,7 +499,10 @@ const users: Record<string, unknown>[] = [
 // `address` is an object: the default formatter cannot turn it into text.
 const table = createTable({
   data: users,
-  columns: [{ key: 'name' }, { key: 'address' }],
+  columns: [
+    { key: 'name', search: 1 },
+    { key: 'address', search: 1 },
+  ],
   features: [search()],
 })
 await table.setSearch('london') // matches nothing: the address cells are ''
@@ -819,6 +826,49 @@ prints (development console):
           2. remove debug: true from sorting() to stop these reports
   docs    https://github.com/Ink01101011/datakable/blob/main/docs/errors.md#dk_sort_strategy
   context trigger=api:toggleSort run=1 phase=client
+```
+
+### DK_SEARCH_COLUMN_SKIPPED
+
+`info` · fault test: [search.test.ts](../../packages/core/src/features/search/search.test.ts)
+
+**Problem.** No column declares a `search` weight, so client search covers only the columns of strings, numbers and booleans (#27). This column holds dates, arrays or other objects and is not searched. Development builds only, once per data and columns, when the first search builds its matcher.
+
+**Common causes.**
+
+- Zero-config columns (no `columns` option) over rows with a `Date`, an array or a nested object.
+- `columns` without any `search` weight, one of them a date or array column.
+
+**Fix.**
+
+- Give the column a `search` weight, and give one to every other column to search: once a column declares a weight, only weighted columns are searched.
+- Add a `format` to that column to choose the text it is matched by (by default dates match their `toLocaleString()`, arrays their items joined by `', '`).
+
+**Example.**
+
+```ts
+import { createTable, search } from '@datakable/core'
+
+const users = [
+  { id: 1, name: 'Ada', joined: new Date(Date.UTC(2020, 0, 15)) },
+  { id: 2, name: 'Grace', joined: new Date(Date.UTC(2024, 5, 1)) },
+]
+
+// Zero-config: no column declares a search weight, so `joined` (dates) is not searched.
+const table = createTable({ data: users, rowKey: 'id', features: [search()] })
+await table.setSearch('2020') // matches nothing: only `id` and `name` are searched
+```
+
+prints (development console):
+
+```text
+ℹ [DataKable table#1] DK_SEARCH_COLUMN_SKIPPED: column "joined" holds dates, arrays or other objects, and no column declares a search weight: such a column is not searched (only strings, numbers and booleans are)
+  where   columns[2] (id "joined")
+  impact  search does not match the values of this column
+  fix     1. give it a search weight to search it: columns: [{ key: 'joined', search: 1 }, …], and give one to every other column to search (once a column declares a weight, only weighted columns are searched)
+          2. to choose the text it matches, add format: (value) => string to columns[2] (by default dates match their toLocaleString(), arrays their items joined by ", ")
+  docs    https://github.com/Ink01101011/datakable/blob/main/docs/errors.md#dk_search_column_skipped
+  context trigger=api:setSearch run=1 phase=client
 ```
 
 ### DK_SEARCH_FAILED
@@ -2342,7 +2392,7 @@ prints (development console):
 
 `error` · `@datakable/react` · fault test: [data-table.fault.test.tsx](../../packages/react/src/data-table.fault.test.tsx)
 
-**Problem.** A React component rendered by the table threw. Inside a cell (a component returned by `cell` / `invalidCell`), only that cell renders `⚠` and everything else keeps working; outside the cells (a `components.Empty` / `Loading` / `Error` part), the body shows the Error state. (A throw in the `cell` function itself is [`DK_CALLBACK_FAILED`](#dk_callback_failed).)
+**Problem.** A React component rendered by the table threw. Inside a cell (a component returned by `cell` / `invalidCell`), only that cell renders `⚠` and everything else keeps working; outside the cells (a `components.Empty` / `Loading` / `Error` part), the body shows the Error state; a `components.SearchInput` / `Pagination` part is replaced by the default one (`slot: 'components.SearchInput'`). (A throw in the `cell` function itself is [`DK_CALLBACK_FAILED`](#dk_callback_failed).)
 
 **Common causes.**
 
@@ -2610,7 +2660,7 @@ prints (development console):
 
 `info` · fault test: [env.test.ts](../../packages/core/src/pipeline/env.test.ts)
 
-**Problem.** Information from the tracer: a pipeline step took longer than one task's budget (50 ms), so the page could not respond to input while it ran. Reported with the step, the time and the row count.
+**Problem.** Information from the tracer: a pipeline step took longer than one task's budget (50 ms), so the page could not respond to input while it ran. Reported with the step, the time and the row count. A step's time-sliced work (§9.1) runs in slices between pipeline runs; a slice over the budget is reported as `a time slice of the "<feature>" step took …` (`details.sliced`). When at least half of the time went to one column slot (a `format`, an accessor, a `filterFn` or `sortBy`), the hint names it: `…; 98 % of it in columns[0].format (column "name")` (`details.slot`, `column`, `share`), and the fix names that slot.
 
 **Common causes.**
 

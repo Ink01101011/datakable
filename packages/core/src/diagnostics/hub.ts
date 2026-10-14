@@ -124,7 +124,7 @@ export function createDiagnostics(options: DiagnosticsOptions = {}): Diagnostics
     )
   }
 
-  function deliver(input: Diagnostic): Diagnostic {
+  function deliver(input: Diagnostic, quiet?: boolean): Diagnostic {
     const d = redact ? redact(input) : input
     if (getDataRef) {
       const ref = getDataRef()
@@ -149,7 +149,7 @@ export function createDiagnostics(options: DiagnosticsOptions = {}): Diagnostics
         fail(e)
       }
     }
-    toConsole?.(d)
+    if (!quiet) toConsole?.(d)
     return d
   }
 
@@ -194,13 +194,13 @@ export function createDiagnostics(options: DiagnosticsOptions = {}): Diagnostics
         depth++
         try {
           runtime.run('diagnostic:emit', ctx, (x) => {
-            out = deliver(x.input.diagnostic)
+            out = deliver(x.input.diagnostic, opts.quiet)
           })
         } finally {
           depth--
         }
       } else {
-        out = deliver(d)
+        out = deliver(d, opts.quiet)
       }
     } catch (e) {
       // strict: an error-level emit nested in the chain (e.g. DK_INTERCEPTOR_FAILED) still throws.
