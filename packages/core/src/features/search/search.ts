@@ -316,7 +316,7 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
         ctx.emit('DK_OPTION_NO_EFFECT', {
           path: 'query',
           feature: 'search',
-          reason: 'no column is searchable: give the columns to search a `search` weight',
+          reason: 'not-searchable',
           once: false,
         })
       }

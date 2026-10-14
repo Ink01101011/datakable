@@ -82,7 +82,10 @@ In development, the console prints one collapsed group per diagnostic:
 
 - The text builders are development-only (`process.env.NODE_ENV !== 'production'`): a production
   diagnostic keeps its `code`, `level`, `where` and `context`, and its `docs` URL carries
-  `?v=<version>&where=<where>`; `problem`, `impact` and `fix` are empty. Add
+  `?v=<version>&where=<where>`; `problem`, `impact` and `fix` are empty, and a detail that is a
+  sentence in development (`fallback`, `reason`, `problem`, `expected`) is a short key
+  (`fallback: 'cells-undefined'`, see
+  [Diagnostics have no text in production](diagnostics-without-text-in-production.md#what-production-keeps)). Add
   `import 'datakable/messages'` (or `@datakable/core/messages`) once to get the full text in
   production, in a module of the bundle that creates the tables (Next.js app router: a
   `'use client'` module, not `app/layout.tsx`; Nuxt / Nitro: `installMessages(...allMessages)`,

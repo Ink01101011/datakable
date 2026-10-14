@@ -75,7 +75,7 @@ export const expectedReturn = (slot: Pick<SlotDefinition, 'returns'>) => expecte
 export const formatSlot = defineSlot({
   name: 'format',
   returns: 'string',
-  fallback: 'those cells were coerced with the default formatter',
+  fallback: 'cells-coerced', // prose key (diagnostics/prose.ts)
 })
 
 declare module '../diagnostics/catalog' {

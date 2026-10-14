@@ -189,7 +189,7 @@ export function createInterceptorRuntime(
   function compile(op: string): Chain {
     const info = getOperation(op)
     if (!info) {
-      throw internalError(op, `Unknown operation "${op}": register it with registerOperation()`)
+      throw internalError(op, `unknown-op|${op}`)
     }
     const mine = list.filter((i) => attaches(i, op))
     if (boundary && attaches(boundary, op)) mine.unshift(boundary)
@@ -222,11 +222,7 @@ export function createInterceptorRuntime(
     setInterceptors,
     installBoundary(b) {
       if (boundary) {
-        throw internalError(
-          '*',
-          `A boundary interceptor is already installed ("${boundary.name}"); ` +
-            `"${b.name}" was rejected`,
-        )
+        throw internalError('*', `boundary-twice|${boundary.name}|${b.name}`)
       }
       boundary = b
       compileAll()

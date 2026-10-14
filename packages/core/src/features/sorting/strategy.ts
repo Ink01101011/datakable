@@ -91,19 +91,22 @@ export function intKeys(
   return { rows, present, keys, min, max, descents }
 }
 
-/** `auto`'s choice for integer keys (§6.4 table), with the reason (DK_SORT_STRATEGY). */
+/**
+ * `auto`'s choice for integer keys (§6.4 table), with the reason (DK_SORT_STRATEGY): the end of a
+ * prose key, `auto-<reason>` (diagnostics/prose.ts).
+ */
 export function chooseAuto(k: IntKeys): { algorithm: BuiltinAlgorithm; reason: string } {
   const m = k.present
   const range = m > 0 ? k.max - k.min + 1 : 0
   // Nearly sorted: natural runs average ≥ 64 keys, so tim merges few runs (~O(n)).
   if (k.descents * 64 <= m) {
-    return { algorithm: 'tim', reason: `safe integers, nearly sorted (${k.descents} descents)` }
+    return { algorithm: 'tim', reason: `nearly|${k.descents}` }
   }
   if (range <= 4 * m && range <= COUNTING_MAX_RANGE) {
-    return { algorithm: 'counting', reason: `safe integers, key range ${range} ≤ 4n` }
+    return { algorithm: 'counting', reason: `range|${range}` }
   }
-  if (m >= 10_000) return { algorithm: 'radix', reason: `safe integers, wide range, n ≥ 10k` }
-  return { algorithm: 'tim', reason: 'safe integers, wide range, n < 10k' }
+  if (m >= 10_000) return { algorithm: 'radix', reason: 'wide' }
+  return { algorithm: 'tim', reason: 'wide-small' }
 }
 
 /**

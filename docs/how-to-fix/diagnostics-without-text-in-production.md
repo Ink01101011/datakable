@@ -16,6 +16,13 @@ one line:
 [DataKable table#1] DK_FETCH_FAILED at options.fetcher — https://github.com/Ink01101011/datakable/blob/main/docs/errors.md?v=<version>&where=options.fetcher#dk_fetch_failed
 ```
 
+The details keep their data, but a detail that is a sentence in development (`fallback`,
+`reason`, `problem`, `expected`) is a short key in production: `fallback: 'cells-undefined'`
+instead of `fallback: 'the failed cells read as undefined'`, `reason: 'page-size|10'` (a key and its
+arguments) instead of `'pageSize was replaced by 10'`. Each key is spelled out in
+[`diagnostics/prose.ts`](../../packages/core/src/diagnostics/prose.ts); with the messages imported
+([below](#fix-keep-the-text)) the details read as sentences again, exactly as in development.
+
 That is usually enough to group errors in a logger and look them up:
 
 ```ts
@@ -48,7 +55,8 @@ Some codes are never emitted in production at all (development-only checks such 
 ## Fix: keep the text
 
 Import the messages once in the app entry. Every diagnostic then has its full text in production,
-in `onDiagnostic` and `toJSON()`; it adds the message text to your bundle.
+in `onDiagnostic` and `toJSON()`, and its detail sentences instead of their keys; it adds the
+message text to your bundle.
 
 ```ts
 // In the app entry (main.tsx, the pages router's _app.tsx, …), once, before any table is created.

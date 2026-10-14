@@ -102,6 +102,9 @@ export function installMessages(...all: ReadonlyArray<Readonly<Record<string, un
   }
 }
 
+/** An installed message by key: a code's text builders, or a detail prose sentence (`prose.ts`). */
+export const installedText = (key: string): unknown => messages.get(key)
+
 /** `true` once `installMessages` ran: production diagnostics then build their text too. */
 export const hasMessages = (): boolean => messages.size > 0
 

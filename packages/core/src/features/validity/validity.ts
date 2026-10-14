@@ -45,7 +45,7 @@ export const validity = () =>
           ctx.emit('DK_INVALID_VALIDITY', {
             source: 'setValidity',
             received: received(value),
-            fallback: 'the call was ignored; the validity filter is unchanged',
+            fallback: 'validity-ignored',
           })
           return
         }
@@ -57,7 +57,7 @@ export const validity = () =>
         ctx.emit('DK_INVALID_VALIDITY', {
           source: 'state',
           received: received(state),
-          fallback: "the table shows every row, as with 'all'",
+          fallback: 'validity-all',
         })
         return indices
       }
@@ -67,10 +67,7 @@ export const validity = () =>
         ctx.emit('DK_OPTION_NO_EFFECT', {
           path: 'state.validity',
           feature: NAME,
-          reason:
-            'validity filters rows flagged by schema validation, which needs `schema` and ' +
-            "`invalidRows: 'flag'` (without a schema no row is invalid; with 'drop' invalid rows " +
-            "are removed, with 'throw' they throw)",
+          reason: 'validity-needs-flag',
           once: false,
         })
         return indices
