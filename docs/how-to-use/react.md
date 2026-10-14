@@ -313,7 +313,8 @@ export function Users({ users }: { users: User[] }) {
 `<DataTable />` contains failures to the smallest part it can:
 
 - A `cell`, `format` or `invalidCell` that throws renders `⚠` in that cell and reports
-  `DK_CALLBACK_FAILED` (one diagnostic per column, with the failed rows).
+  `DK_CALLBACK_FAILED` (one diagnostic per column, with the failed rows). Every `⚠` below is an
+  image named "Could not display this value" for screen readers.
 - A `cell` that returns a promise renders `⚠`, and a `format` that returns a non-string falls back
   to the default formatter; both report `DK_CALLBACK_BAD_RETURN` in development.
 - A component returned by `cell` that throws while React renders it renders `⚠` in that cell only

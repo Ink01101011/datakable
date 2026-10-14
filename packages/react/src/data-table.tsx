@@ -244,6 +244,12 @@ interface Failure {
 }
 
 const WARN = '⚠'
+/** A failed cell's content: the `⚠` with its text alternative (#60). One element for every cell. */
+const FAILED = (
+  <span role="img" aria-label="Could not display this value">
+    {WARN}
+  </span>
+)
 const BUSY: readonly RowModelStatus[] = ['validating', 'pending', 'searching', 'fetching']
 const LOADING: readonly RowModelStatus[] = ['validating', 'searching', 'fetching']
 
@@ -410,7 +416,7 @@ function cellContent(
     return text
   } catch (error) {
     failures.push({ slot: `columns[${col.index}].${slot}`, column: col.id, row: row.index, error })
-    return WARN
+    return FAILED
   }
 }
 
@@ -445,7 +451,7 @@ function bad(
     expected,
     received: describeReturn(out),
   })
-  return WARN
+  return FAILED
 }
 
 type Page = { pageIndex: number; pageSize: number }
@@ -779,7 +785,7 @@ class CellBoundary extends Component<CellBoundaryProps, CellBoundaryState> {
   }
 
   override render() {
-    return this.state.failed ? WARN : this.props.children
+    return this.state.failed ? FAILED : this.props.children
   }
 }
 
