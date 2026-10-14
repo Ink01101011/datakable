@@ -9,7 +9,10 @@ const users: Record<string, unknown>[] = [
 // `address` is an object: the default formatter cannot turn it into text.
 const table = createTable({
   data: users,
-  columns: [{ key: 'name' }, { key: 'address' }],
+  columns: [
+    { key: 'name', search: 1 },
+    { key: 'address', search: 1 },
+  ],
   features: [search()],
 })
 await table.setSearch('london') // matches nothing: the address cells are ''

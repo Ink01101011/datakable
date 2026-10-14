@@ -182,6 +182,7 @@ To trace a production table, install it: `createTable({ interceptors: [tracer()]
 | [`DK_SORT_COMPARATOR_INVALID`](#dk_sort_comparator_invalid) | warn | Features |
 | [`DK_SORT_STRATEGY`](#dk_sort_strategy) | info | Features |
 | [`DK_SEARCH_FAILED`](#dk_search_failed) | error | Features |
+| [`DK_SEARCH_COLUMN_SKIPPED`](#dk_search_column_skipped) | info | Features |
 | [`DK_INVALID_PAGINATION`](#dk_invalid_pagination) | warn | Features |
 | [`DK_INVALID_VALIDITY`](#dk_invalid_validity) | warn | Features |
 | [`DK_FETCH_FAILED`](#dk_fetch_failed) | error | Async |
@@ -498,7 +499,10 @@ const users: Record<string, unknown>[] = [
 // `address` is an object: the default formatter cannot turn it into text.
 const table = createTable({
   data: users,
-  columns: [{ key: 'name' }, { key: 'address' }],
+  columns: [
+    { key: 'name', search: 1 },
+    { key: 'address', search: 1 },
+  ],
   features: [search()],
 })
 await table.setSearch('london') // matches nothing: the address cells are ''
@@ -822,6 +826,49 @@ prints (development console):
           2. remove debug: true from sorting() to stop these reports
   docs    https://github.com/Ink01101011/datakable/blob/main/docs/errors.md#dk_sort_strategy
   context trigger=api:toggleSort run=1 phase=client
+```
+
+### DK_SEARCH_COLUMN_SKIPPED
+
+`info` · fault test: [search.test.ts](../../packages/core/src/features/search/search.test.ts)
+
+**Problem.** No column declares a `search` weight, so client search covers only the columns of strings, numbers and booleans (#27). This column holds dates, arrays or other objects and is not searched. Development builds only, once per data and columns, when the first search builds its matcher.
+
+**Common causes.**
+
+- Zero-config columns (no `columns` option) over rows with a `Date`, an array or a nested object.
+- `columns` without any `search` weight, one of them a date or array column.
+
+**Fix.**
+
+- Give the column a `search` weight, and give one to every other column to search: once a column declares a weight, only weighted columns are searched.
+- Add a `format` to that column to choose the text it is matched by (by default dates match their `toLocaleString()`, arrays their items joined by `', '`).
+
+**Example.**
+
+```ts
+import { createTable, search } from '@datakable/core'
+
+const users = [
+  { id: 1, name: 'Ada', joined: new Date(Date.UTC(2020, 0, 15)) },
+  { id: 2, name: 'Grace', joined: new Date(Date.UTC(2024, 5, 1)) },
+]
+
+// Zero-config: no column declares a search weight, so `joined` (dates) is not searched.
+const table = createTable({ data: users, rowKey: 'id', features: [search()] })
+await table.setSearch('2020') // matches nothing: only `id` and `name` are searched
+```
+
+prints (development console):
+
+```text
+ℹ [DataKable table#1] DK_SEARCH_COLUMN_SKIPPED: column "joined" holds dates, arrays or other objects, and no column declares a search weight: such a column is not searched (only strings, numbers and booleans are)
+  where   columns[2] (id "joined")
+  impact  search does not match the values of this column
+  fix     1. give it a search weight to search it: columns: [{ key: 'joined', search: 1 }, …], and give one to every other column to search (once a column declares a weight, only weighted columns are searched)
+          2. to choose the text it matches, add format: (value) => string to columns[2] (by default dates match their toLocaleString(), arrays their items joined by ", ")
+  docs    https://github.com/Ink01101011/datakable/blob/main/docs/errors.md#dk_search_column_skipped
+  context trigger=api:setSearch run=1 phase=client
 ```
 
 ### DK_SEARCH_FAILED

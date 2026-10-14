@@ -78,7 +78,7 @@ table.toggleSort('address.city')
 | `id` | `string` | The column id of a derived column. Required with `accessor`. |
 | `accessor` | `(row: T) => unknown` | Computes a derived column's value from the row. |
 | `header` | `string` | Header text. `<DataTable />` shows the column id when it is missing. |
-| `search` | `number` | Search weight. When any column declares `search`, only the columns with a weight above 0 are searched; when none does, every column is searched at weight 1. See [Search](search.md). |
+| `search` | `number` | Search weight. When any column declares `search`, only the columns with a weight above 0 are searched; when none does, the columns of strings, numbers and booleans are searched at weight 1 (a date, array or object column needs a weight). See [Search](search.md). |
 | `sortable` | `boolean` | `false` hides the sort button in `<DataTable />`. Core's `toggleSort` / `setSorting` do not read it. On an object column, `sortable: true` needs `sortFn` or `sortBy` (a compile-time rule). |
 | `sortFn` | `(a: V, b: V) => number` | Compares two cell values (`V` is the column's value type). |
 | `sortBy` | `(row: T) => Primitive` | Sorts by a primitive computed from the row. |

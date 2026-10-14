@@ -11,6 +11,7 @@ import type { AnyRow, RowModelContext } from '../../feature/types'
 import { defineInterceptor } from '../../intercept/define'
 import { runJob, sliced } from '../../pipeline/slice'
 import { type DataMode, modeOption } from '../../source/mode'
+import { skippedColumnDiagnostics } from './codes'
 import {
   APPLIED,
   type AsyncSearchFn,
@@ -25,7 +26,7 @@ import {
 } from './search-fn-brand'
 import { buildIndex, type MatchConfig, probeExSearch, type SearchIndex } from './search-index'
 
-keepDiagnostics(optionDiagnostics)
+keepDiagnostics(optionDiagnostics, skippedColumnDiagnostics)
 
 export type {
   AsyncSearchFn,
@@ -184,7 +185,8 @@ const toText = (q: unknown): string => (q == null ? '' : String(q))
 
 /**
  * Global search (§6.3), client mode: fuzzy matching with `ex-search` on the formatted values of the
- * searchable columns (`search: weight`; every column at weight 1 when none declares one).
+ * searchable columns (`search: weight`; when none declares one, every column of primitives at
+ * weight 1, #27).
  *
  * - The matcher is built on the first non-blank query, once per data + columns (not per keystroke),
  *   over the column cache's values; ex-search reads the projection `{ i, c0, c1, … }` one chunk of
@@ -314,9 +316,7 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
         ctx.emit('DK_OPTION_NO_EFFECT', {
           path: 'query',
           feature: 'search',
-          reason:
-            'no column is searchable: pass `columns` (give the columns to search a `search` ' +
-            'weight, or omit it everywhere to search every column)',
+          reason: 'no column is searchable: give the columns to search a `search` weight',
           once: false,
         })
       }

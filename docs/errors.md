@@ -96,6 +96,10 @@ Moved: [DK_SORT_COMPARATOR_INVALID](how-to-fix/errors.md#dk_sort_comparator_inva
 
 Moved: [DK_SORT_STRATEGY](how-to-fix/errors.md#dk_sort_strategy).
 
+### DK_SEARCH_COLUMN_SKIPPED
+
+Moved: [DK_SEARCH_COLUMN_SKIPPED](how-to-fix/errors.md#dk_search_column_skipped).
+
 ### DK_SEARCH_FAILED
 
 Moved: [DK_SEARCH_FAILED](how-to-fix/errors.md#dk_search_failed).
