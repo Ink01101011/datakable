@@ -128,3 +128,69 @@ describe('paging to the first / last page keeps focus on the pager button (#55)'
     expect(prev.getAttribute('aria-disabled')).toBeNull()
   })
 })
+
+describe('Retry moves focus to the table before its button goes away (#56)', () => {
+  function deferredFetcher() {
+    const calls: { resolve: (r: FetchResult<User>) => void; reject: (e: unknown) => void }[] = []
+    const fetcher = () =>
+      new Promise<FetchResult<User>>((resolve, reject) => calls.push({ resolve, reject }))
+    return { calls, fetcher: withFetcher(fetcher) }
+  }
+
+  it('load error: focus goes to the table, not <body>', async () => {
+    const { calls, fetcher } = deferredFetcher()
+    render(
+      <Hooked caption="Users" options={{ fetcher, features: [sorting({ mode: 'server' })] }} />,
+    )
+    await act(async () => calls[0]?.reject(new Error('boom')))
+    const retry = within(screen.getByRole('alert')).getByRole('button', { name: 'Retry' })
+    retry.focus()
+    await act(async () => fireEvent.click(retry))
+    await act(async () => calls[1]?.resolve({ rows: users.slice(0, 3), rowCount: 3 }))
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(document.activeElement).toBe(screen.getByRole('table'))
+  })
+
+  it('refresh error: focus goes to the table, not <body>', async () => {
+    const { calls, fetcher } = deferredFetcher()
+    render(<Hooked options={{ fetcher, features: [sorting({ mode: 'server' })] }} />)
+    await act(async () => calls[0]?.resolve({ rows: users.slice(0, 3), rowCount: 3 }))
+    fireEvent.click(within(screen.getByRole('columnheader', { name: /name/ })).getByRole('button'))
+    await act(async () => calls[1]?.reject(new Error('boom')))
+    const retry = within(screen.getByRole('alert')).getByRole('button', { name: 'Retry' })
+    retry.focus()
+    await act(async () => fireEvent.click(retry))
+    expect(document.activeElement).toBe(screen.getByRole('table'))
+  })
+
+  it('render error (a part in the body threw): focus goes to the table, not <body>', () => {
+    let fail = true
+    const Empty = () => {
+      if (fail) throw new Error('boom')
+      return 'none'
+    }
+    render(<DataTable data={[] as User[]} components={{ Empty }} />)
+    const retry = within(screen.getByRole('alert')).getByRole('button', { name: 'Retry' })
+    retry.focus()
+    fail = false
+    fireEvent.click(retry)
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(document.activeElement).toBe(screen.getByRole('table'))
+  })
+
+  it('a retry while focus is elsewhere (the search box) leaves focus alone', async () => {
+    const { calls, fetcher } = deferredFetcher()
+    let table: { refetch(): Promise<unknown> } | undefined
+    function Exposed() {
+      const t = useDataTable({ fetcher, features: [search({ mode: 'server' })] } as never)
+      table = t as never
+      return <DataTable table={t as never} />
+    }
+    render(<Exposed />)
+    await act(async () => calls[0]?.reject(new Error('boom')))
+    const box = screen.getByRole('searchbox')
+    box.focus()
+    await act(async () => void table?.refetch())
+    expect(document.activeElement).toBe(box)
+  })
+})

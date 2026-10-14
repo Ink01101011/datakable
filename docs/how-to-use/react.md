@@ -231,7 +231,8 @@ The body shows one state at a time, from `status` and `isInitialLoad`:
 
 Over loaded rows, any `status` other than `'idle'` shows a refresh indicator above the table:
 "Updating…" while busy, or "Could not refresh; showing the previous rows." with a retry on
-`'error'`.
+`'error'`. Activating a Retry button (the load error, the refresh error or the render error) moves
+keyboard focus to the `<table>` before the button goes away, so focus does not fall to `<body>`.
 
 ### Replacing parts with `components`
 

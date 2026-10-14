@@ -25,6 +25,7 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
 } from 'react'
 import {
   cellSlot,
@@ -521,7 +522,24 @@ function DataTableView(props: {
     isInitialLoad && (LOADING.includes(status) || (status === 'pending' && hasAsyncSource(view)))
   const failed = isInitialLoad && status === 'error'
   const span = Math.max(columns.length, 1)
-  const retryLoad = () => void view.refetch()
+  const tableEl = useRef<HTMLTableElement>(null)
+  /**
+   * Retry unmounts the focused Retry button (Error → Loading → rows, or the refresh error): focus
+   * the table first, else it falls to `<body>` (#56). Only when focus is in a state row or the
+   * refresh indicator, so a retry called from elsewhere leaves focus alone.
+   */
+  const keepFocus = () => {
+    const t = tableEl.current
+    const from = document.activeElement?.closest('[data-dk-state],[data-dk-refresh]')
+    if (t && from && t.parentElement?.contains(from)) {
+      t.tabIndex = -1
+      t.focus()
+    }
+  }
+  const retryLoad = () => {
+    keepFocus()
+    void view.refetch()
+  }
   // A text caption names the search box and the pager, so two tables get distinct names (#59).
   const cap = props.caption
   const named = typeof cap === 'string' || typeof cap === 'number' ? `${cap}` : ''
@@ -591,7 +609,7 @@ function DataTableView(props: {
       {!loading && !failed && status !== 'idle' && (
         <RefreshIndicator status={status} retry={retryLoad} />
       )}
-      <table>
+      <table ref={tableEl}>
         {props.caption != null && <caption>{props.caption}</caption>}
         <thead>
           <tr>
@@ -630,7 +648,18 @@ function DataTableView(props: {
             table={table}
             resetKey={rowModel}
             fallback={(retry) =>
-              stateRow(span, 'error', <ErrorState status={status} reason="render" retry={retry} />)
+              stateRow(
+                span,
+                'error',
+                <ErrorState
+                  status={status}
+                  reason="render"
+                  retry={() => {
+                    keepFocus()
+                    retry()
+                  }}
+                />,
+              )
             }
           >
             {body}
