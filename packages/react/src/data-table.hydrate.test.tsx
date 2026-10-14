@@ -1,6 +1,7 @@
-import { type Diagnostic, type FetchResult, search, sorting } from '@datakable/core'
+import { type Diagnostic, type FetchResult, pagination, search, sorting } from '@datakable/core'
 import { withFetcher } from '@datakable/core/server'
 import { act } from '@testing-library/react'
+import { useRef } from 'react'
 import { hydrateRoot, type Root } from 'react-dom/client'
 import { renderToString } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest'
@@ -169,4 +170,54 @@ describe('hydration with time-sliced search (T29 × T32)', () => {
     expect(container.textContent).not.toContain('Bob')
     await expect(applied).resolves.toEqual({ status: 'applied' })
   })
+})
+
+describe('<DataTable /> hydration: the table changed during the hydrating render (#16)', () => {
+  type Age = { id: number; age: number }
+  const ages: Age[] = Array.from({ length: 12 }, (_, i) => ({ id: i, age: (i * 7) % 12 }))
+  type Mutation = (t: { toggleSort(id: string): void; nextPage(): void }) => void
+
+  /** Calls `mutate` once in the component body on the client: during the hydrating render. */
+  function Mutating(props: { seen: Diagnostic[]; mutate: Mutation | undefined }) {
+    const table = useDataTable({
+      data: ages,
+      rowKey: 'id',
+      columns: [{ key: 'age' }],
+      features: [sorting(), pagination({ pageSize: 5 })],
+      onDiagnostic: (d) => props.seen.push(d),
+    })
+    const done = useRef(false)
+    if (!done.current) {
+      done.current = true
+      props.mutate?.(table)
+    }
+    return <DataTable table={table} />
+  }
+
+  it.each<[string, string, Mutation]>([
+    ['toggleSort', 'sorting', (t) => t.toggleSort('age')],
+    ['nextPage', 'pagination', (t) => t.nextPage()],
+  ])(
+    '%s: the server HTML hydrates as is, then DK_HYDRATION_MISMATCH and the live view',
+    async (_, slice, mutate) => {
+      const seen: Diagnostic[] = []
+      const recoverable: unknown[] = []
+      container.innerHTML = renderToString(<Mutating seen={seen} mutate={undefined} />)
+      const html = container.innerHTML
+      await act(async () => {
+        root = hydrateRoot(container, <Mutating seen={seen} mutate={mutate} />, {
+          onRecoverableError: (e) => recoverable.push(e),
+        })
+      })
+      expect(recoverable).toEqual([])
+      expect(hydrationErrors()).toEqual([])
+      const d = seen.filter((x) => x.code === 'DK_HYDRATION_MISMATCH')
+      expect(d.map((x) => x.details)).toEqual([{ slices: [slice] }])
+      // Then React renders the live table.
+      expect(container.innerHTML).not.toBe(html)
+      const live = container.innerHTML
+      expect(live.includes('aria-sort="ascending"')).toBe(slice === 'sorting')
+      expect(container.textContent?.includes('Page 2 of 3')).toBe(slice === 'pagination')
+    },
+  )
 })

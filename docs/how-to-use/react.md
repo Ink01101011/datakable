@@ -321,6 +321,9 @@ export function Users({ users }: { users: User[] }) {
   again when its row or column changes.
 - A component that throws elsewhere in the body (`Empty`, `Loading`, `Error`) shows the Error
   state with `reason: 'render'` and a retry; the header, search and pager keep working.
+- A `SearchInput` or `Pagination` component that throws is replaced by the default part (still
+  bound to the table) until another component is passed, and reports `DK_RENDER_FAILED` at
+  `components.SearchInput` / `components.Pagination`.
 
 ## Styling
 

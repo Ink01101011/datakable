@@ -13,7 +13,10 @@ declare module '@datakable/core' {
        * `invalidCell`) or `render:table` (the body boundary: a component outside the cells).
        */
       op: 'render:table' | 'render:cell'
-      /** `render:cell`: the slot whose component threw, `columns[1].cell`. */
+      /**
+       * The slot whose component threw: `columns[1].cell` (`render:cell`), or a part outside the
+       * body, `components.SearchInput` / `components.Pagination` (`render:table`).
+       */
       slot?: string
       /** `render:cell`: the column id. */
       column?: string
@@ -72,15 +75,20 @@ export const renderMessages: DiagnosticMessages<'DK_RENDER_FAILED'> = {
       d.op === 'render:cell'
         ? `a component returned by ${d.slot} (column "${d.column}") threw` +
           `${d.errorName ? ` ${d.errorName}` : ''} while rendering row #${d.row}`
-        : `a component rendered inside the table body threw${d.errorName ? ` ${d.errorName}` : ''} ` +
-          '(outside the cells: a components.Empty / Loading / Error part)',
+        : d.slot
+          ? `the ${d.slot} component threw${d.errorName ? ` ${d.errorName}` : ''}`
+          : `a component rendered inside the table body threw${d.errorName ? ` ${d.errorName}` : ''} ` +
+            '(outside the cells: a components.Empty / Loading / Error part)',
     impact: (d) =>
       d.op === 'render:cell'
         ? 'that cell renders ⚠; the other cells and rows, the header, search, pagination and the ' +
           "table API keep working, and the cell renders again when its row's data or the columns " +
           'change'
-        : 'the table body shows the Error state; the header, search and pagination keep working, ' +
-          'and the body renders again on the next row model or Retry',
+        : d.slot
+          ? 'the default part renders in its place, bound to the table, until another component ' +
+            'is passed; the rest of the table keeps working'
+          : 'the table body shows the Error state; the header, search and pagination keep working, ' +
+            'and the body renders again on the next row model or Retry',
     fix: (d) =>
       d.op === 'render:cell'
         ? [

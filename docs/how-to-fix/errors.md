@@ -472,7 +472,7 @@ prints (development console):
 
 `warn` · fault test: [pipeline.test.ts](../../packages/core/src/pipeline/pipeline.test.ts)
 
-**Problem.** Cells of a column hold objects, arrays or functions, which the default formatter cannot turn into text. Those cells render `''` and match no search.
+**Problem.** Cells of a column hold objects, arrays or functions, which the default formatter cannot turn into text. Those cells render `''` and match no search. Reported once per column and data: when the column is first searched (`count` over every row), or when `<DataTable />` renders such a cell (`count` over the rendered rows).
 
 **Common causes.**
 
@@ -2345,7 +2345,7 @@ prints (development console):
 
 `error` · `@datakable/react` · fault test: [data-table.fault.test.tsx](../../packages/react/src/data-table.fault.test.tsx)
 
-**Problem.** A React component rendered by the table threw. Inside a cell (a component returned by `cell` / `invalidCell`), only that cell renders `⚠` and everything else keeps working; outside the cells (a `components.Empty` / `Loading` / `Error` part), the body shows the Error state. (A throw in the `cell` function itself is [`DK_CALLBACK_FAILED`](#dk_callback_failed).)
+**Problem.** A React component rendered by the table threw. Inside a cell (a component returned by `cell` / `invalidCell`), only that cell renders `⚠` and everything else keeps working; outside the cells (a `components.Empty` / `Loading` / `Error` part), the body shows the Error state; a `components.SearchInput` / `Pagination` part is replaced by the default one (`slot: 'components.SearchInput'`). (A throw in the `cell` function itself is [`DK_CALLBACK_FAILED`](#dk_callback_failed).)
 
 **Common causes.**
 

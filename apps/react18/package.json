@@ -1,0 +1,10 @@
+{
+  "name": "@datakable/react18-tests",
+  "private": true,
+  "description": "React 18 for the react18 vitest project (React 18 behaviours React 19 does not have, e.g. #25).",
+  "type": "module",
+  "devDependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  }
+}
