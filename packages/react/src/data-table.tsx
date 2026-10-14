@@ -569,13 +569,13 @@ function DataTableView(props: {
   // Worded unlike the visible parts ("No rows", "Searching…"), so a text query finds one element.
   const n = rowModel.filteredCount
   const count = `${n} row${n === 1 ? '' : 's'}`
-  const page = pager ? `age ${pager.pageIndex + 1} of ${Math.max(pager.pageCount, 1)}` : ''
+  const page = pager ? `${pager.pageIndex + 1} of ${Math.max(pager.pageCount, 1)}` : ''
   let said = ''
   if (searchState?.status === 'pending' || searchState?.status === 'searching') {
     said = 'Searching rows…'
   } else if (status === 'idle' && !loading) {
     // Server mode: `filteredCount` is the page's rows, so only the page (or "0 rows").
-    said = server && n ? `P${page}` : page ? `${count}, p${page}` : count
+    said = server && n ? `Page ${page}` : page ? `${count}, page ${page}` : count
   }
   const liveEl = useRef<HTMLDivElement>(null)
   const saidBefore = useRef<string | null>(null)
