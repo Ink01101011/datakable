@@ -208,6 +208,27 @@ describe('pagination() — clamp when the row count shrinks', () => {
     expect(t.canPrevPage()).toBe(true)
   })
 
+  it('an initialState pageIndex past the last page is clamped in state at creation (#19)', () => {
+    const t = createTable({
+      data: people(45),
+      features: [pagination({ pageSize: 20 })],
+      initialState: { pagination: { pageIndex: 99, pageSize: 20 } },
+    })
+    expect(t.getState().pagination).toEqual({ pageIndex: 2, pageSize: 20 })
+    expect(ids(t)).toEqual([40, 41, 42, 43, 44])
+    expect(api(t).getPageCount?.()).toBe(3)
+  })
+
+  it('a server-mode initialState pageIndex past rowCount is clamped at creation (#19)', () => {
+    const t = createTable({
+      data: people(10),
+      rowCount: 30,
+      features: [pagination({ mode: 'server' })],
+      initialState: { pagination: { pageIndex: 8, pageSize: 10 } },
+    })
+    expect(t.getState().pagination.pageIndex).toBe(2)
+  })
+
   it('async ingest that shrinks the data is clamped too', async () => {
     let async = false
     const t = createTable({
