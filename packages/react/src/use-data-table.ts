@@ -425,8 +425,9 @@ function checkHydration(inst: Instance) {
  * are new on every render (`data: [{ … }]` with nested objects) re-ingest but never hang.
  */
 function sync(inst: Instance, options: Options, selfCaused: boolean) {
-  // Written out (not a module-level flag) so bundlers fold it while parsing (§8.2).
-  if (process.env.NODE_ENV !== 'production') checkUnstable(inst, options)
+  // Written out (not a module-level flag) so bundlers fold it while parsing (§8.2). The re-render
+  // a sync causes is not counted: under `<DataTable columns>` it reuses the props (count reset).
+  if (process.env.NODE_ENV !== 'production' && !selfCaused) checkUnstable(inst, options)
   const prev = inst.synced
   if (!selfCaused) inst.selfData = false
   let partial: Record<string, unknown> | undefined

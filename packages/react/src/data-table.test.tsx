@@ -251,6 +251,44 @@ describe('<DataTable /> inline data with new row objects (R11 BUG: render loop)'
   })
 })
 
+describe('<DataTable columns={inline array} /> (#23)', () => {
+  it('reports DK_UNSTABLE_COLUMNS once after two parent re-renders, like useDataTable', () => {
+    const codes: string[] = []
+    let rerender = () => {}
+    function Parent() {
+      const [n, setN] = useState(0)
+      rerender = () => setN(n + 1)
+      return (
+        <DataTable
+          data={users}
+          rowKey="id"
+          columns={[{ key: 'id' }, { key: 'name' }]}
+          onDiagnostic={(d) => codes.push(d.code)}
+        />
+      )
+    }
+    render(<Parent />)
+    act(() => rerender())
+    expect(codes).not.toContain('DK_UNSTABLE_COLUMNS')
+    for (let i = 0; i < 4; i++) act(() => rerender())
+    expect(codes.filter((c) => c === 'DK_UNSTABLE_COLUMNS')).toHaveLength(1)
+  })
+
+  it('stable columns across parent re-renders report nothing', () => {
+    const codes: string[] = []
+    const columns = [{ key: 'id' }, { key: 'name' }] as const
+    let rerender = () => {}
+    function Parent() {
+      const [n, setN] = useState(0)
+      rerender = () => setN(n + 1)
+      return <DataTable data={users} columns={columns} onDiagnostic={(d) => codes.push(d.code)} />
+    }
+    render(<Parent />)
+    for (let i = 0; i < 4; i++) act(() => rerender())
+    expect(codes.filter((c) => c.startsWith('DK_UNSTABLE'))).toEqual([])
+  })
+})
+
 describe('<DataTable /> states (status + isInitialLoad, §6.6, USER DECISION)', () => {
   /** A fetcher whose results the test resolves. */
   function deferredFetcher() {
