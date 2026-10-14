@@ -16,6 +16,10 @@ tests, scripts), it needs Node.js `>=18.18`. It depends on
 [`@datakable/core`](../../packages/core/README.md), which are installed with it and always share
 its version.
 
+The types need **TypeScript `>=5.4`** (they use `NoInfer`). An older TypeScript reports
+`Cannot find name 'NoInfer'` with `skipLibCheck: false`; with `skipLibCheck: true` the affected
+types silently become `any`. Upgrade TypeScript to 5.4 or later.
+
 ## The zero-config table
 
 Pass your rows to `<DataTable />`. The columns are derived from the data (the keys of the first 50

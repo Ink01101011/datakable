@@ -1,7 +1,8 @@
 // Type-leak guard (spec §12): compile a tiny consumer project against the BUILT packages with
-// `skipLibCheck: false`, under `moduleResolution` node16 and bundler. Fails when a published
-// `.d.ts` references a type the consumer cannot resolve (e.g. ex-search -> ex-flow), uses an
-// invalid module augmentation, or when public types (catalog codes, entry points) break.
+// `skipLibCheck: false`, under `moduleResolution` node16 and bundler, with the current TypeScript
+// and the minimum supported one (#32). Fails when a published `.d.ts` references a type the
+// consumer cannot resolve (e.g. ex-search -> ex-flow), uses an invalid module augmentation, needs
+// a newer TypeScript than documented, or when public types (catalog codes, entry points) break.
 // Run after `pnpm build`.
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
@@ -86,7 +87,14 @@ export { allMessages, core, d, defineFeature, fromCore, useDataTable }
 `,
 )
 
-const tsc = createRequire(join(root, 'package.json')).resolve('typescript/bin/tsc')
+const req = createRequire(join(root, 'package.json'))
+// The current TypeScript, and the minimum the docs promise (getting-started, READMEs: TS >= 5.4,
+// #32): the root devDependency `typescript-min` pins it, so a published .d.ts that needs a newer
+// TS (as `NoInfer` needs 5.4) fails here instead of in a consumer's build.
+const compilers = ['typescript', 'typescript-min'].map((pkg) => ({
+  tsc: req.resolve(`${pkg}/bin/tsc`),
+  version: req(`${pkg}/package.json`).version,
+}))
 const configs = {
   node16: { module: 'node16', moduleResolution: 'node16' },
   bundler: { module: 'esnext', moduleResolution: 'bundler' },
@@ -110,16 +118,19 @@ for (const [name, resolution] of Object.entries(configs)) {
       files: ['index.ts'],
     }),
   )
-  try {
-    execFileSync(process.execPath, [tsc, '-p', `tsconfig.${name}.json`], {
-      cwd: dir,
-      stdio: 'pipe',
-    })
-    console.log(`check:consumer: ${name} consumer compiles with skipLibCheck: false`)
-  } catch (e) {
-    failed = true
-    console.error(`check:consumer: ${name} consumer FAILED with skipLibCheck: false`)
-    console.error(String(e.stdout))
+  for (const { tsc, version } of compilers) {
+    const label = `${name} consumer (TypeScript ${version})`
+    try {
+      execFileSync(process.execPath, [tsc, '-p', `tsconfig.${name}.json`], {
+        cwd: dir,
+        stdio: 'pipe',
+      })
+      console.log(`check:consumer: ${label} compiles with skipLibCheck: false`)
+    } catch (e) {
+      failed = true
+      console.error(`check:consumer: ${label} FAILED with skipLibCheck: false`)
+      console.error(String(e.stdout))
+    }
   }
 }
 if (failed) process.exit(1)

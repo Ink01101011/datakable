@@ -21,7 +21,7 @@ React `>=18`. The package is ESM + CJS with types, one file per module: a bundle
 `"use client"`, so `createTable` also works on the server. With the Next.js app router, a server
 component can render `<DataTable />` with plain data props; call `useDataTable`, or pass functions
 (cells, features, a fetcher), from a client component (a `'use client'` file). In Node.js (SSR,
-tests) it needs Node `>=18.18`.
+tests) it needs Node `>=18.18`. The types need TypeScript `>=5.4`.
 
 **Bundler requirement:** DataKable reads `process.env.NODE_ENV` to strip development-only checks
 and message text. Vite, webpack, Next.js, Rollup (`@rollup/plugin-replace`) and esbuild

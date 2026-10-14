@@ -17,7 +17,7 @@ constant and remove development-only checks, tracing and message text from produ
 Vite, webpack, Next.js, Rollup (`@rollup/plugin-replace`) and esbuild
 (`--define:process.env.NODE_ENV='"production"'`) all replace it. Without a replacement, unbundled
 browser code throws `ReferenceError: process is not defined`, as React and Redux do. Node needs
-nothing beyond Node.js `>=18.18`.
+nothing beyond Node.js `>=18.18`. The types need TypeScript `>=5.4`.
 
 ## Contents
 

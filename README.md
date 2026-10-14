@@ -22,6 +22,8 @@ Type-safe generic data table for React: zero-config by default, headless when yo
 npm install datakable react
 ```
 
+Requires React `>=18`; the types need TypeScript `>=5.4`; in Node.js (SSR, tests), Node `>=18.18`.
+
 ```tsx
 import { useDataTable } from 'datakable'
 
