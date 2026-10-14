@@ -139,7 +139,7 @@ What the fetcher resolves with (or returns synchronously).
 | Field | Type | |
 | --- | --- | --- |
 | `rows` | `readonly T[]` | the rows to show (with a schema: raw rows, validated like `data`) |
-| `rowCount` | `number` (optional) | the total number of matching rows on the server. Required with server-mode pagination, which counts pages as `ceil(rowCount / pageSize)`; otherwise it defaults to `rows.length` |
+| `rowCount` | `number` (optional) | the total number of matching rows on the server. Required with server-mode pagination, which counts pages as `ceil(rowCount / pageSize)`; otherwise it defaults to `rows.length`. The row model's counts stay the page's length ([Counting rows in server mode](#counting-rows-in-server-mode)) |
 
 ### Changing the fetcher
 
@@ -318,6 +318,44 @@ table.subscribe((state, prev) => {
 The `rowCount` option has no effect with a fetcher (the count comes from the fetcher result) or
 without server-mode pagination; both are reported as `DK_OPTION_NO_EFFECT` in development.
 
+## Counting rows in server mode
+
+The row model counts the rows the table holds. In server mode that is the page the server
+returned: `filteredCount` and `totalCount` are both the page's length, not the number of matching
+rows on the server (the table never sees those rows). The server's total is the `rowCount` of the
+fetcher result (or the `rowCount` option without a fetcher); server-mode pagination uses it for
+`getPageCount()`. For "N results", keep it from the result:
+
+```ts
+import { createTable, type FetchParams, type FetchResult } from '@datakable/core'
+import { pagination } from '@datakable/core/pagination'
+import { withFetcher } from '@datakable/core/server'
+
+type Order = { id: string; total: number }
+declare function fetchOrders(params: FetchParams): Promise<FetchResult<Order>>
+
+// The server's total for "N results": the row model only counts the rows the table holds.
+let matching = 0
+
+const table = createTable({
+  rowKey: 'id',
+  features: [pagination({ mode: 'server', pageSize: 20 })],
+  fetcher: withFetcher(async (params: FetchParams) => {
+    const result = await fetchOrders(params)
+    if (!params.signal.aborted) matching = result.rowCount ?? result.rows.length
+    return result
+  }),
+})
+
+// Once the first page is applied (the fetcher runs at creation):
+table.subscribe(() => {
+  const { rows, filteredCount, totalCount, status } = table.getRowModel()
+  if (status !== 'idle') return
+  console.log(rows.length, filteredCount, totalCount) // 20 20 20: the current page
+  console.log(matching, table.getPageCount()) // 5000 250: the server's total and its pages
+})
+```
+
 ## Search in server mode
 
 `search({ mode: 'server' })` changes the typing defaults so that each keystroke does not send a
@@ -343,6 +381,9 @@ the server matches the query. Details in [Search](search.md).
   [`DK_FETCH_FAILED`](../how-to-fix/errors.md#dk_fetch_failed). Show a retry that calls `refetch()`.
 - **Server-mode pagination without a fetcher and without `rowCount`** shows one page:
   [`DK_ROW_COUNT_MISSING`](../how-to-fix/errors.md#dk_row_count_missing).
+- **Reading `filteredCount` as the server's total** — in server mode it is the length of the
+  current page; keep the fetcher result's `rowCount`
+  ([Counting rows in server mode](#counting-rows-in-server-mode)).
 - **Superseded requests** are reported as [`DK_FETCH_ABORTED`](../how-to-fix/errors.md#dk_fetch_aborted)
   (info): a newer request replaced them, which is expected while the user types or pages quickly.
 

@@ -2,7 +2,7 @@
 
 DataKable checks your columns against your row type at compile time. TypeScript cannot be made to
 print a custom message for these checks, so the errors come out in TypeScript's own words. This
-page shows the six errors you are most likely to meet, what TypeScript prints for each, which line
+page shows the seven errors you are most likely to meet, what TypeScript prints for each, which line
 to read, and how to fix it. Every example below is compiled in CI with `// @ts-expect-error` on
 the failing line, and every output is what TypeScript prints for it.
 
@@ -34,6 +34,7 @@ The output is from TypeScript 6.0, for columns typed `ColumnDef<User, ReactNode>
 | [4](#4-object-column-without-cell-or-format) | `{ key: 'address' }` | `Property 'format' is missing … 'NeedsFormat<…>'` |
 | [5](#5-function-column-without-cell-or-format) | `{ key: 'onClick' }` | `Property 'format' is missing … 'NeedsFormat<() => void>'` |
 | [6](#6-rowkey-is-not-a-path-of-the-row) | `rowKey: 'nope'` | `Type '"nope"' is not assignable to type '"id" \| …'` |
+| [7](#7-features-with-only-the-row-type-given) | `createTable<User>({ features: [sorting()] })` | `Type '"sorting"' is not assignable to type '"columnFilters"'` |
 
 ## 1. Typo in `key`
 
@@ -211,6 +212,59 @@ every path.
 
 **Fix:** use a path whose value is unique per row (usually `'id'`), or pass a function
 `(row) => string | number`.
+
+## 7. `features` with only the row type given
+
+```ts
+import { createTable, sorting } from 'datakable'
+import type { User } from './1-user'
+
+declare const users: User[]
+
+export const table = createTable<User>({
+  data: users,
+  rowKey: 'id',
+  // @ts-expect-error TS2322: with only User given, `features` must be the default preset
+  features: [sorting()],
+})
+```
+
+```text
+error TS…: Type 'Feature<"sorting", SortingTypes>' is not assignable to type 'Feature<"columnFilters", ColumnFiltersTypes>'…
+  Types of property 'name' are incompatible.
+    Type '"sorting"' is not assignable to type '"columnFilters"'.
+```
+
+The code is TS2322 (TS2375 with `exactOptionalPropertyTypes`). TypeScript has no partial
+inference: once you give `createTable` a type argument, every type argument you leave out takes its
+default instead of being inferred. The features' default is the preset of `datakable`, so
+`features` must be that tuple, and TypeScript compares your first feature with its first one,
+`columnFilters`. With `@datakable/core` (whose default is no features) the target type is `never`.
+`useDataTable<User>({ features })` does the same.
+
+**Fix:** give no type argument and let `data` (typed `User[]`) carry the row type, or give the
+features' type as the third type argument:
+
+```ts
+import { createTable, sorting } from 'datakable'
+import type { User } from './1-user'
+
+declare const users: User[]
+
+// Fix 1: give no type argument; User is inferred from `data` and the features from `features`.
+export const inferred = createTable({ data: users, rowKey: 'id', features: [sorting()] })
+
+// Fix 2: keep the row type, and give the features' type as the third type argument.
+const features = [sorting()] as const
+export const explicit = createTable<User, never, typeof features>({
+  data: users,
+  rowKey: 'id',
+  features,
+})
+
+inferred.toggleSort('age')
+explicit.toggleSort('age')
+```
 
 ## Hover help
 
