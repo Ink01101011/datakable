@@ -181,6 +181,27 @@ describe('setSearch / flushSearch outcomes without searchFn (R7: resolve when ap
 })
 
 describe('async searchFn (§6.3)', () => {
+  it("a restored 'searching' / 'pending' slice runs searchFn for its query, then 'idle' (#22)", async () => {
+    const m = manual()
+    const t = createTable({
+      data: users,
+      onDiagnostic,
+      rowKey: 'id',
+      columns: [{ key: 'name', search: 1 }],
+      features: [search<U>({ searchFn: withSearchFn(m.searchFn) })],
+      initialState: { search: { input: 'a', query: '', status: 'pending' } },
+    })
+    expect(slice(t).query).toBe('a')
+    await tick()
+    expect(m.searchFn).toHaveBeenCalledTimes(1)
+    expect(m.last().ctx.query).toBe('a')
+    expect(slice(t).status).toBe('searching')
+    m.last().resolve([users[1]])
+    await tick()
+    expect(slice(t)).toEqual({ input: 'a', query: 'a', status: 'idle' })
+    expect(t.getRowModel().rows.map((r) => r.original.id)).toEqual([1])
+  })
+
   it("'searching' keeps the previous results; the result is applied in its order", async () => {
     const m = manual()
     const t = make(m.searchFn)

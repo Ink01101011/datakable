@@ -24,6 +24,7 @@ import {
 } from '@datakable/core'
 import {
   type ReactNode,
+  version as reactVersion,
   useCallback,
   useEffect,
   useInsertionEffect,
@@ -140,8 +141,9 @@ interface Instance {
   // Dev: DK_UNSTABLE_* bookkeeping.
   /** The options of the previous committed render. */
   seen: Options
-  unstable: Map<string, number>
-  warned: Set<string>
+  /** Development only (`checkUnstable`). */
+  unstable?: Map<string, number>
+  warned?: Set<string>
 }
 
 let registered = false
@@ -188,9 +190,22 @@ export function useDataTable<
 >
 export function useDataTable(options: Options): unknown {
   const ref = useRef<Instance | null>(null)
-  // Created during the first render (React keeps the ref across the StrictMode double render),
-  // deferred: its async work (fetcher, searchFn) starts in the mount effect, never on the server.
-  if (ref.current === null) ref.current = createInstance(options)
+  // Created during the first render, deferred: its async work (fetcher, searchFn) starts in the
+  // mount effect, never on the server.
+  if (ref.current === null) {
+    ref.current = createInstance(options)
+    // React 18's development StrictMode discards the first mount render, ref included (React 19
+    // keeps it): that render's table never mounts, so release it once the render is over. A
+    // render that commits after this (one that yielded) gets a new table at mount (`recreate`).
+    if (
+      process.env.NODE_ENV !== 'production' &&
+      typeof window !== 'undefined' &&
+      reactVersion.startsWith('18.')
+    ) {
+      const inst = ref.current
+      queueMicrotask(() => release(inst))
+    }
+  }
   const inst = ref.current
   const table = inst.table
   const [, rerender] = useReducer((n: number) => n + 1, 0)
@@ -249,6 +264,13 @@ export function useDataTable(options: Options): unknown {
   return view
 }
 
+/** Dev (React 18): destroys a table created in render unless it mounted (or was destroyed). */
+function release(inst: Instance) {
+  if (inst.mounted || inst.destroyed) return
+  inst.destroyed = true
+  inst.table.destroy()
+}
+
 function createInstance(options: Options): Instance {
   const inst: Instance = {
     table: undefined as unknown as AnyTable,
@@ -282,8 +304,8 @@ function createInstance(options: Options): Instance {
     server: undefined,
     hydrating: false,
     seen: options,
-    unstable: new Map(),
-    warned: new Set(),
+    // Development only (`checkUnstable`): no Map / Set per table in production.
+    ...(process.env.NODE_ENV !== 'production' ? { unstable: new Map(), warned: new Set() } : {}),
   }
   // The version checks are development-only (§8.5): production bundles no registry.
   if (process.env.NODE_ENV !== 'production' && !registered) {
@@ -408,8 +430,9 @@ function checkHydration(inst: Instance) {
  * are new on every render (`data: [{ … }]` with nested objects) re-ingest but never hang.
  */
 function sync(inst: Instance, options: Options, selfCaused: boolean) {
-  // Written out (not a module-level flag) so bundlers fold it while parsing (§8.2).
-  if (process.env.NODE_ENV !== 'production') checkUnstable(inst, options)
+  // Written out (not a module-level flag) so bundlers fold it while parsing (§8.2). The re-render
+  // a sync causes is not counted: under `<DataTable columns>` it reuses the props (count reset).
+  if (process.env.NODE_ENV !== 'production' && !selfCaused) checkUnstable(inst, options)
   const prev = inst.synced
   if (!selfCaused) inst.selfData = false
   let partial: Record<string, unknown> | undefined
@@ -502,31 +525,15 @@ function sameItems(a: unknown, b: unknown): boolean {
   return true
 }
 
-/**
- * Two arrays of equal rows: each pair the same reference, or objects with the same own keys and
- * `Object.is`-equal values (`data: rows.map((r) => ({ ...r }))` recomputed in a re-render).
- */
-function sameRows(a: unknown, b: unknown): boolean {
-  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false
-  for (let i = 0; i < a.length; i++) {
-    const x: unknown = a[i]
-    const y: unknown = b[i]
-    if (Object.is(x, y)) continue
-    if (!isObject(x) || !isObject(y)) return false
-    const keys = Object.keys(x)
-    if (keys.length !== Object.keys(y).length) return false
-    for (const k of keys) if (!Object.hasOwn(y, k) || !Object.is(x[k], y[k])) return false
-  }
-  return true
-}
-
 const loose = (v: unknown) => typeof v === 'function' || isObject(v)
 
 /**
- * Column arrays of the same shape: same length, same keys per column and equal primitive values;
- * functions and nested objects (`format`, `cell`, `filter`, …) may be new references.
+ * Two arrays of equal items: each pair the same reference, or objects with the same own keys and
+ * `Object.is`-equal values. Rows (`data: rows.map((r) => ({ ...r }))` recomputed in a re-render):
+ * exactly that. Columns (`shape`): equal primitive values, while functions and nested objects
+ * (`format`, `cell`, `filter`, …) may be new references of the same type.
  */
-function sameShape(a: unknown, b: unknown): boolean {
+function sameRows(a: unknown, b: unknown, shape?: boolean): boolean {
   if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false
   for (let i = 0; i < a.length; i++) {
     const x: unknown = a[i]
@@ -540,11 +547,14 @@ function sameShape(a: unknown, b: unknown): boolean {
       const vx = x[k]
       const vy = y[k]
       if (Object.is(vx, vy)) continue
-      if (!(loose(vx) && loose(vy) && typeof vx === typeof vy)) return false
+      if (!(shape && loose(vx) && loose(vy) && typeof vx === typeof vy)) return false
     }
   }
   return true
 }
+
+/** Column arrays of the same shape (see {@link sameRows}). */
+const sameShape = (a: unknown, b: unknown) => sameRows(a, b, true)
 
 // --- dev: DK_UNSTABLE_COLUMNS / DK_UNSTABLE_OPTION -----------------------------------------------
 
@@ -582,10 +592,12 @@ function checkUnstable(inst: Instance, options: Options) {
 }
 
 function track(inst: Instance, key: string, unstable: boolean, option = key) {
-  const n = unstable ? (inst.unstable.get(key) ?? 0) + 1 : 0
-  inst.unstable.set(key, n)
-  if (n < UNSTABLE_AFTER || inst.warned.has(key)) return
-  inst.warned.add(key)
+  const seen = inst.unstable as Map<string, number>
+  const warned = inst.warned as Set<string>
+  const n = unstable ? (seen.get(key) ?? 0) + 1 : 0
+  seen.set(key, n)
+  if (n < UNSTABLE_AFTER || warned.has(key)) return
+  warned.add(key)
   if (key === 'columns') emitTableDiagnostic(inst.table, 'DK_UNSTABLE_COLUMNS', { renders: n })
   else emitTableDiagnostic(inst.table, 'DK_UNSTABLE_OPTION', { option, renders: n })
 }

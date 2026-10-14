@@ -27,7 +27,7 @@ export interface RedactionOptions {
   redact?: RedactFn
   /** Ids / keys of `sensitive: true` columns: never logged at any level. */
   sensitiveColumns?: () => Iterable<string>
-  /** The `rowKey` column is sensitive: row keys are hashed at every level. */
+  /** The `rowKey` path is, is inside or contains a sensitive column: keys hashed at every level. */
   rowKeySensitive?: () => boolean
 }
 
@@ -117,7 +117,7 @@ function redactKey(r: Redactor, path: string, key: unknown): unknown {
 }
 
 function redactValue(r: Redactor, path: string, value: unknown, column?: string): unknown {
-  if (column !== undefined && r.sensitive.has(column)) return SENSITIVE
+  if (column !== undefined && underSensitive(r, column)) return SENSITIVE
   const c = custom(r, path, value)
   if (c !== undefined) return c
   return r.level === 'full' ? value : describeValue(value)
@@ -131,15 +131,21 @@ function issuePath(path: IssuePath | undefined): string {
   return path.map((s) => String(typeof s === 'object' && s !== null ? s.key : s)).join('.')
 }
 
+/** `a` and `b` are the same path or one is inside the other (`contact` ↔ `contact.email`). */
+export const pathsOverlap = (a: string, b: string): boolean =>
+  a === b || a.startsWith(`${b}.`) || b.startsWith(`${a}.`)
+
+/** `path` is, is inside or contains a sensitive column (#45). */
 function underSensitive(r: Redactor, path: string): boolean {
-  if (r.sensitive.size === 0) return false
-  for (const col of r.sensitive) if (path === col || path.startsWith(`${col}.`)) return true
+  for (const col of r.sensitive) if (pathsOverlap(path, col)) return true
   return false
 }
 
 /**
  * A schema issue as `{ path, message }`. Validators embed received values in their messages, so
- * under `'safe'` / `'keys'` (and for sensitive columns) the message is DataKable's own text.
+ * under `'safe'` / `'keys'` the message is DataKable's own text. So it is at every level when the
+ * table has a sensitive column: any message (a root-level refinement, another field's) may embed
+ * its value (#46).
  */
 export function scrubSchemaIssue(
   issue: unknown,
@@ -157,7 +163,7 @@ export function scrubSchemaIssue(
     path = ''
   }
   const own = `invalid value at ${path || '(root)'}`
-  if (underSensitive(r, path)) return { path, message: own }
+  if (r.sensitive.size > 0) return { path, message: own }
   const c = custom(r, fieldPath, i.message)
   if (c !== undefined) return { path, message: c }
   return { path, message: r.level === 'full' && typeof i.message === 'string' ? i.message : own }

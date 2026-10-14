@@ -6,6 +6,7 @@ import type { AnyFeature } from '../feature/types'
 import { search } from '../features/search/search'
 import { withSearchFn } from '../features/search/with-search-fn'
 import { sorting } from '../features/sorting/sorting'
+import { defineInterceptor } from '../intercept/define'
 import { createTable } from '../table/create-table'
 import { runJob, SLICE_MS } from './slice'
 
@@ -271,7 +272,7 @@ describe('search: sliced projection and matching (§6.3, §9.1)', () => {
   })
 
   it('a later query keeps showing the previous results while matching runs', async () => {
-    // Matching yields between 4096-item chunks: more rows than one chunk.
+    // Matching yields between chunks (16,384 cells / 2 columns = 8192 rows): more than one.
     const data = users(10_000)
     fastClock()
     const t = createTable({ data, columns, features: [search()], onDiagnostic })
@@ -369,7 +370,7 @@ describe('search: sliced projection and matching (§6.3, §9.1)', () => {
     await expect(destroyed).resolves.toEqual({ status: 'superseded' })
   })
 
-  it('matching in chunks equals one ex-search pass over every row (> 4096 rows)', async () => {
+  it('matching in chunks equals one ex-search pass over every row (more than one chunk)', async () => {
     vi.unstubAllGlobals() // synchronous (SSR) run: same chunked code, no slicing
     const data = users(10_000)
     const t = createTable({ data, columns, features: [search()] })
@@ -394,6 +395,68 @@ describe('search: sliced projection and matching (§6.3, §9.1)', () => {
       .map((h) => h.i)
     expect(got.filteredCount).toBe(expected.length)
     expect(at(got)).toEqual(expected.slice(0, got.rows.length))
+  })
+
+  it('a slow formatted column is formatted in time-sliced batches, each row once (#40)', async () => {
+    // Dates and a `format` that throws on every 7th row (a date column is searched once it has a
+    // weight, #27).
+    const data = Array.from({ length: 3000 }, (_, i) => ({
+      id: i,
+      name: `name ${i}`,
+      when: new Date(Date.UTC(2020, 0, 1 + (i % 365))),
+    }))
+    const format = vi.fn((d: Date) => {
+      if (d.getUTCDate() % 7 === 0) throw new RangeError('bad day')
+      return d.toISOString().slice(0, 10)
+    })
+    const cols = [
+      { key: 'name' as const, search: 1 },
+      { key: 'when' as const, search: 1, format },
+    ]
+    const sync = createTable({ data, columns: cols, features: [search()] })
+    sync.getRowModel()
+    await sync.setSearch('2020-03-14')
+    const expected = at(sync.getRowModel())
+    expect(expected.length).toBeGreaterThan(0)
+    format.mockClear()
+
+    const batches: number[] = []
+    fastClock() // every batch ends the slice
+    const t = createTable({
+      data,
+      columns: cols,
+      features: [search()],
+      onDiagnostic,
+      interceptors: [
+        defineInterceptor({
+          name: 'format-batches',
+          on: ['column:batch'],
+          hot: true,
+          intercept: (c, next) => {
+            if (c.input.slot === 'format') batches.push(c.input.rows.length)
+            return next()
+          },
+        }),
+      ],
+    })
+    t.getRowModel()
+    const p = t.setSearch('2020-03-14')
+    expect(t.getRowModel().status).toBe('pending')
+    await settle()
+    await expect(p).resolves.toEqual({ status: 'applied' })
+    expect(at(t.getRowModel())).toEqual(expected)
+    // Not one 3000-row task: several batches covering every row exactly once.
+    expect(batches.length).toBeGreaterThan(1)
+    expect(batches.every((rows) => rows <= 512)).toBe(true)
+    expect(batches.reduce((a, b) => a + b, 0)).toBe(data.length)
+    expect(format).toHaveBeenCalledTimes(data.length)
+    // Failures are counted over the whole column: one diagnostic.
+    const failed = of('DK_CALLBACK_FAILED')
+    expect(failed).toHaveLength(1)
+    expect(failed[0]?.details).toMatchObject({
+      slot: 'columns[1].format',
+      count: data.filter((u) => u.when.getUTCDate() % 7 === 0).length,
+    })
   })
 
   it('explainRow replays reuse the built projection and leave the sliced job alone', async () => {

@@ -37,10 +37,11 @@ In development, the console prints one collapsed group per diagnostic:
   the code and the **problem**, computed from your data.
 - **where**: the exact place in your code or data:
   - `columns[1] (id "age")`: a column, by position in `options.columns` and id;
-  - `options.<path>`: an option. A feature's function option is written as an option path:
-    `options.searchFn` is `search({ searchFn })`, `options.sorting.algorithm` is
-    `sorting({ algorithm })`;
-  - `feature "sorting"`: a feature (or a plugin's `defineFeature`);
+  - `options.<path>`: an option of the table, e.g. `options.fetcher`, `options.rowCount`;
+    `options.searchFn` is `search({ searchFn })` (an unwrapped or failing `searchFn`);
+  - `feature "sorting"`: a feature (or a plugin's `defineFeature`), and the options of a feature
+    passed to its factory: `sorting({ algorithm })` is reported at `feature "sorting"`, with the
+    option's name in `details.path` (`'algorithm'`);
   - `row #2 (key 42)`: a row, by its index in `options.data` (the key is hashed under `'safe'`);
   - `interceptor "timing" on column:batch`: an interceptor on an operation;
   - `operation table.setPageSize`, `operation render:cell at columns[1].cell`: a public method, or
@@ -81,12 +82,18 @@ In development, the console prints one collapsed group per diagnostic:
 
 - The text builders are development-only (`process.env.NODE_ENV !== 'production'`): a production
   diagnostic keeps its `code`, `level`, `where` and `context`, and its `docs` URL carries
-  `?v=<version>&where=<where>`; `problem`, `impact` and `fix` are empty. Add
+  `?v=<version>&where=<where>`; `problem`, `impact` and `fix` are empty, and a detail that is a
+  sentence in development (`fallback`, `reason`, `problem`, `expected`) is a short key
+  (`fallback: 'cells-undefined'`, see
+  [Diagnostics have no text in production](diagnostics-without-text-in-production.md#what-production-keeps)). Add
   `import 'datakable/messages'` (or `@datakable/core/messages`) once to get the full text in
-  production.
+  production, in a module of the bundle that creates the tables (Next.js app router: a
+  `'use client'` module, not `app/layout.tsx`; Nuxt / Nitro: `installMessages(...allMessages)`,
+  see [Diagnostics have no text in production](diagnostics-without-text-in-production.md#fix-keep-the-text)).
 - **Development only** (absent from production bundles, never emitted there): the dev checks
   [`DK_DATA_MUTATED`](#dk_data_mutated),
   [`DK_CONTROLLED_NOT_FED_BACK`](#dk_controlled_not_fed_back),
+  [`DK_CONTROLLED_SLICE_DROPPED`](#dk_controlled_slice_dropped),
   [`DK_CALLBACK_BAD_RETURN`](#dk_callback_bad_return),
   [`DK_FEATURE_BAD_OUTPUT`](#dk_feature_bad_output),
   [`DK_FEATURE_MUTATED_INPUT`](#dk_feature_mutated_input),
@@ -119,13 +126,16 @@ text, `toJSON()` and every sink):
 | `'keys'` | `'safe'` + raw row-key values | development |
 | `'full'` | `'keys'` + cell values | — (warns in production: [`DK_UNSAFE_REDACTION`](#dk_unsafe_redaction)) |
 
-- A column with `sensitive: true` is never logged, at any level; a `rowKey` column that is
-  sensitive is hashed at every level. A function `redact: (path, value) => string | undefined` adds
+- A column with `sensitive: true` (and any column inside it) is never logged, at any level; row
+  keys are hashed at every level when the `rowKey` path is a sensitive column, points into one or
+  contains one. A function `redact: (path, value) => string | undefined` adds
   your own rules.
 - **Row-key hashes are pseudonymisation, not anonymisation.** They are unsalted 32-bit FNV-1a
   hashes: anyone who knows a key can hash it and find its diagnostics, and short or enumerable keys
   (sequential ids, emails from a known list) can be recovered by hashing candidates. Treat hashed
   diagnostics as personal data wherever the keys are.
+- Schema issue messages are replaced by DataKable's own text under `'safe'` and `'keys'`, and at
+  every level when the table has a `sensitive` column (a message may quote its value).
 - Thrown errors are logged as `error.name` (and `code`) only: messages of validators, fetchers and
   engines embed values. The error itself is `context.cause`, passed to `onDiagnostic` only (never
   to the console or `toJSON()`). Schema issue messages are replaced by the issue path and
@@ -179,6 +189,7 @@ To trace a production table, install it: `createTable({ interceptors: [tracer()]
 | [`DK_SORT_COMPARATOR_INVALID`](#dk_sort_comparator_invalid) | warn | Features |
 | [`DK_SORT_STRATEGY`](#dk_sort_strategy) | info | Features |
 | [`DK_SEARCH_FAILED`](#dk_search_failed) | error | Features |
+| [`DK_SEARCH_COLUMN_SKIPPED`](#dk_search_column_skipped) | info | Features |
 | [`DK_INVALID_PAGINATION`](#dk_invalid_pagination) | warn | Features |
 | [`DK_INVALID_VALIDITY`](#dk_invalid_validity) | warn | Features |
 | [`DK_FETCH_FAILED`](#dk_fetch_failed) | error | Async |
@@ -205,6 +216,7 @@ To trace a production table, install it: `createTable({ interceptors: [tracer()]
 | [`DK_FEATURE_INCOMPATIBLE`](#dk_feature_incompatible) | error | Options and config |
 | [`DK_CONTROLLED_WITHOUT_HANDLER`](#dk_controlled_without_handler) | warn | Options and config |
 | [`DK_CONTROLLED_NOT_FED_BACK`](#dk_controlled_not_fed_back) | warn | Options and config |
+| [`DK_CONTROLLED_SLICE_DROPPED`](#dk_controlled_slice_dropped) | warn | Options and config |
 | [`DK_UNSTABLE_COLUMNS`](#dk_unstable_columns) | warn | Options and config |
 | [`DK_UNSTABLE_OPTION`](#dk_unstable_option) | warn | Options and config |
 | [`DK_STATE_UNKNOWN_KEY`](#dk_state_unknown_key) | warn | Options and config |
@@ -215,6 +227,7 @@ To trace a production table, install it: `createTable({ interceptors: [tracer()]
 | [`DK_RENDER_FAILED`](#dk_render_failed) | error | Lifecycle and SSR |
 | [`DK_DEPRECATED`](#dk_deprecated) | warn | Versions |
 | [`DK_DUPLICATE_CORE`](#dk_duplicate_core) | error | Versions |
+| [`DK_DUPLICATE_CORE_SAME_VERSION`](#dk_duplicate_core_same_version) | info | Versions |
 | [`DK_VERSION_MISMATCH`](#dk_version_mismatch) | warn | Versions |
 | [`DK_DEP_INCOMPATIBLE`](#dk_dep_incompatible) | warn | Versions |
 | [`DK_ENV_FALLBACK`](#dk_env_fallback) | info | Environment and performance |
@@ -468,7 +481,7 @@ prints (development console):
 
 `warn` · fault test: [pipeline.test.ts](../../packages/core/src/pipeline/pipeline.test.ts)
 
-**Problem.** Cells of a column hold objects, arrays or functions, which the default formatter cannot turn into text. Those cells render `''` and match no search.
+**Problem.** Cells of a column hold objects, arrays or functions, which the default formatter cannot turn into text. Those cells render `''` and match no search. Reported once per column and data: when the column is first searched (`count` over every row), or when `<DataTable />` renders such a cell (`count` over the rendered rows).
 
 **Common causes.**
 
@@ -494,7 +507,10 @@ const users: Record<string, unknown>[] = [
 // `address` is an object: the default formatter cannot turn it into text.
 const table = createTable({
   data: users,
-  columns: [{ key: 'name' }, { key: 'address' }],
+  columns: [
+    { key: 'name', search: 1 },
+    { key: 'address', search: 1 },
+  ],
   features: [search()],
 })
 await table.setSearch('london') // matches nothing: the address cells are ''
@@ -818,6 +834,49 @@ prints (development console):
           2. remove debug: true from sorting() to stop these reports
   docs    https://github.com/Ink01101011/datakable/blob/main/docs/errors.md#dk_sort_strategy
   context trigger=api:toggleSort run=1 phase=client
+```
+
+### DK_SEARCH_COLUMN_SKIPPED
+
+`info` · fault test: [search.test.ts](../../packages/core/src/features/search/search.test.ts)
+
+**Problem.** No column declares a `search` weight, so client search covers only the columns of strings, numbers and booleans (#27). This column holds dates, arrays or other objects and is not searched. Development builds only, once per data and columns, when the first search builds its matcher.
+
+**Common causes.**
+
+- Zero-config columns (no `columns` option) over rows with a `Date`, an array or a nested object.
+- `columns` without any `search` weight, one of them a date or array column.
+
+**Fix.**
+
+- Give the column a `search` weight, and give one to every other column to search: once a column declares a weight, only weighted columns are searched.
+- Add a `format` to that column to choose the text it is matched by (by default dates match their `toLocaleString()`, arrays their items joined by `', '`).
+
+**Example.**
+
+```ts
+import { createTable, search } from '@datakable/core'
+
+const users = [
+  { id: 1, name: 'Ada', joined: new Date(Date.UTC(2020, 0, 15)) },
+  { id: 2, name: 'Grace', joined: new Date(Date.UTC(2024, 5, 1)) },
+]
+
+// Zero-config: no column declares a search weight, so `joined` (dates) is not searched.
+const table = createTable({ data: users, rowKey: 'id', features: [search()] })
+await table.setSearch('2020') // matches nothing: only `id` and `name` are searched
+```
+
+prints (development console):
+
+```text
+ℹ [DataKable table#1] DK_SEARCH_COLUMN_SKIPPED: column "joined" holds dates, arrays or other objects, and no column declares a search weight: such a column is not searched (only strings, numbers and booleans are)
+  where   columns[2] (id "joined")
+  impact  search does not match the values of this column
+  fix     1. give it a search weight to search it: columns: [{ key: 'joined', search: 1 }, …], and give one to every other column to search (once a column declares a weight, only weighted columns are searched)
+          2. to choose the text it matches, add format: (value) => string to columns[2] (by default dates match their toLocaleString(), arrays their items joined by ", ")
+  docs    https://github.com/Ink01101011/datakable/blob/main/docs/errors.md#dk_search_column_skipped
+  context trigger=api:setSearch run=1 phase=client
 ```
 
 ### DK_SEARCH_FAILED
@@ -2035,6 +2094,67 @@ prints (development console):
   context trigger=api:toggleSort run=0 phase=client
 ```
 
+### DK_CONTROLLED_SLICE_DROPPED
+
+`warn` · development only · fault test: [create-table.test.ts](../../packages/core/src/table/create-table.test.ts)
+
+**Problem.** You own several slices of the state and fed a change back with only the slice that changed: `table.setOptions({ state: { sorting } })`. `setOptions` replaces the whole `state` option, so every slice you left out (here `pagination`) is no longer controlled: the table now changes it on its own, without asking `onStateChange`, and your copy goes stale. Reported in development only, when a feed-back (a change the table asked for) passes some slices and omits others. `state: {}`, a slice passed as `undefined`, and an owner that stops passing a slice outside a feed-back (React's `state` prop) are deliberate releases and stay silent.
+
+**Common causes.**
+
+- Copying the one-slice feed-back example (`setOptions({ state: { sorting } })`) into a table that controls two slices.
+- One store watcher per slice, each calling `setOptions({ state: { <its slice> } })` (Vue refs, signals).
+
+**Fix.**
+
+- Pass every controlled slice each time: `table.setOptions({ state: { ...current, sorting } })`.
+- To release a slice on purpose, pass it as `undefined`: `table.setOptions({ state: { sorting, pagination: undefined } })`.
+
+**Example.**
+
+```ts
+import {
+  createTable,
+  type PaginationState,
+  pagination,
+  type SortingState,
+  sorting,
+} from '@datakable/core'
+
+type User = { id: number; name: string }
+const users: User[] = [
+  { id: 1, name: 'Ada' },
+  { id: 2, name: 'Grace' },
+]
+
+let mine: { sorting: SortingState<User>; pagination: PaginationState } = {
+  sorting: { by: [] },
+  pagination: { pageIndex: 0, pageSize: 10 },
+}
+const table = createTable({
+  data: users,
+  features: [sorting(), pagination()],
+  state: mine,
+  onStateChange: (updater) => {
+    mine = { ...mine, ...updater(mine) }
+    table.setOptions({ state: { sorting: mine.sorting } }) // pagination is left out
+  },
+})
+table.toggleSort('name')
+```
+
+prints (development console):
+
+```text
+⚠ [DataKable table#1] DK_CONTROLLED_SLICE_DROPPED: setOptions({ state }) fed back "sorting" without "pagination": setOptions replaces the whole state option, so "pagination" is no longer controlled
+  where   options.state.pagination
+  impact  the table now owns "pagination": its changes no longer reach onStateChange and your copy goes stale
+  fix     1. pass every controlled slice each time, e.g. table.setOptions({ state: { ...current, sorting } })
+          2. to release a slice on purpose, pass it as undefined: { pagination: undefined }
+  docs    https://github.com/Ink01101011/datakable/blob/main/docs/errors.md#dk_controlled_slice_dropped
+  context trigger=setOptions run=0 phase=client
+```
+
 ### DK_UNSTABLE_COLUMNS
 
 `warn` · `@datakable/react` · development only · fault test: [use-data-table.test.tsx](../../packages/react/src/use-data-table.test.tsx)
@@ -2289,15 +2409,17 @@ Needs a server render, then a hydration that differs from it; the injecting test
 
 `info` · fault test: [ssr.test.ts](../../packages/core/src/table/ssr.test.ts)
 
-**Problem.** Information: async work (the `fetcher`, or a `searchFn` for an initial query) does not run during a server render; it starts on the client after hydration. The server HTML has `status: 'pending'` (`<DataTable />` renders its Loading state).
+**Problem.** Information: async work (the `fetcher`, or a `searchFn` for an initial query) does not run during a server render; it starts on the client after hydration. The server HTML has `status: 'pending'`: with a fetcher and no rows yet, `<DataTable />` renders its Loading state; with `data` and a `searchFn`, it lists the rows unsearched until the `searchFn` answers in the browser.
 
 **Common causes.**
 
 - Server rendering a table with a `fetcher` and no `initialData`.
+- Server rendering a table with `data`, a `searchFn` and an initial query (from `initialState` or a controlled `search` slice).
 
 **Fix.**
 
 - Fetch on the server and pass the result as `initialData` (with `rowCount` for server pagination): the HTML has the rows, and hydration does not fetch again.
+- With `data` and a `searchFn`: use the built-in matching (no `searchFn`), which runs during the server render, or hide the unsearched rows while `data-status="pending"`.
 - Or accept the client-side loading state.
 
 **Example.**
@@ -2341,7 +2463,7 @@ prints (development console):
 
 `error` · `@datakable/react` · fault test: [data-table.fault.test.tsx](../../packages/react/src/data-table.fault.test.tsx)
 
-**Problem.** A React component rendered by the table threw. Inside a cell (a component returned by `cell` / `invalidCell`), only that cell renders `⚠` and everything else keeps working; outside the cells (a `components.Empty` / `Loading` / `Error` part), the body shows the Error state. (A throw in the `cell` function itself is [`DK_CALLBACK_FAILED`](#dk_callback_failed).)
+**Problem.** A React component rendered by the table threw. Inside a cell (a component returned by `cell` / `invalidCell`), only that cell renders `⚠` and everything else keeps working; outside the cells (a `components.Empty` / `Loading` / `Error` part), the body shows the Error state; a `components.SearchInput` / `Pagination` part is replaced by the default one (`slot: 'components.SearchInput'`). (A throw in the `cell` function itself is [`DK_CALLBACK_FAILED`](#dk_callback_failed).)
 
 **Common causes.**
 
@@ -2442,7 +2564,7 @@ prints (development console):
 
 `error` · development only · fault test: [versioning.test.ts](../../packages/core/src/versioning/versioning.test.ts)
 
-**Problem.** Two copies of `@datakable/core` are loaded in one page (detected through a global registry). Each table works with its own copy, but plugins built against the other copy may be ignored or fail registry checks, and the bundle ships core twice. One known false positive: a dev server's hot module reload that re-runs core reports it once.
+**Problem.** Two copies of `@datakable/core` of different versions are loaded in one page (detected through a global registry). Each table works with its own copy, but plugins built against the other copy may be ignored or fail registry checks, and the bundle ships core twice. Copies of one version (ESM and CJS builds, a Next.js dev server's layers, a hot reload) are not this error: they report [`DK_DUPLICATE_CORE_SAME_VERSION`](#dk_duplicate_core_same_version), an info.
 
 **Common causes.**
 
@@ -2466,6 +2588,40 @@ Needs two copies of core in one bundle (the test loads core twice). Built from i
           2. dedupe it: pnpm dedupe (npm dedupe), and align @datakable/react and datakable to one version
           3. or force one version: "pnpm": { "overrides": { "@datakable/core": "<version>" } } in package.json (npm "overrides", yarn "resolutions")
   docs    https://github.com/Ink01101011/datakable/blob/main/docs/errors.md#dk_duplicate_core
+  context trigger=init run=0 phase=client
+```
+
+### DK_DUPLICATE_CORE_SAME_VERSION
+
+`info` · development only · once per session · fault test: [versioning.test.ts](../../packages/core/src/versioning/versioning.test.ts)
+
+**Problem.** `@datakable/core` of one version was evaluated more than once in one process. Tables work, each with its own copy, and `strict: true` does not throw it. Two things differ between the copies: a `DatakableError` from one is not an `instanceof` the other's classes, and a browser bundle that holds both ships core twice.
+
+**Common causes.**
+
+- Node code that both `import`s and `require`s `@datakable/core`: the ESM and the CJS build each load.
+- A Next.js dev server: the RSC, SSR and route-handler layers each load core.
+- A dev server's hot reload that re-runs core.
+- Two installs of the same version (a package manager that could not dedupe them).
+
+**Fix.**
+
+- Compare errors by their `.code` (`err.code === 'DK_INVALID_OPTION'`), not `instanceof`.
+- In one Node process, load `@datakable/core` one way: `import` or `require`.
+- In a browser bundle, find the second install: `pnpm why @datakable/core`, then `pnpm dedupe`.
+
+**Example.**
+
+Needs core evaluated twice in one process (the test loads it three times). Built from its details:
+
+```text
+ℹ [DataKable table#1] DK_DUPLICATE_CORE_SAME_VERSION: @datakable/core 1.2.0 is loaded 2 times, all this version: its ESM and CJS builds, a bundler's layers (Next.js dev: RSC, SSR, route handlers), a hot reload, or two installs of it
+  where   operation createTable
+  impact  tables work, each with its own copy; a DatakableError thrown by one copy is not an instanceof the classes of the other, and a browser bundle with both ships core twice
+  fix     1. compare errors by their .code (e.g. err.code === "DK_INVALID_OPTION"), not instanceof
+          2. mixed import and require of @datakable/core in one Node process: use one of them
+          3. in a browser bundle, find the second install: pnpm why @datakable/core, then pnpm dedupe
+  docs    https://github.com/Ink01101011/datakable/blob/main/docs/errors.md#dk_duplicate_core_same_version
   context trigger=init run=0 phase=client
 ```
 
@@ -2575,7 +2731,7 @@ prints (development console):
 
 `info` · fault test: [env.test.ts](../../packages/core/src/pipeline/env.test.ts)
 
-**Problem.** Information from the tracer: a pipeline step took longer than one task's budget (50 ms), so the page could not respond to input while it ran. Reported with the step, the time and the row count.
+**Problem.** Information from the tracer: a pipeline step took longer than one task's budget (50 ms), so the page could not respond to input while it ran. Reported with the step, the time and the row count. A step's time-sliced work (§9.1) runs in slices between pipeline runs; a slice over the budget is reported as `a time slice of the "<feature>" step took …` (`details.sliced`). When at least half of the time went to one column slot (a `format`, an accessor, a `filterFn` or `sortBy`), the hint names it: `…; 98 % of it in columns[0].format (column "name")` (`details.slot`, `column`, `share`), and the fix names that slot.
 
 **Common causes.**
 

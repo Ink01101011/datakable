@@ -56,7 +56,7 @@ export function initialSlices(
       out[f.name] = f.initialState()
     } catch (e) {
       out[f.name] = undefined
-      reportFailure(emit, f.name, 'initialState', 'the slice starts as undefined', e)
+      reportFailure(emit, f.name, 'initialState', 'slice-undefined', e)
     }
   }
   return given ? Object.assign(out, given) : out
@@ -87,7 +87,7 @@ export function installApis(features: readonly AnyFeature[], host: FeatureHost):
     try {
       api = f.createApi(ctx)
     } catch (e) {
-      reportFailure(host.emit, name, 'createApi', 'its API was not installed', e)
+      reportFailure(host.emit, name, 'createApi', 'api-not-installed', e)
       failed.push(name)
       continue
     }
@@ -155,7 +155,7 @@ function missingApi(failed: readonly string[], host: FeatureHost): object {
               feature,
               hook: 'createApi',
               method: key,
-              fallback: `table.${key}() did nothing (the API of ${failed.length === 1 ? 'that feature' : 'those features'} was not installed)`,
+              fallback: `${failed.length === 1 ? 'api' : 'apis'}-missing|${key}`,
             }),
           )
           return undefined

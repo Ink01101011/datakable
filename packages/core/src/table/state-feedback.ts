@@ -18,6 +18,12 @@ declare module '../diagnostics/catalog' {
       /** How long the owner had to feed it back. */
       waitedMs: number
     }
+    DK_CONTROLLED_SLICE_DROPPED: {
+      /** Controlled slices missing from the new `options.state`. */
+      slices: string[]
+      /** The slices that new `options.state` did pass. */
+      kept: string[]
+    }
   }
 }
 
@@ -41,6 +47,22 @@ export const stateFeedbackDiagnostics = DEV
             'createTable: table.setOptions({ state }))',
           `or move ${list(d.slices)} to initialState so the table owns it`,
           'if you reject the change on purpose, disable the control that asks for it instead',
+        ],
+      }),
+      defineDiagnostic({
+        code: 'DK_CONTROLLED_SLICE_DROPPED',
+        level: 'warn',
+        where: (d) => ({ kind: 'option', path: `state.${d.slices[0] ?? ''}` }),
+        problem: (d) =>
+          `setOptions({ state }) fed back ${list(d.kept)} without ${list(d.slices)}: setOptions ` +
+          `replaces the whole state option, so ${list(d.slices)} is no longer controlled`,
+        impact: (d) =>
+          `the table now owns ${list(d.slices)}: its changes no longer reach onStateChange and your ` +
+          'copy goes stale',
+        fix: (d) => [
+          'pass every controlled slice each time, e.g. table.setOptions({ state: { ...current, ' +
+            `${d.kept[0]} } })`,
+          `to release a slice on purpose, pass it as undefined: { ${d.slices[0]}: undefined }`,
         ],
       }),
     ]
@@ -68,6 +90,14 @@ export function createStateFeedbackCheck(emit: Emit) {
   let controlled: ReadonlySet<string> = new Set()
 
   function settle(nextState: TableState | undefined, nextControlled: ReadonlySet<string>) {
+    // A feed-back (an ask in flight or waiting) that passes some slices and omits others (#49).
+    if (nextState && nextState !== state && (asking.size > 0 || waiting.size > 0)) {
+      const kept = Object.keys(nextState)
+      const slices = [...controlled].filter((k) => !(k in nextState))
+      if (kept.length > 0 && slices.length > 0) {
+        emit('DK_CONTROLLED_SLICE_DROPPED', { slices, kept })
+      }
+    }
     state = nextState
     controlled = nextControlled
     for (const [k, before] of waiting) {

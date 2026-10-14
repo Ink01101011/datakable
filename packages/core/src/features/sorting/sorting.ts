@@ -53,6 +53,12 @@ export type SortingState<T> = { by: readonly SortEntry<T>[] }
 
 export type SortDirection = 'asc' | 'desc'
 
+/** Replaces the sort; an equal one keeps the slice (same reference, no notification, #21). */
+const setSort = (
+  ctx: { setState(u: (s: SortingState<unknown>) => SortingState<unknown>): void },
+  by: readonly SortEntry<unknown>[],
+) => ctx.setState((s) => (JSON.stringify(s.by) === JSON.stringify(by) ? s : { by: by.slice() }))
+
 export type SortingApi<T> = {
   /**
    * Cycles `id` asc → desc → none. Without `multi` the result is a single-column sort; with `multi`
@@ -219,7 +225,7 @@ export const sorting = (opts: SortingOptions = {}) => {
         api: 'Intl.Collator',
         feature: 'sorting',
         requested: ([] as string[]).concat(locale).join(', '),
-        fallback: `the runtime's collation for "${collator.resolvedOptions().locale}"`,
+        fallback: `collation|${collator.resolvedOptions().locale}`,
       })
     }
     return collator
@@ -324,8 +330,8 @@ export const sorting = (opts: SortingOptions = {}) => {
           else out.splice(i, 1)
           return { by: out }
         }),
-      setSorting: (by) => ctx.setState({ by: by.slice() }),
-      clearSorting: () => ctx.setState({ by: [] }),
+      setSorting: (by) => setSort(ctx, by),
+      clearSorting: () => setSort(ctx, []),
       getSortDirection: (id) => {
         const e = ctx.getState().by.find((x) => x.id === id)
         return e ? (e.desc ? 'desc' : 'asc') : false
@@ -380,10 +386,7 @@ export const sorting = (opts: SortingOptions = {}) => {
         typeof requested !== 'function' &&
         !(ALGORITHMS as readonly unknown[]).includes(requested)
       ) {
-        noEffect(
-          `${JSON.stringify(requested)} is not a sort algorithm (accepted: ${ALGORITHMS.join(', ')}, ` +
-            'or a function); auto was used',
-        )
+        noEffect(`not-algorithm|${JSON.stringify(requested)}`)
         requested = 'auto'
       }
       if (requested !== 'native' && exsorted === undefined) {
@@ -456,7 +459,7 @@ export const sorting = (opts: SortingOptions = {}) => {
           } catch (error) {
             if (error instanceof SortFnFailed) throw error
             reportCustom(true, error)
-            return native('the custom algorithm threw')
+            return native('custom-threw')
           }
           if (res instanceof Uint32Array && res.length === indices.length) {
             algorithm = 'custom'
@@ -464,7 +467,7 @@ export const sorting = (opts: SortingOptions = {}) => {
             return res
           }
           reportCustom(false, res)
-          return native('the custom algorithm returned a bad value')
+          return native('custom-bad')
         }
         if (exsorted === false) return native('exsorted unavailable')
         const by = fromColumn ? 'column sortAlgorithm' : 'sorting({ algorithm })'
@@ -477,20 +480,13 @@ export const sorting = (opts: SortingOptions = {}) => {
             try {
               const out = sortIntKeys(keys, want)
               algorithm = want
-              reason = `${by}, safe-integer keys`
+              reason = `int-keys|${by}`
               return out
             } catch {
-              noEffect(
-                `exsorted ${want}Sort could not sort these keys` +
-                  (want === 'counting' ? ' (key range above 1,000,000)' : '') +
-                  '; auto was used',
-              )
+              noEffect(`exsorted-${want === 'counting' ? 'range' : 'failed'}|${want}`)
             }
           } else if (needsIntKeys(want)) {
-            noEffect(
-              `${want} sorts a single column of safe integer keys (numbers or Dates, no sortFn); ` +
-                'auto was used',
-            )
+            noEffect(`needs-int-keys|${want}`)
           } else {
             algorithm = want
             reason = by
@@ -499,21 +495,17 @@ export const sorting = (opts: SortingOptions = {}) => {
         } else if (want === 'native') return native(by)
         if (!keys) {
           return native(
-            single
-              ? 'keys are not all safe integers'
-              : entries.length > 1
-                ? 'multi-column'
-                : 'custom sortFn',
+            single ? 'not-safe-int' : entries.length > 1 ? 'multi-column' : 'custom sortFn',
           )
         }
         const choice = chooseAuto(keys)
         algorithm = choice.algorithm
-        reason = `auto: ${ranked ? 'collation ranks of a string column, ' : ''}${choice.reason}`
+        reason = `auto-${ranked ? 'ranked-' : ''}${choice.reason}`
         return sortIntKeys(keys, choice.algorithm)
       }
       const native = (why: string) => {
         algorithm = 'native'
-        reason = ranked ? `${why}, strings as collation ranks` : why
+        reason = ranked ? `ranks|${why}` : why
         return sortWithComparator(indices, build(), 'native')
       }
       /** A custom algorithm threw (`threw`, `value` = the error) or returned a bad `value`. */
@@ -521,7 +513,7 @@ export const sorting = (opts: SortingOptions = {}) => {
         const slot = fromColumn
           ? `columns[${primary.col?.index}].sortAlgorithm`
           : 'sorting.algorithm'
-        const fallback = 'the rows were sorted with the native algorithm'
+        const fallback = 'sorted-native'
         if (!threw) {
           // The slot contract check is dev only (§3.4 slotContract); the fallback applies always.
           if (DEV) {
@@ -576,7 +568,7 @@ export const sorting = (opts: SortingOptions = {}) => {
               slot: `columns[${col.index}].sortFn`,
               column: col.id,
               count: 1,
-              fallback: 'the column was sorted with the default comparator',
+              fallback: 'sorted-default',
               ...(name === undefined ? {} : { errorName: name }),
             },
             { cause: e.error },

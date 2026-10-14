@@ -26,9 +26,25 @@
     "./dist/messages.cjs",
     "./dist/styles.css"
   ],
+  "engines": {
+    "node": ">=18.18.0"
+  },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "core": [
+        "./dist/core.d.ts"
+      ],
+      "messages": [
+        "./dist/messages.d.ts"
+      ],
+      "styles.css": [
+        "./dist/styles.css.d.ts"
+      ]
+    }
+  },
   "exports": {
     ".": {
       "import": {
@@ -60,17 +76,23 @@
         "default": "./dist/messages.cjs"
       }
     },
-    "./styles.css": "./dist/styles.css",
+    "./styles.css": {
+      "types": {
+        "import": "./dist/styles.css.d.ts",
+        "require": "./dist/styles.css.d.cts"
+      },
+      "default": "./dist/styles.css"
+    },
     "./package.json": "./package.json"
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && node ../../scripts/write-styles-dts.mjs",
     "dev": "tsup --watch",
     "typecheck": "tsc -p tsconfig.json",
-    "check:pkg": "publint --strict && attw --pack . --profile node16 --exclude-entrypoints styles.css"
+    "check:pkg": "publint --strict && attw --pack ."
   },
   "dependencies": {
     "@datakable/core": "workspace:^",

@@ -10,6 +10,7 @@ import {
   type InvalidRowsMode,
   keepDiagnostics,
   matchesSlot,
+  pipelineDiagnostics,
   type RowIssue,
   type RowModelStatus,
   type SearchStatus,
@@ -20,10 +21,12 @@ import {
 import {
   Component,
   type ComponentType,
+  type CSSProperties,
   type ReactNode,
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
 } from 'react'
 import {
   cellSlot,
@@ -34,7 +37,7 @@ import {
 import { type UseDataTableOptions, useDataTable } from './use-data-table'
 
 // The codes this module emits (bundlers keep the definitions; see core's `keepDiagnostics`).
-keepDiagnostics(renderDiagnostics, boundaryDiagnostics, slotDiagnostics)
+keepDiagnostics(renderDiagnostics, boundaryDiagnostics, slotDiagnostics, pipelineDiagnostics)
 
 // The ops its boundaries stand for (§3.4: `render:table`, `render:cell`). Registered at import:
 // the dist is one file per module (T37), so hook-only bundles (`useDataTable` without
@@ -61,6 +64,8 @@ export interface SearchInputProps {
   onSubmit(): void
   /** `clearSearch()` (Esc). */
   onClear(): void
+  /** The input's accessible name: `'Search <caption>'` with a text `caption`, else `'Search'`. */
+  label: string
 }
 
 /** Props of `components.Pagination` (the pagination feature's state and API). */
@@ -74,6 +79,8 @@ export interface PaginationProps {
   next(): void
   setPageIndex(index: number): void
   setPageSize(size: number): void
+  /** The pager's accessible name: `'<caption> pagination'` with a text `caption`, else `'Pagination'`. */
+  label: string
 }
 
 /** Props of `components.Empty`: shown when the table has loaded and has no rows to show. */
@@ -194,7 +201,6 @@ function ZeroConfig(props: DataTableOwnProps & { table?: undefined }) {
 /** Loose access to the installed features' APIs (the table is typed per feature set). */
 type Api = DataTableSource & {
   toggleSort?(id: string, opts?: { multi?: boolean }): void
-  getSortDirection?(id: string): 'asc' | 'desc' | false
   setSearch?(q: string): Promise<unknown>
   flushSearch?(): Promise<unknown>
   clearSearch?(): void
@@ -238,9 +244,18 @@ interface Failure {
   /** Bad return: what the contract expects and the type received. */
   expected?: string
   received?: string
+  /** A value the default formatter cannot render (`DK_UNRENDERABLE_VALUE`): its type. */
+  lost?: string
+  index?: number
 }
 
 const WARN = '⚠'
+/** A failed cell's content: the `⚠` with its text alternative (#60). One element for every cell. */
+const FAILED = (
+  <span role="img" aria-label="Could not display this value">
+    {WARN}
+  </span>
+)
 const BUSY: readonly RowModelStatus[] = ['validating', 'pending', 'searching', 'fetching']
 const LOADING: readonly RowModelStatus[] = ['validating', 'searching', 'fetching']
 
@@ -293,7 +308,7 @@ const tableOf = (view: object): object =>
 function report(table: object, failures: readonly Failure[]) {
   const bySlot = new Map<string, Failure[]>()
   for (const f of failures) {
-    const k = `${f.slot}\0${f.expected === undefined ? 'throw' : 'return'}`
+    const k = `${f.slot}\0${f.lost ? '' : f.expected === undefined ? 'throw' : 'return'}`
     const list = bySlot.get(k)
     if (list) list.push(f)
     else bySlot.set(k, [f])
@@ -301,9 +316,18 @@ function report(table: object, failures: readonly Failure[]) {
   for (const list of bySlot.values()) {
     const first = list[0] as Failure
     const rows = list.slice(0, 3).map((f) => f.row)
-    const fallback = 'those cells rendered ⚠'
+    const fallback = 'cells-warn' // prose key: 'those cells rendered ⚠'
     try {
-      if (first.expected === undefined) {
+      if (first.lost !== undefined) {
+        // Deduped by the table per column and data reference, like the column cache's report.
+        emitTableDiagnostic(table, 'DK_UNRENDERABLE_VALUE', {
+          column: first.column,
+          index: first.index as number,
+          count: list.length,
+          rows,
+          valueType: first.lost,
+        })
+      } else if (first.expected === undefined) {
         const e = first.error
         emitTableDiagnostic(
           table,
@@ -333,6 +357,15 @@ function report(table: object, failures: readonly Failure[]) {
       // Not a table made by createTable (a hand-made `table` prop): nothing to report to.
     }
   }
+}
+
+/**
+ * The value `defaultFormat` could not render in the current cell (an object, array or function,
+ * never `undefined`). One module-level callback: no closure per cell.
+ */
+let lost: unknown
+const onLost = (v: unknown) => {
+  lost = v
 }
 
 /**
@@ -379,10 +412,17 @@ function cellContent(
       bad(failures, col, row, slot, 'a string', out)
       return defaultFormat(value)
     }
-    return defaultFormat(value)
+    const text = defaultFormat(value, onLost)
+    if (lost !== undefined) {
+      const { id: column, index } = col
+      const type = Array.isArray(lost) ? 'array' : typeof lost
+      failures.push({ slot: `columns[${index}]`, column, index, row: row.index, lost: type })
+      lost = undefined
+    }
+    return text
   } catch (error) {
     failures.push({ slot: `columns[${col.index}].${slot}`, column: col.id, row: row.index, error })
-    return WARN
+    return FAILED
   }
 }
 
@@ -396,9 +436,16 @@ function guard(
 ): ReactNode {
   if (typeof out !== 'object' || out === null) return out
   return (
-    <CellBoundary table={table} col={col} slot={slot} row={row.index} original={row.original}>
+    <Boundary
+      table={table}
+      col={col}
+      slot={slot}
+      row={row.index}
+      resetKey={row.original}
+      fallback={failedCell}
+    >
       {out}
-    </CellBoundary>
+    </Boundary>
   )
 }
 
@@ -417,7 +464,44 @@ function bad(
     expected,
     received: describeReturn(out),
   })
-  return WARN
+  return FAILED
+}
+
+type Page = { pageIndex: number; pageSize: number }
+
+/** Visually hidden, still read by screen readers (inline: the table ships no CSS). */
+const HIDDEN: CSSProperties = {
+  position: 'absolute',
+  width: 1,
+  height: 1,
+  overflow: 'hidden',
+  clipPath: 'inset(50%)',
+  whiteSpace: 'nowrap',
+}
+
+const serverPaged = (view: Api) =>
+  (view.getOptions() as { features?: readonly { stage?: string; mode?: string }[] }).features?.some(
+    (f) => f?.stage === 'paginate' && f.mode === 'server',
+  ) === true
+
+/**
+ * The pager of the rendered snapshot, like the pagination API computes it live: the hydrating
+ * render must match the server HTML even when the table changed meanwhile (#16). Client mode
+ * pages over the row model's `filteredCount`; server mode over the fetched `rowCount`, which only
+ * the table knows (and no render changes).
+ */
+function pages(view: Api, page: Page, count: number, server: boolean) {
+  if (server) {
+    return {
+      ...page,
+      pageCount: view.getPageCount?.() ?? 0,
+      canPrev: view.canPrevPage?.() ?? false,
+      canNext: view.canNextPage?.() ?? false,
+    }
+  }
+  const pageCount = Math.ceil(count / page.pageSize)
+  const index = Math.min(page.pageIndex, Math.max(pageCount - 1, 0))
+  return { ...page, pageCount, canPrev: index > 0, canNext: index + 1 < pageCount }
 }
 
 const ariaSort = (dir: 'asc' | 'desc' | false) =>
@@ -448,6 +532,8 @@ function DataTableView(props: {
   })
 
   const sortable = typeof view.toggleSort === 'function'
+  const sortBy = (state.sorting as { by: readonly { id: string; desc?: boolean }[] } | undefined)
+    ?.by
   const searchState = state.search as { input: string; status: SearchStatus } | undefined
   const paged = typeof view.getPageCount === 'function'
   // Loading (§6.6, §10): nothing to show yet and rows on their way — in flight, or deferred async
@@ -456,10 +542,53 @@ function DataTableView(props: {
     isInitialLoad && (LOADING.includes(status) || (status === 'pending' && hasAsyncSource(view)))
   const failed = isInitialLoad && status === 'error'
   const span = Math.max(columns.length, 1)
-  const retryLoad = () => void view.refetch()
+  const tableEl = useRef<HTMLTableElement>(null)
+  /**
+   * Retry unmounts the focused Retry button (Error → Loading → rows, or the refresh error): focus
+   * the table first, else it falls to `<body>` (#56). Only when focus is in a state row or the
+   * refresh indicator, so a retry called from elsewhere leaves focus alone.
+   */
+  const keepFocus = () => {
+    const t = tableEl.current
+    const from = document.activeElement?.closest('[data-dk-state],[data-dk-refresh]')
+    if (t && from && t.parentElement?.contains(from)) {
+      t.tabIndex = -1
+      t.focus()
+    }
+  }
+  const retryLoad = () => {
+    keepFocus()
+    void view.refetch()
+  }
+  const server = paged && serverPaged(view)
+  const pager = paged ? pages(view, state.pagination as Page, rowModel.filteredCount, server) : null
 
-  const Search = parts.SearchInput ?? DefaultSearchInput
-  const Pager = parts.Pagination ?? DefaultPagination
+  // Status messages (#54): one polite live region, in the markup from the first render (a region
+  // inserted with its text is often not announced). Written after commit, only when the message
+  // changes, so the first render (and the hydrating one) matches the server HTML.
+  // Worded unlike the visible parts ("No rows", "Searching…"), so a text query finds one element.
+  const n = rowModel.filteredCount
+  const count = `${n} row${n === 1 ? '' : 's'}`
+  const page = pager ? `${pager.pageIndex + 1} of ${Math.max(pager.pageCount, 1)}` : ''
+  let said = ''
+  if (searchState?.status === 'pending' || searchState?.status === 'searching') {
+    said = 'Searching rows…'
+  } else if (status === 'idle' && !loading) {
+    // Server mode: `filteredCount` is the page's rows, so only the page (or "0 rows").
+    said = server && n ? `Page ${page}` : page ? `${count}, page ${page}` : count
+  }
+  const liveEl = useRef<HTMLDivElement>(null)
+  const saidBefore = useRef<string | null>(null)
+  useEffect(() => {
+    const el = liveEl.current
+    if (el && saidBefore.current !== null && saidBefore.current !== said) el.textContent = said
+    saidBefore.current = said
+  })
+
+  // A text caption names the search box and the pager, so two tables get distinct names (#59).
+  const cap = props.caption
+  const named = typeof cap === 'string' || typeof cap === 'number' ? `${cap}` : ''
+
   const Empty = parts.Empty ?? DefaultEmpty
   const Loading = parts.Loading ?? DefaultLoading
   const ErrorState = parts.Error ?? DefaultError
@@ -500,6 +629,9 @@ function DataTableView(props: {
     })
   }
 
+  // The server runs no effects: report now (setting state is a no-op there).
+  if (typeof window === 'undefined' && failures.length > 0) report(table, failures)
+
   return (
     <div
       data-datakable=""
@@ -509,25 +641,28 @@ function DataTableView(props: {
     >
       {searchState && (
         <div data-dk-search="" data-status={searchState.status}>
-          <Search
-            value={searchState.input}
-            status={searchState.status}
-            onChange={(q) => void view.setSearch?.(q)}
-            onSubmit={() => void view.flushSearch?.()}
-            onClear={() => view.clearSearch?.()}
-          />
+          {part(table, 'SearchInput', parts.SearchInput, DefaultSearchInput, {
+            value: searchState.input,
+            status: searchState.status,
+            onChange: (q) => void view.setSearch?.(q),
+            onSubmit: () => void view.flushSearch?.(),
+            onClear: () => view.clearSearch?.(),
+            label: named ? `Search ${named}` : 'Search',
+          })}
         </div>
       )}
       {!loading && !failed && status !== 'idle' && (
         <RefreshIndicator status={status} retry={retryLoad} />
       )}
-      <table>
+      <table ref={tableEl}>
         {props.caption != null && <caption>{props.caption}</caption>}
         <thead>
           <tr>
             {columns.map((col) => {
               const canSort = sortable && col.def.sortable !== false
-              const dir = canSort ? (view.getSortDirection?.(col.id) ?? false) : false
+              // From the rendered state, not the live table (the hydrating render, #16).
+              const e = canSort ? sortBy?.find((x) => x.id === col.id) : undefined
+              const dir = e ? (e.desc ? 'desc' : 'asc') : false
               return (
                 <th
                   key={col.index}
@@ -554,31 +689,63 @@ function DataTableView(props: {
           </tr>
         </thead>
         <tbody>
-          <BodyBoundary
+          <Boundary
             table={table}
             resetKey={rowModel}
             fallback={(retry) =>
-              stateRow(span, 'error', <ErrorState status={status} reason="render" retry={retry} />)
+              stateRow(
+                span,
+                'error',
+                <ErrorState
+                  status={status}
+                  reason="render"
+                  retry={() => {
+                    keepFocus()
+                    retry()
+                  }}
+                />,
+              )
             }
           >
             {body}
-          </BodyBoundary>
+          </Boundary>
         </tbody>
       </table>
-      {paged && (
-        <Pager
-          pageIndex={(state.pagination as { pageIndex: number }).pageIndex}
-          pageSize={(state.pagination as { pageSize: number }).pageSize}
-          pageCount={view.getPageCount?.() ?? 0}
-          canPrev={view.canPrevPage?.() ?? false}
-          canNext={view.canNextPage?.() ?? false}
-          prev={() => view.prevPage?.()}
-          next={() => view.nextPage?.()}
-          setPageIndex={(i) => view.setPageIndex?.(i)}
-          setPageSize={(n) => view.setPageSize?.(n)}
-        />
-      )}
+      {pager &&
+        part(table, 'Pagination', parts.Pagination, DefaultPagination, {
+          ...pager,
+          prev: () => view.prevPage?.(),
+          next: () => view.nextPage?.(),
+          setPageIndex: (i) => view.setPageIndex?.(i),
+          setPageSize: (n) => view.setPageSize?.(n),
+          label: named ? `${named} pagination` : 'Pagination',
+        })}
+      <div aria-live="polite" style={HIDDEN} ref={liveEl} />
     </div>
+  )
+}
+
+/**
+ * A search / pager part (outside the body): a custom one that throws is replaced by the default
+ * part (`DK_RENDER_FAILED` at `components.<name>`) until another component is passed.
+ */
+function part<P extends object>(
+  table: object,
+  name: 'SearchInput' | 'Pagination',
+  Custom: ComponentType<P> | undefined,
+  Default: ComponentType<P>,
+  props: P,
+): ReactNode {
+  if (!Custom) return <Default {...props} />
+  return (
+    <Boundary
+      table={table}
+      slot={`components.${name}`}
+      resetKey={Custom}
+      fallback={() => <Default {...props} />}
+    >
+      <Custom {...props} />
+    </Boundary>
   )
 }
 
@@ -594,34 +761,65 @@ function stateRow(span: number, kind: string, content: ReactNode) {
 
 interface BoundaryProps {
   table: object
-  /** A new value (the next row model) renders the body again. */
+  /**
+   * A part outside the body: `components.SearchInput` (reported as the slot). A cell boundary:
+   * `cell` / `invalidCell` (reported as `columns[<index>].<slot>`).
+   */
+  slot?: string
+  /** A cell boundary (`render:cell`): the cell's column. A new `def` renders a failed cell again. */
+  col?: Column
+  /** A cell boundary: the row's index in the data (`row.index`). */
+  row?: number
+  /** A new value (the next row model; a cell's row data) renders the children again. */
   resetKey: unknown
   fallback(retry: () => void): ReactNode
   children: ReactNode
 }
 
+interface BoundaryState {
+  failed: boolean
+  key: unknown
+  def: ColumnLike | undefined
+}
+
 /**
- * Catches a component that throws inside the body outside any cell boundary (§10: a
- * `components.Empty` / `Loading` / `Error` part): reports `DK_RENDER_FAILED` (`render:table`) and
- * shows the Error state; the header, search and pagination keep working.
+ * Catches a component that throws (`DK_RENDER_FAILED`) and renders `fallback` instead; the rest of
+ * the table keeps working. Three uses: the body outside any cell (`render:table`, §10: a
+ * `components.Empty` / `Loading` / `Error` part) shows the Error state; a custom search / pager
+ * part (`render:table` at `components.<name>`) is replaced by the default part; and one cell
+ * (`render:cell`, §3.4, with `col`): a component returned by `cell` / `invalidCell` renders `⚠` in
+ * that cell only (deduped per column). A cell boundary only wraps object content (see `guard`).
  */
-class BodyBoundary extends Component<BoundaryProps, { failed: boolean; key: unknown }> {
-  override state = { failed: false, key: this.props.resetKey }
+class Boundary extends Component<BoundaryProps, BoundaryState> {
+  override state: BoundaryState = {
+    failed: false,
+    key: this.props.resetKey,
+    def: this.props.col?.def,
+  }
 
   static getDerivedStateFromError() {
     return { failed: true }
   }
 
-  static getDerivedStateFromProps(props: BoundaryProps, state: { key: unknown }) {
-    return props.resetKey === state.key ? null : { failed: false, key: props.resetKey }
+  static getDerivedStateFromProps(props: BoundaryProps, state: BoundaryState) {
+    const def = props.col?.def
+    return props.resetKey === state.key && def === state.def
+      ? null
+      : { failed: false, key: props.resetKey, def }
   }
 
   override componentDidCatch(error: unknown) {
+    const { table, col, slot, row } = this.props
     try {
       emitTableDiagnostic(
-        this.props.table,
+        table,
         'DK_RENDER_FAILED',
-        { op: 'render:table', ...(error instanceof Error ? { errorName: error.name } : {}) },
+        {
+          op: col ? 'render:cell' : 'render:table',
+          ...(slot ? { slot: col ? `columns[${col.index}].${slot}` : slot } : {}),
+          ...(col ? { column: col.id, row: row as number } : {}),
+          ...(error instanceof Error ? { errorName: error.name } : {}),
+        },
         { cause: error },
       )
     } catch {
@@ -636,78 +834,24 @@ class BodyBoundary extends Component<BoundaryProps, { failed: boolean; key: unkn
   }
 }
 
-interface CellBoundaryProps {
-  table: object
-  col: Column
-  slot: 'cell' | 'invalidCell'
-  /** The row's index in the data (`row.index`). */
-  row: number
-  /** The row's data: a new object (or new columns) renders a failed cell again. */
-  original: unknown
-  children: ReactNode
-}
-
-interface CellBoundaryState {
-  failed: boolean
-  original: unknown
-  def: ColumnLike
-}
-
-/**
- * One cell's boundary (`render:cell`, §3.4): a component returned by `cell` / `invalidCell` that
- * throws renders `⚠` in that cell only and reports `DK_RENDER_FAILED` (deduped per column); the
- * other cells, rows and the table keep working. Only wraps object content (see `guard`).
- */
-class CellBoundary extends Component<CellBoundaryProps, CellBoundaryState> {
-  override state: CellBoundaryState = {
-    failed: false,
-    original: this.props.original,
-    def: this.props.col.def,
-  }
-
-  static getDerivedStateFromError() {
-    return { failed: true }
-  }
-
-  static getDerivedStateFromProps(props: CellBoundaryProps, state: CellBoundaryState) {
-    return props.original === state.original && props.col.def === state.def
-      ? null
-      : { failed: false, original: props.original, def: props.col.def }
-  }
-
-  override componentDidCatch(error: unknown) {
-    const { table, col, slot, row } = this.props
-    try {
-      emitTableDiagnostic(
-        table,
-        'DK_RENDER_FAILED',
-        {
-          op: 'render:cell',
-          slot: `columns[${col.index}].${slot}`,
-          column: col.id,
-          row,
-          ...(error instanceof Error ? { errorName: error.name } : {}),
-        },
-        { cause: error },
-      )
-    } catch {
-      // Not a table made by createTable: nothing to report to.
-    }
-  }
-
-  override render() {
-    return this.state.failed ? WARN : this.props.children
-  }
-}
+/** A failed cell's fallback (one function for every cell boundary: no closure per cell). */
+const failedCell = () => FAILED
 
 // --- default parts (unstyled) --------------------------------------------------------------------
 
-function DefaultSearchInput({ value, status, onChange, onSubmit, onClear }: SearchInputProps) {
+function DefaultSearchInput({
+  value,
+  status,
+  onChange,
+  onSubmit,
+  onClear,
+  label,
+}: SearchInputProps) {
   return (
     <>
       <input
         type="search"
-        aria-label="Search"
+        aria-label={label}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
@@ -716,22 +860,37 @@ function DefaultSearchInput({ value, status, onChange, onSubmit, onClear }: Sear
         }}
       />
       {(status === 'pending' || status === 'searching') && (
-        <span role="status" data-dk-spinner="" aria-label="Searching" />
+        // Decorative: the live region says "Searching…" (an empty status announces nothing).
+        <span data-dk-spinner="" aria-hidden="true" />
       )}
     </>
   )
 }
 
+/**
+ * `aria-disabled`, not `disabled`, at the first / last page: a disabled button loses focus (to
+ * `<body>`) the moment paging makes it unavailable (#55).
+ */
 function DefaultPagination(p: PaginationProps) {
   return (
-    <nav aria-label="Pagination" data-dk-pagination="">
-      <button type="button" aria-label="Previous page" disabled={!p.canPrev} onClick={p.prev}>
+    <nav aria-label={p.label} data-dk-pagination="">
+      <button
+        type="button"
+        aria-label="Previous page"
+        aria-disabled={!p.canPrev || undefined}
+        onClick={p.canPrev ? p.prev : undefined}
+      >
         ‹
       </button>
       <span data-dk-page="">
         Page {p.pageIndex + 1} of {Math.max(p.pageCount, 1)}
       </span>
-      <button type="button" aria-label="Next page" disabled={!p.canNext} onClick={p.next}>
+      <button
+        type="button"
+        aria-label="Next page"
+        aria-disabled={!p.canNext || undefined}
+        onClick={p.canNext ? p.next : undefined}
+      >
         ›
       </button>
     </nav>

@@ -15,6 +15,10 @@ schema validation, the server source and async search.
 The three are released together with one version; install versions that match (development
 builds report a mismatch as [`DK_VERSION_MISMATCH`](../how-to-fix/errors.md#dk_version_mismatch)).
 
+TypeScript resolves every subpath below under `moduleResolution` `bundler`, `node16` / `nodenext`
+and the legacy `node10` (`node`), through `exports` and a `typesVersions` fallback; the stylesheet
+exports carry an empty declaration, so `import 'datakable/styles.css'` type-checks too.
+
 ## `datakable`
 
 | Import | What it brings |
@@ -53,7 +57,7 @@ by `installMessages(renderMessages)` from `@datakable/react`.
 | `@datakable/core/schema` | `withSchema()`, `DatakableSchemaError` and the Standard Schema types: schema validation ([Schema validation](schema-validation.md)). |
 | `@datakable/core/server` | `withFetcher()` and the fetcher types: the server source ([Server mode](server-mode.md)). |
 | `@datakable/core/search-async` | `withSearchFn()` and the `searchFn` types: the async search engine ([Search](search.md)). |
-| `@datakable/core/messages` | A side-effect import: the full text of core's diagnostics in production builds. |
+| `@datakable/core/messages` | A side-effect import: the full text of core's diagnostics in production builds. Also exports `allMessages`, for `installMessages(...allMessages)` where a bundler drops side-effect imports (Nuxt / Nitro). |
 
 The JavaScript is published one file per source module and marked side-effect free (except the
 `messages` entries and the stylesheets), so a bundler keeps only what you use, whichever entry you
@@ -97,6 +101,9 @@ error, and throws [`DK_INVALID_OPTION`](../how-to-fix/errors.md#dk_invalid_optio
 - **Two copies of `@datakable/core`** in one bundle (for example, mismatched versions installed
   side by side) break the shared registry and double the size; development builds report
   [`DK_DUPLICATE_CORE`](../how-to-fix/errors.md#dk_duplicate_core). Deduplicate the dependency.
+  One version loaded twice (its ESM and CJS builds, a Next.js dev server's layers) is only an
+  info:
+  [`DK_DUPLICATE_CORE_SAME_VERSION`](../how-to-fix/errors.md#dk_duplicate_core_same_version).
 - **`createTable` from `@datakable/core` or `datakable/core` has no features**: `toggleSort` and the
   other feature methods do not exist until you pass `features` (or `defaultFeatures`).
 - **Importing `datakable/messages` everywhere** adds the full message text to your production

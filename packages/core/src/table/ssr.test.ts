@@ -246,3 +246,37 @@ describe('createDeferred / startTable (§7.2)', () => {
     expect(m.fetcher).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('DK_SSR_ASYNC_DEFERRED in the console (#38)', () => {
+  const printed = () =>
+    vi
+      .mocked(console.groupCollapsed)
+      .mock.calls.filter((c) => String(c[0]).includes('DK_SSR_ASYNC_DEFERRED')).length
+
+  it('render passes that create the same table again print it once per process', () => {
+    const diags: string[] = []
+    // Next dev renders a page several times per request: a new table each time.
+    for (let pass = 0; pass < 7; pass++) {
+      createDeferred(() =>
+        createTable({
+          name: 'deferred-38',
+          fetcher: withFetcher(manual().fetcher),
+          features: [pagination({ mode: 'server' })],
+          onDiagnostic: (d) => diags.push(d.code),
+        }),
+      )
+    }
+    expect(printed()).toBe(1)
+    // Every table still records it (onDiagnostic, getDiagnostics).
+    expect(diags.filter((c) => c === 'DK_SSR_ASYNC_DEFERRED')).toHaveLength(7)
+    // Another table name, or another deferred source, prints its own.
+    createDeferred(() =>
+      createTable({
+        name: 'other-38',
+        fetcher: withFetcher(manual().fetcher),
+        features: [pagination({ mode: 'server' })],
+      }),
+    )
+    expect(printed()).toBe(2)
+  })
+})

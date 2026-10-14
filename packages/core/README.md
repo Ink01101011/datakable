@@ -17,7 +17,7 @@ constant and remove development-only checks, tracing and message text from produ
 Vite, webpack, Next.js, Rollup (`@rollup/plugin-replace`) and esbuild
 (`--define:process.env.NODE_ENV='"production"'`) all replace it. Without a replacement, unbundled
 browser code throws `ReferenceError: process is not defined`, as React and Redux do. Node needs
-nothing.
+nothing beyond Node.js `>=18.18`. The types need TypeScript `>=5.4`.
 
 ## Contents
 
@@ -111,7 +111,9 @@ The features are also exported from `@datakable/core` itself. The pipeline alway
   (number / bigint / Date, inclusive) and `custom` (`fn(value, filterValue, row)`). Filters AND
   together; an array cell matches when any element matches.
 - **Search:** fuzzy matching over the formatted cell values. When a column declares
-  `search: weight`, only columns with a weight are searched; otherwise every column is, at weight 1. `input` follows the keyboard,
+  `search: weight`, only columns with a weight are searched; otherwise the columns of strings,
+  numbers and booleans are, at weight 1 (a column of dates, arrays or objects needs a weight;
+  `DK_SEARCH_COLUMN_SKIPPED` in development). `input` follows the keyboard,
   `query` is the applied value; `typing` sets `immediate` / `debounce` / `throttle`, `wait`,
   `minLength` and `commitOn: 'enter'`. `setSearch` / `flushSearch` return a promise of
   `{ status: 'applied' | 'superseded' | 'error' }` and never reject. A `searchFn` replaces the

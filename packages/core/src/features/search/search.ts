@@ -1,3 +1,4 @@
+import { debounce } from 'kk-debounce/debounce'
 import { debouncedSignal } from 'kk-debounce/debounceSignal'
 import { throttle } from 'kk-debounce/throttle'
 import { optionDiagnostics } from '../../catalog/codes'
@@ -23,8 +24,9 @@ import {
   type Waiter,
 } from './search-fn-brand'
 import { buildIndex, type MatchConfig, probeExSearch, type SearchIndex } from './search-index'
+import { skippedColumnDiagnostics } from './skipped-codes'
 
-keepDiagnostics(optionDiagnostics)
+keepDiagnostics(optionDiagnostics, skippedColumnDiagnostics)
 
 export type {
   AsyncSearchFn,
@@ -64,7 +66,8 @@ export interface SearchTyping {
   wait?: SearchWait
   /**
    * Debounce only. `'trailing'` (default): apply after the burst. `'leading'`: apply the first
-   * keystroke at once and drop the rest of the burst (`flushSearch()` applies them).
+   * keystroke at once and drop the rest of the burst (`flushSearch()` applies them; otherwise
+   * their `setSearch()` promises resolve `'superseded'` when the silence window ends).
    */
   behavior?: 'trailing' | 'leading'
   /** A trimmed input shorter than this is applied as an empty query (all rows). Default 0. */
@@ -182,7 +185,8 @@ const toText = (q: unknown): string => (q == null ? '' : String(q))
 
 /**
  * Global search (§6.3), client mode: fuzzy matching with `ex-search` on the formatted values of the
- * searchable columns (`search: weight`; every column at weight 1 when none declares one).
+ * searchable columns (`search: weight`; when none declares one, every column of primitives at
+ * weight 1, #27).
  *
  * - The matcher is built on the first non-blank query, once per data + columns (not per keystroke),
  *   over the column cache's values; ex-search reads the projection `{ i, c0, c1, … }` one chunk of
@@ -235,14 +239,16 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
     throwConfigError('DK_INVALID_OPTION', {
       path: 'searchFn',
       feature: 'search',
-      expected: 'withSearchFn(searchFn)',
-      received: 'searchFn',
+      expected: 'wrapped|withSearchFn|searchFn|search-async', // prose key (diagnostics/prose.ts)
+      received: typeof opts.searchFn,
       suggestions: [],
       phase: 'init',
     })
   }
   /** Per table: ends its timers, searches and waiters on `table:destroy`. */
   const instances = new WeakMap<object, () => void>()
+  /** Per table: finishes a restored `'pending'` / `'searching'` slice nothing works on (#22). */
+  const resumes = new WeakMap<object, () => void>()
   /** Per table: after each `pipeline:run`, whether the step waited on sliced work (#6). */
   const ran = new WeakMap<object, (waited: boolean) => void>()
   /** The step of the run in progress returned a stand-in (sliced work runs, §9.1). */
@@ -310,9 +316,7 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
         ctx.emit('DK_OPTION_NO_EFFECT', {
           path: 'query',
           feature: 'search',
-          reason:
-            'no column is searchable: pass `columns` (give the columns to search a `search` ' +
-            'weight, or omit it everywhere to search every column)',
+          reason: 'not-searchable',
           once: false,
         })
       }
@@ -343,12 +347,18 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
     interceptors: [
       defineInterceptor({
         name: 'search',
-        on: ['table:destroy', 'pipeline:run'],
+        on: ['table:destroy', 'pipeline:run', 'table:init', 'state:dispatch', 'table:setOptions'],
         intercept(ctx, next) {
           const table = ctx.table as object
           if (ctx.op === 'table:destroy') {
             instances.get(table)?.()
             return next()
+          }
+          if (ctx.op !== 'pipeline:run') {
+            // A slice set from outside (initialState, setState, controlled state) is checked.
+            const out = next()
+            resumes.get(table)?.()
+            return out
           }
           const prev = waited
           waited = false
@@ -439,11 +449,14 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
         claim,
       })
 
+      /** A typing commit waits on the strategy's timer (the slice shows `'pending'`). */
+      let scheduled = false
       /**
        * Applies `query` (typing committed it, Enter, clear): at once, or with `searchFn` through a
        * request (the slice shows `'searching'`).
        */
       const applyQuery = (query: string, inp: string = input()) => {
+        scheduled = false
         if (session?.apply(query, inp)) return
         if (held[0]?.query !== query) release(SUPERSEDED)
         held.push(...claim(query))
@@ -467,9 +480,36 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
             : undefined
       /** The slice status while nothing new is applied: a search may still be in flight. */
       const resting = (): SearchStatus => (session?.busy() ? 'searching' : 'idle')
+      // A restored transient status (URL / storage restore through initialState, setState or a
+      // controlled slice) that nothing is working on would stay forever (#22). 'pending' commits the
+      // restored input (Enter mode: keeps it), 'searching' ends; a searchFn then runs for the query.
+      resumes.set(table, () => {
+        const s = ctx.getState()
+        const pending = s?.status === 'pending'
+        if (pending ? !scheduled : s?.status === 'searching' && !session?.busy()) {
+          const inp = toText(s.input)
+          write(inp, pending && strategy !== 'enter' ? target(inp) : toText(s.query), resting())
+        }
+      })
+
+      /**
+       * Leading debounce (#28): the keystrokes it drops settle `'superseded'` when the silence
+       * window ends (it restarts with each keystroke, like kk-debounce's), unless `flushSearch()`
+       * applies them first.
+       */
+      const drop = debounce(() => {
+        const list = waiting
+        waiting = []
+        for (const w of list) w.resolve(SUPERSEDED)
+      }, wait)
+      /** Drops the scheduled commit (and the end of a leading silence window). */
+      const stop = () => {
+        timer?.cancel()
+        drop.cancel()
+      }
 
       instances.set(table, () => {
-        timer?.cancel()
+        stop()
         session?.destroy()
         supersede()
       })
@@ -485,7 +525,7 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
           return p
         }
         if (!timer || query === current) {
-          timer?.cancel()
+          stop()
           applyQuery(query, next)
           return p
         }
@@ -501,17 +541,20 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
           return p
         }
         // A leading debounce drops the rest of the burst: nothing is scheduled to commit it (the
-        // silence window keeps running; `flushSearch()` commits the input).
+        // silence window keeps running; `flushSearch()` commits the input), and its promise settles
+        // when the window ends.
         if (strategy === 'debounce' && typing.behavior === 'leading') {
           write(next, current, resting())
+          drop()
           return p
         }
+        scheduled = true
         write(next, current, 'pending')
         return p
       }
       /** Applies `input` now (Enter, clear): any scheduled commit is dropped. */
       const applyNow = (next: string): Promise<SearchOutcome> => {
-        timer?.cancel()
+        stop()
         const query = target(next)
         replaceWaiting(query)
         const p = waitFor(query)
@@ -522,7 +565,8 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
         setSearch: (query) => commit(toText(query)),
         flushSearch: () => applyNow(input()),
         cancelSearch: () => {
-          timer?.cancel()
+          scheduled = false
+          stop()
           session?.abort()
           supersede()
           const s = ctx.getState()

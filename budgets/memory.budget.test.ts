@@ -1,6 +1,7 @@
 import { createDefaultFeatures, createTable } from '@datakable/core'
 import { describe, expect, it } from 'vitest'
 import { measureHeap } from './measure'
+import { mixedUsers } from './mixed-users'
 
 // §9.3 "Pipeline memory at 100k rows (excluding source data) ≤ 5 MB" with the REAL default preset
 // (columnFilters, validity, search, sorting, pagination) from the built `@datakable/core`, in
@@ -57,6 +58,29 @@ describe('§9.3 pipeline memory, real default preset, 100k rows (dist, productio
     console.info(`[§9.3 memory] filter+sort+search: ${mb.toFixed(2)} MB (budget ${BUDGET_MB})`)
     expect(t.getState().search.query).toBe('name 99')
     expect(m.filteredCount).toBeGreaterThan(0)
+    expect(mb).toBeLessThanOrEqual(BUDGET_MB)
+    expect(t.getData()).toBe(data)
+  })
+
+  // #27: zero-config search over the PVT data shape (ten mixed-type fields). Only the columns of
+  // primitives are searched (strings, nullable numbers, number | string, booleans): seven here;
+  // `joined` (Date | string), `tags` (arrays) and `address` (objects) need a `search` weight. A
+  // primitive key column is read from the rows while matching: no values array, no formatted copy.
+  it(`zero-config search, the 10-column PVT shape: ≤ ${BUDGET_MB} MB`, async () => {
+    const data = mixedUsers(N)
+    const { mb, value: t } = await measureHeap(async () => {
+      const t = createTable({
+        data,
+        rowKey: 'id',
+        features: createDefaultFeatures(),
+        onDiagnostic() {},
+      })
+      t.getRowModel()
+      await expect(t.setSearch('user 12')).resolves.toEqual({ status: 'applied' })
+      return t
+    })
+    console.info(`[§9.3 memory] zero-config search, 10-column PVT shape: ${mb.toFixed(2)} MB`)
+    expect(t.getRowModel().filteredCount).toBeGreaterThan(0)
     expect(mb).toBeLessThanOrEqual(BUDGET_MB)
     expect(t.getData()).toBe(data)
   })

@@ -1,6 +1,7 @@
 import { DatakableError } from '../diagnostics/build'
 import { keepDiagnostics } from '../diagnostics/catalog'
 import { DEV } from '../diagnostics/env'
+import { expandProse } from '../diagnostics/prose'
 import { scrubError } from '../diagnostics/redact'
 import type { EmitOptions } from '../diagnostics/types'
 import { type CallbackError, classifyError, errorName } from './classify'
@@ -29,7 +30,7 @@ function recover(ctx: InterceptorContext, error: unknown): unknown {
       silenced.add(ctx.emit)
       // Production prints the error name only: its message can embed row values (§8.2).
       console.error(
-        `[DataKable] ${ctx.op} failed; ${fallback.describe}. Later failures are silent.`,
+        `[DataKable] ${ctx.op} failed; ${expandProse(fallback.describe, DEV)}. Later failures are silent.`,
         DEV ? error : scrubError(error),
       )
     }
@@ -58,7 +59,7 @@ function recover(ctx: InterceptorContext, error: unknown): unknown {
       'DK_INTERNAL',
       {
         op: ctx.op,
-        problem: 'an exception escaped DataKable code',
+        problem: 'escaped',
         message: (error as Error).message,
         ...slot,
         errorName: (error as Error).name,

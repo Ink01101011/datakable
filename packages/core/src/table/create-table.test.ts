@@ -81,6 +81,35 @@ describe('createTable: state', () => {
     expect(Object.isFrozen(t.getState())).toBe(true)
   })
 
+  it('slices are deep-frozen in development: a nested write throws, the table is unchanged (#20)', () => {
+    class Box {
+      v = 1
+    }
+    const box = new Box()
+    const t = createTable<
+      Row,
+      { pagination: { pageIndex: number }; sort: { by: { id: string }[] } }
+    >({
+      data: rows,
+      initialState: { pagination: { pageIndex: 0 }, sort: { by: [{ id: 'a' }] } },
+    })
+    const s = t.getState()
+    expect(Object.isFrozen(s.pagination)).toBe(true)
+    expect(Object.isFrozen(s.sort.by)).toBe(true)
+    expect(Object.isFrozen(s.sort.by[0])).toBe(true)
+    expect(() => {
+      s.pagination.pageIndex = 2
+    }).toThrow(TypeError)
+    expect(t.getState().pagination.pageIndex).toBe(0)
+    // A slice committed later is frozen too; class instances (and typed arrays) are left alone.
+    const ids = new Uint32Array(3)
+    t.setState({ pagination: { pageIndex: 1, box, ids } as never })
+    const p = t.getState().pagination as unknown as { box: Box; ids: Uint32Array }
+    expect(Object.isFrozen(p)).toBe(true)
+    expect(Object.isFrozen(p.box)).toBe(false)
+    expect(Object.isFrozen(p.ids)).toBe(false)
+  })
+
   it('gives the data', () => {
     const t = make()
     expect(t.getData()).toBe(rows)
@@ -328,6 +357,53 @@ describe('createTable: controlled state per slice', () => {
     })
   })
 
+  describe('DK_CONTROLLED_SLICE_DROPPED (development, #49)', () => {
+    /** Two controlled slices; the owner feeds back only the slice that changed (the #49 mistake). */
+    function owner(feedBack: (mine: Partial<S>, changed: string[]) => Partial<S>) {
+      let mine: Partial<S> = { sorting: [], page: 0 }
+      const ref: { t?: ReturnType<typeof make> } = {}
+      ref.t = make({
+        state: { ...mine },
+        onStateChange: (u) => {
+          const next = u(mine)
+          const changed = Object.keys(next).filter((k) => next[k as keyof S] !== mine[k as keyof S])
+          mine = { ...mine, ...next }
+          ref.t?.setOptions({ state: feedBack(mine, changed) })
+        },
+      })
+      return ref.t
+    }
+
+    it('feeding back one slice drops the other controlled slice: reported with the fix', () => {
+      const only = (mine: Partial<S>, changed: string[]) =>
+        Object.fromEntries(changed.map((k) => [k, mine[k as keyof S]])) as Partial<S>
+      const t = owner(only)
+      t.setState({ sorting: ['id'] })
+      expect(codes()).toEqual(['DK_CONTROLLED_SLICE_DROPPED'])
+      const d = seen[0] as Diagnostic
+      expect(d.level).toBe('warn')
+      expect(d.where).toEqual({ kind: 'option', path: 'state.page' })
+      expect(d.details).toEqual({ slices: ['page'], kept: ['sorting'] })
+      expect(d.fix.join('\n')).toContain('table.setOptions({ state: { ...current, sorting } })')
+      expect(d.fix.join('\n')).toContain('page: undefined')
+      // Behaviour is unchanged: `page` left control (the diagnostic only makes it visible).
+      expect(Object.keys(t.getOptions().state ?? {})).toEqual(['sorting'])
+    })
+
+    it('every slice fed back, an explicit undefined, state: {} and a drop outside a feed-back are silent', () => {
+      owner((mine) => ({ ...mine })).setState({ sorting: ['id'] })
+      // `page: undefined` releases it on purpose (a controlled-state value, not an optional key).
+      const release = (mine: Partial<S>) =>
+        ({ sorting: mine.sorting, page: undefined }) as unknown as Partial<S>
+      owner(release).setState({ sorting: ['id'] })
+      owner(() => ({})).setState({ sorting: ['id'] })
+      // An owner that stops passing a slice on purpose (React's state prop): no change was asked.
+      const t = make({ state: { sorting: [], page: 0 }, onStateChange: () => {} })
+      t.setOptions({ state: { sorting: ['id'] } })
+      expect(codes()).toEqual([])
+    })
+  })
+
   it('a throwing onStateChange drops the whole update (DK_CALLBACK_FAILED)', () => {
     const t = make({
       state: { sorting: [] },
@@ -500,6 +576,14 @@ describe('createTable: diagnostics wiring', () => {
     })
     expect(() => t.setState({ page: 1 })).toThrow(DatakableError)
   })
+
+  it("strict: after getRowModel() throws, the model is the 'error' fallback, not empty 'idle' (#43)", () => {
+    const t = createTable({ data: [{ id: 1 }, { id: 1 }], rowKey: 'id', strict: true })
+    expect(() => t.getRowModel()).toThrow(/DK_DUPLICATE_ROW_KEY/)
+    // No good rows yet: empty with status 'error' (a later failed run keeps the last good rows).
+    expect(t.getRowModel()).toMatchObject({ rows: [], status: 'error' })
+    expect(t.getData()).toHaveLength(2)
+  })
 })
 
 describe('createTable: redaction mapping (diagnostics.redact, sensitive, rowKey)', () => {
@@ -554,6 +638,54 @@ describe('createTable: redaction mapping (diagnostics.redact, sensitive, rowKey)
     t.setState({ page: 1 })
     expect(seen[0]?.details.value).toBe('[sensitive]')
     expect(seen[0]?.details.key).toMatch(/^h:[0-9a-f]{8}$/)
+  })
+
+  it('a rowKey path into a sensitive column is hashed at every level (#45)', () => {
+    const data = [
+      { id: 1, contact: { email: 'ann@private.example' } },
+      { id: 2, contact: { email: 'ann@private.example' } },
+      { id: 3, contact: { email: 'cat@private.example' } },
+    ]
+    type C = (typeof data)[number]
+    for (const redact of [undefined, 'safe', 'keys', 'full'] as const) {
+      const got: Diagnostic[] = []
+      const t = createTable<C>({
+        data,
+        rowKey: 'contact.email',
+        columns: [{ key: 'id' }, { key: 'contact', sensitive: true, format: (c) => c.email }],
+        ...(redact ? { diagnostics: { redact } } : {}),
+        onDiagnostic: (d) => got.push(d),
+      })
+      t.getRowModel()
+      const dup = got.find((d) => d.code === 'DK_DUPLICATE_ROW_KEY')
+      expect(dup?.details.key).toMatch(/^h:[0-9a-f]{8}$/)
+      expect(JSON.stringify(dup)).not.toContain('@private.example')
+      expect(String(dup)).not.toContain('@private.example')
+      expect(JSON.stringify(t.explainRow('cat@private.example'))).not.toContain('@private.example')
+    }
+  })
+
+  it('a rowKey path above a sensitive column is hashed too (#45)', () => {
+    const t = make({
+      diagnostics: { redact: 'full' },
+      rowKey: 'contact' as never,
+      columns: [{ key: 'id' }, { key: 'contact.email' as never, sensitive: true }],
+      interceptors: [emitter({ column: 'id', value: 1, key: 'raw-key' })],
+    })
+    t.setState({ page: 1 })
+    const d = seen.find((x) => x.code === 'DK_TEST_TABLE_VALUE')
+    expect(d?.details.key).toMatch(/^h:[0-9a-f]{8}$/)
+  })
+
+  it('a value of a column inside a sensitive column is never logged (#45)', () => {
+    const t = make({
+      diagnostics: { redact: 'full' },
+      columns: [{ key: 'contact', sensitive: true } as never, { key: 'contact.email' as never }],
+      interceptors: [emitter({ column: 'contact.email', value: 'SECRET', key: 1 })],
+    })
+    t.setState({ page: 1 })
+    const d = seen.find((x) => x.code === 'DK_TEST_TABLE_VALUE')
+    expect(d?.details.value).toBe('[sensitive]')
   })
 
   it('follows column changes made with setOptions', () => {

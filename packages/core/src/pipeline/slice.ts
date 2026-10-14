@@ -25,6 +25,8 @@ export interface SlicerHost {
   trigger(): Trigger
   /** A job ended (its result or error is ready): recompute the row model and notify. */
   done(trigger: Trigger): void
+  /** A slice run between pipeline runs took `ms` (the tracer's, #61). */
+  timed?(feature: string, ms: number): void
 }
 
 export interface Slicer {
@@ -121,7 +123,9 @@ export function createSlicer(host: SlicerHost): Slicer {
     while (task.state === 'running') {
       await pause(task.feature)
       if (task.state !== 'running') return
-      advance(task, now() + SLICE_MS)
+      const start = now()
+      advance(task, start + SLICE_MS)
+      host.timed?.(task.feature, now() - start)
     }
     running.delete(task)
     host.done(task.trigger)

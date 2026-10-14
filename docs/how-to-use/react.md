@@ -210,7 +210,11 @@ It renders what the installed features provide:
 - **A search input** with `search()`, bound to `state.search.input`: typing calls `setSearch`,
   Enter `flushSearch`, Esc `clearSearch`, and a spinner shows while the search is `pending` or
   `searching`.
-- **A pager** with `pagination()`: previous / next buttons and "Page n of m".
+- **A pager** with `pagination()`: previous / next buttons and "Page n of m". At the first / last
+  page the unavailable button gets `aria-disabled="true"` (not `disabled`), so it keeps keyboard
+  focus.
+- **Names**: with a text `caption` ("Customers"), the search box is "Search Customers" and the
+  pager "Customers pagination", so two tables on a page get distinct names.
 - **Cells** through the column's `cell`, else `format`, else the default formatter; flagged cells
   (`invalidRows: 'flag'`) through `invalidCell`, else the raw value with a `⚠` marker.
 
@@ -227,7 +231,13 @@ The body shows one state at a time, from `status` and `isInitialLoad`:
 
 Over loaded rows, any `status` other than `'idle'` shows a refresh indicator above the table:
 "Updating…" while busy, or "Could not refresh; showing the previous rows." with a retry on
-`'error'`.
+`'error'`. Activating a Retry button (the load error, the refresh error or the render error) moves
+keyboard focus to the `<table>` before the button goes away, so focus does not fall to `<body>`.
+
+Status messages go to one visually hidden `aria-live="polite"` region at the end of the root, in
+the markup from the first render: "Searching rows…" while a search is `pending` / `searching`, and
+once the table settles the result, e.g. "5 rows", "25 rows, page 2 of 3", "0 rows" (server mode:
+"Page 2 of 3"). It is written only when the message changes, never on the first render.
 
 ### Replacing parts with `components`
 
@@ -302,8 +312,8 @@ export function Users({ users }: { users: User[] }) {
 
 | Component | Props |
 | --- | --- |
-| `SearchInput` | `SearchInputProps`: `value` (`state.search.input`), `status` (`'idle' \| 'pending' \| 'searching' \| 'error'`), `onChange(value)` (`setSearch`), `onSubmit()` (`flushSearch`), `onClear()` (`clearSearch`) |
-| `Pagination` | `PaginationProps`: `pageIndex`, `pageSize`, `pageCount`, `canPrev`, `canNext`, `prev()`, `next()`, `setPageIndex(index)`, `setPageSize(size)` |
+| `SearchInput` | `SearchInputProps`: `value` (`state.search.input`), `status` (`'idle' \| 'pending' \| 'searching' \| 'error'`), `onChange(value)` (`setSearch`), `onSubmit()` (`flushSearch`), `onClear()` (`clearSearch`), `label` (the accessible name: `'Search <caption>'` with a text `caption`, else `'Search'`) |
+| `Pagination` | `PaginationProps`: `pageIndex`, `pageSize`, `pageCount`, `canPrev`, `canNext`, `prev()`, `next()`, `setPageIndex(index)`, `setPageSize(size)`, `label` (`'<caption> pagination'` with a text `caption`, else `'Pagination'`) |
 | `Empty` | `EmptyProps`: `filtered` |
 | `Loading` | `LoadingProps`: `status` |
 | `Error` | `ErrorProps`: `status`, `reason` (`'load'` \| `'render'`), `retry()` (`'load'`: `refetch()`; `'render'`: renders the body again) |
@@ -313,7 +323,8 @@ export function Users({ users }: { users: User[] }) {
 `<DataTable />` contains failures to the smallest part it can:
 
 - A `cell`, `format` or `invalidCell` that throws renders `⚠` in that cell and reports
-  `DK_CALLBACK_FAILED` (one diagnostic per column, with the failed rows).
+  `DK_CALLBACK_FAILED` (one diagnostic per column, with the failed rows). Every `⚠` below is an
+  image named "Could not display this value" for screen readers.
 - A `cell` that returns a promise renders `⚠`, and a `format` that returns a non-string falls back
   to the default formatter; both report `DK_CALLBACK_BAD_RETURN` in development.
 - A component returned by `cell` that throws while React renders it renders `⚠` in that cell only
@@ -321,6 +332,9 @@ export function Users({ users }: { users: User[] }) {
   again when its row or column changes.
 - A component that throws elsewhere in the body (`Empty`, `Loading`, `Error`) shows the Error
   state with `reason: 'render'` and a retry; the header, search and pager keep working.
+- A `SearchInput` or `Pagination` component that throws is replaced by the default part (still
+  bound to the table) until another component is passed, and reports `DK_RENDER_FAILED` at
+  `components.SearchInput` / `components.Pagination`.
 
 ## Styling
 
@@ -333,21 +347,22 @@ export function Users({ users }: { users: User[] }) {
 | `data-initial-load` | the root | `'true'` / `'false'` |
 | `aria-busy` | the root | `'true'` while `validating`, `pending`, `searching` or `fetching` |
 | `data-dk-search` | the search input's wrapper | — |
-| `data-dk-spinner` | the search spinner (`role="status"`) | — |
+| `data-dk-spinner` | the search spinner (decorative, `aria-hidden`) | — |
 | `aria-sort`, `data-sort` | sortable `<th>` | `ascending` / `descending` / `none`; `asc` / `desc` |
 | `data-dk-sort-indicator` | the ▲ / ▼ in a sort button | — |
 | `data-dk-state` | the state row `<tr>` | `loading`, `error`, `empty` |
 | `data-invalid`, `aria-invalid` | flagged rows and their cells with issues | `'true'` |
 | `data-dk-invalid-marker` | the `⚠` of an invalid cell | — |
 | `data-dk-pagination`, `data-dk-page` | the pager `<nav>` and its "Page n of m" | — |
+| `aria-disabled` | the pager's previous / next button with no page to go to | `'true'` |
 | `data-dk-refresh` | the refresh indicator | — |
 
 For a default look, import `datakable/styles.css` (or `@datakable/react/styles.css`) once, in your
 app entry: `import 'datakable/styles.css'`. It styles only these hooks; every selector sits in
 `:where()`, so it has zero specificity and any rule of yours wins. Theme it with custom properties
 on `[data-datakable]`: `--dk-font-size`, `--dk-fg`, `--dk-muted`, `--dk-bg`, `--dk-subtle`,
-`--dk-border`, `--dk-accent`, `--dk-danger`, `--dk-danger-bg`, `--dk-radius`, `--dk-cell-py`,
-`--dk-cell-px`. A dark set applies under `prefers-color-scheme: dark`.
+`--dk-border`, `--dk-control-border` (the search input's border, ≥ 3:1 against `--dk-bg`),
+`--dk-accent`, `--dk-danger`, `--dk-danger-bg`, `--dk-radius`, `--dk-cell-py`, `--dk-cell-px`. A dark set applies under `prefers-color-scheme: dark`.
 
 ```css
 [data-datakable] {

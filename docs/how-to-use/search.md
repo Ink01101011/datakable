@@ -43,12 +43,18 @@ table.clearSearch() // empties input and query: every row again
 ```
 
 - **Which columns.** When any column declares a `search` weight, only the columns with a weight
-  above 0 are searched. When no column declares one (including zero-config columns), every column
-  is searched at weight 1.
+  above 0 are searched. When no column declares one (including zero-config columns), the columns
+  of strings, numbers and booleans (nullable) are searched at weight 1. A column of dates, arrays
+  or other objects is searched only with a `search` weight: formatting it would keep a string per
+  row (see [Performance](performance.md)). Development builds report
+  [`DK_SEARCH_COLUMN_SKIPPED`](../how-to-fix/errors.md#dk_search_column_skipped) for each such
+  column, with the fix.
 - **What is matched.** The formatted cell values: the column's `format`, else the default
   formatter (so a `Date` is matched as the user sees it, and arrays are joined). Matching is
   fuzzy (Levenshtein distance up to `fuzzyMaxDistance`) and case-insensitive unless
-  `caseSensitive: true`. A one-word query is measured against each word of a cell as well as
+  `caseSensitive: true`. Cell values and the query are Unicode-normalised (NFC), like the
+  `contains` filter, so a composed `Zoë` and a decomposed `Zoe` + `◌̈` (common from macOS, Thai and
+  Vietnamese input) find each other. A one-word query is measured against each word of a cell as well as
   the whole cell, so `lopes` finds `Garcia Lopez`; a query with spaces is measured against the
   whole cell. A row is kept when its relevance (0–1, weights applied) reaches
   `threshold`.
@@ -98,7 +104,7 @@ development).
 | --- | --- | --- | --- |
 | `strategy` | `'immediate' \| 'debounce' \| 'throttle'` | `'immediate'` | `immediate`: every keystroke is applied. `debounce`: applied after `wait` without typing. `throttle`: at most once per `wait` (the first keystroke at once, the latest at the end of the window). |
 | `wait` | `number` (ms) or `{ hours?, minutes?, seconds?, ms? }` | `300` | Used by `debounce` and `throttle`. |
-| `behavior` | `'trailing' \| 'leading'` | `'trailing'` | Debounce only. `leading`: apply the first keystroke at once and drop the rest of the burst (`flushSearch()` applies them). |
+| `behavior` | `'trailing' \| 'leading'` | `'trailing'` | Debounce only. `leading`: apply the first keystroke at once and drop the rest of the burst (`flushSearch()` applies them; otherwise their `setSearch()` promises resolve `'superseded'` when the silence window ends). |
 | `minLength` | `number` (integer ≥ 0) | `0` | A trimmed input shorter than this is applied as an empty query (every row). |
 | `commitOn` | `'type' \| 'enter'` | `'type'` | `enter`: typing only updates `input`; only `flushSearch()` applies it. |
 

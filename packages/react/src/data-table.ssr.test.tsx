@@ -77,4 +77,21 @@ describe('<DataTable /> on the server (§7.2, §10)', () => {
     expect(html).toContain('No rows')
     expect(html).not.toContain('Loading…')
   })
+
+  const objRows: { id: number; obj: unknown }[] = [
+    { id: 1, obj: { a: 1 } },
+    { id: 2, obj: 'ok' },
+  ]
+  it("an object cell renders '' and reports DK_UNRENDERABLE_VALUE (#18; no effects run here)", () => {
+    const codes: string[] = []
+    const html = renderToString(
+      <DataTable
+        data={objRows}
+        columns={[{ key: 'id' }, { key: 'obj' }]}
+        onDiagnostic={(d) => codes.push(d.code)}
+      />,
+    )
+    expect(html).toContain('<td>ok</td>')
+    expect(codes).toEqual(['DK_UNRENDERABLE_VALUE'])
+  })
 })

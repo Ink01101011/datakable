@@ -96,6 +96,10 @@ Moved: [DK_SORT_COMPARATOR_INVALID](how-to-fix/errors.md#dk_sort_comparator_inva
 
 Moved: [DK_SORT_STRATEGY](how-to-fix/errors.md#dk_sort_strategy).
 
+### DK_SEARCH_COLUMN_SKIPPED
+
+Moved: [DK_SEARCH_COLUMN_SKIPPED](how-to-fix/errors.md#dk_search_column_skipped).
+
 ### DK_SEARCH_FAILED
 
 Moved: [DK_SEARCH_FAILED](how-to-fix/errors.md#dk_search_failed).
@@ -216,6 +220,10 @@ Moved: [DK_CONTROLLED_WITHOUT_HANDLER](how-to-fix/errors.md#dk_controlled_withou
 
 Moved: [DK_CONTROLLED_NOT_FED_BACK](how-to-fix/errors.md#dk_controlled_not_fed_back).
 
+### DK_CONTROLLED_SLICE_DROPPED
+
+Moved: [DK_CONTROLLED_SLICE_DROPPED](how-to-fix/errors.md#dk_controlled_slice_dropped).
+
 ### DK_UNSTABLE_COLUMNS
 
 Moved: [DK_UNSTABLE_COLUMNS](how-to-fix/errors.md#dk_unstable_columns).
@@ -263,6 +271,10 @@ Moved: [DK_DEPRECATED](how-to-fix/errors.md#dk_deprecated).
 ### DK_DUPLICATE_CORE
 
 Moved: [DK_DUPLICATE_CORE](how-to-fix/errors.md#dk_duplicate_core).
+
+### DK_DUPLICATE_CORE_SAME_VERSION
+
+Moved: [DK_DUPLICATE_CORE_SAME_VERSION](how-to-fix/errors.md#dk_duplicate_core_same_version).
 
 ### DK_VERSION_MISMATCH
 

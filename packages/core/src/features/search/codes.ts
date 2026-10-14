@@ -13,6 +13,12 @@ declare module '../../diagnostics/catalog' {
       /** Whether a previous `searchFn` result is shown (`false`: none applied yet). */
       hadResults: boolean
     }
+    DK_SEARCH_COLUMN_SKIPPED: {
+      /** Column id (`key` or `id`). */
+      column: string
+      /** Position in the table's columns (`options.columns`, else the derived columns). */
+      index: number
+    }
   }
 }
 

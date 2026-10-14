@@ -78,13 +78,15 @@ export function defineDiagnostic<const C extends DiagnosticCode>(
   text?: DiagnosticText<C> | false,
 ): DiagnosticDefinition<C> {
   const definition = (text ? { ...meta, ...text } : meta) as DiagnosticDefinition<C>
-  const prev = registry.get(definition.code)
   // Development check: codes are fixed at build time, a production bundle skips it.
-  if (DEV && prev && prev.level !== definition.level) {
-    throw new Error(
-      `[DataKable] diagnostic code ${definition.code} is already defined as level ` +
-        `"${prev.level}"; codes are never redefined — pick a new code`,
-    )
+  if (DEV) {
+    const prev = registry.get(definition.code)
+    if (prev && prev.level !== definition.level) {
+      throw new Error(
+        `[DataKable] diagnostic code ${definition.code} is already defined as level ` +
+          `"${prev.level}"; codes are never redefined — pick a new code`,
+      )
+    }
   }
   registry.set(definition.code, definition as unknown as DiagnosticDefinition)
   return definition
@@ -101,6 +103,9 @@ export function installMessages(...all: ReadonlyArray<Readonly<Record<string, un
     for (const code of Object.keys(m)) messages.set(code, m[code] as DiagnosticText)
   }
 }
+
+/** An installed message by key: a code's text builders, or a detail prose sentence (`prose.ts`). */
+export const installedText = (key: string): unknown => messages.get(key)
 
 /** `true` once `installMessages` ran: production diagnostics then build their text too. */
 export const hasMessages = (): boolean => messages.size > 0

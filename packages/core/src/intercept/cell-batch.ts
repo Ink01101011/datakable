@@ -21,11 +21,12 @@ export const CELL_FALLBACK = {
   sortBy: undefined,
 } as const
 
+/** Prose keys (diagnostics/prose.ts) of each slot's fallback. */
 const CELL_FALLBACK_TEXT: Record<CellSlot, string> = {
-  accessor: 'the failed cells read as undefined',
-  format: "the failed cells render ''",
-  filterFn: 'the failed rows are treated as non-matching',
-  sortBy: 'the failed rows sort as missing values (last)',
+  accessor: 'cells-undefined',
+  format: 'cells-empty',
+  filterFn: 'rows-unmatched',
+  sortBy: 'rows-last',
 }
 
 /**

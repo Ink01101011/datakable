@@ -73,6 +73,8 @@ export interface TableInternals {
    * creation; the pipeline runner (T09) runs their `rowModel`s in this order.
    */
   readonly features: readonly AnyFeature[]
+  /** `options.name` as given (`undefined` without one). */
+  readonly name: string | undefined
   /**
    * The server row count (§6.5, §7.1): the last applied fetcher result's `rowCount` with a fetcher
    * (`undefined` until one applied), else `options.rowCount`.

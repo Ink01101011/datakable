@@ -52,4 +52,20 @@ describe('search(): ex-search missing', () => {
     expect(dep).toHaveLength(1)
     expect(dep[0]?.details).toMatchObject({ dependency: 'ex-search', feature: 'search' })
   })
+
+  it('NFC and NFD spellings match each other (#30)', async () => {
+    const t = createTable({
+      data: [
+        { id: 0, name: 'Zoë' },
+        { id: 1, name: 'Zoë' },
+        { id: 2, name: 'Zoe' },
+      ],
+      onDiagnostic() {},
+      features: [search()],
+    })
+    await t.setSearch('ZOË')
+    expect(t.getRowModel().rows.map((r) => r.original.id)).toEqual([0, 1])
+    await t.setSearch('zoë')
+    expect(t.getRowModel().rows.map((r) => r.original.id)).toEqual([0, 1])
+  })
 })

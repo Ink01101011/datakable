@@ -5,7 +5,7 @@ import { keepDiagnostics } from '../diagnostics/catalog'
 import { DEV } from '../diagnostics/env'
 import { type ExplainHost, explainRow, explainTable } from '../diagnostics/explain'
 import { createDiagnostics } from '../diagnostics/hub'
-import type { RedactionOptions } from '../diagnostics/redact'
+import { pathsOverlap, type RedactionOptions } from '../diagnostics/redact'
 import { tracer } from '../diagnostics/tracer'
 import type { Trigger } from '../diagnostics/types'
 import { runtimeFor } from '../feature/runtime'
@@ -72,7 +72,31 @@ const RANK: readonly RowModelStatus[] = [
 const isThenable = (v: unknown): v is PromiseLike<unknown> =>
   v != null && typeof (v as { then?: unknown }).then === 'function'
 
-const freeze = <S extends object>(s: S): S => (DEV ? Object.freeze(s) : s)
+/** Objects already deep-frozen (dev): an unchanged slice is not walked again on the next commit. */
+const deepFrozen = DEV ? new WeakSet<object>() : undefined
+
+/**
+ * Freezes plain objects and arrays reachable from `v` (dev). Class instances (Date, Map, typed
+ * arrays, user classes) are left alone: freezing them would break their own methods.
+ */
+function deepFreeze(v: unknown): void {
+  if (v === null || typeof v !== 'object' || deepFrozen?.has(v)) return
+  const isArray = Array.isArray(v)
+  if (!isArray) {
+    const proto = Object.getPrototypeOf(v)
+    if (proto !== Object.prototype && proto !== null) return
+  }
+  deepFrozen?.add(v)
+  Object.freeze(v)
+  if (isArray) for (let i = 0; i < v.length; i++) deepFreeze(v[i])
+  else for (const k in v) deepFreeze((v as Record<string, unknown>)[k])
+}
+
+/** Snapshots and their slices are immutable in development (#20); production skips the walk. */
+const freeze = <S extends object>(s: S): S => {
+  if (DEV) deepFreeze(s)
+  return s
+}
 
 /** The row type: the schema output with a `schema` (§5.1), else `T`. */
 export type SchemaRow<T, Sch> = [Sch] extends [TableSchema] ? StandardSchemaV1.InferOutput<Sch> : T
@@ -204,8 +228,11 @@ export function createTable<T, S extends TableState>(
     ...(typeof redactOption === 'string' ? { level: redactOption } : {}),
     ...(typeof redactOption === 'function' ? { redact: redactOption } : {}),
     sensitiveColumns,
-    rowKeySensitive: () =>
-      typeof options.rowKey === 'string' && sensitiveColumns().includes(options.rowKey),
+    // A rowKey path into (or above) a sensitive column reads its data too (#45).
+    rowKeySensitive: () => {
+      const k = options.rowKey
+      return typeof k === 'string' && sensitiveColumns().some((c) => pathsOverlap(k, c))
+    },
   }
   const hub = createDiagnostics({
     ...(options.name === undefined ? {} : { name: options.name }),
@@ -268,7 +295,7 @@ export function createTable<T, S extends TableState>(
     () => options.columns,
   )
   // Never silent (§8.6): in production (no option validator) an unwrapped schema would be ignored.
-  if (options.schema && !schemaIngest) unwrapped('schema', 'withSchema')
+  if (options.schema && !schemaIngest) unwrapped('schema', options.schema, 'withSchema')
 
   function sensitiveColumns(): string[] {
     const out: string[] = []
@@ -478,7 +505,7 @@ export function createTable<T, S extends TableState>(
     data = next
     pending = true
     // After `data` is set: diagnostics dedupe per data reference.
-    dataChecks?.check(data, options.columns)
+    if (DEV) dataChecks?.check(data, options.columns)
     // The pipeline runs before the next notification (or on getRowModel), as `pipeline:run` with
     // ctx.meta[FALLBACK] = the last good row model (pipeline/runner.ts).
     rowModelDirty = true
@@ -686,7 +713,7 @@ export function createTable<T, S extends TableState>(
     } finally {
       // Dev (§5.3): fingerprint `data` after the core read it, so the check never takes reads
       // first; also when the ingest threw, so a later same-reference check compares this data.
-      if (!fetched) dataCheck?.remember(options.data)
+      if (DEV && !fetched) dataCheck?.remember(options.data)
     }
   }
 
@@ -776,7 +803,7 @@ export function createTable<T, S extends TableState>(
         if (next.fetcher !== previous.fetcher) server?.reset()
         // New data is checked when applied (setData); same data with new columns is checked here.
         if (next.data !== previous.data) ingest()
-        else {
+        else if (DEV) {
           if ('data' in partial) dataCheck?.check(next.data)
           if (next.columns !== previous.columns) dataChecks?.check(data, next.columns)
         }
@@ -857,7 +884,7 @@ export function createTable<T, S extends TableState>(
     const factory = (fetcher as Partial<ServerFetcher<unknown>> | undefined)?.[SERVER_SOURCE]
     if (factory) server = use(factory)
     // Never silent (§8.6): in production an unwrapped fetcher would never run.
-    else if (fetcher) unwrapped('fetcher', 'withFetcher', phase)
+    else if (fetcher) unwrapped('fetcher', fetcher, 'withFetcher', 'server', phase)
     return server
   }
 
@@ -867,12 +894,20 @@ export function createTable<T, S extends TableState>(
    */
   function unwrapped(
     path: 'schema' | 'fetcher',
+    value: unknown,
     wrap: string,
+    entry: string = path,
     phase: 'init' | 'setOptions' = 'init',
   ): never {
     return throwConfigError(
       'DK_INVALID_OPTION',
-      { path, expected: `${wrap}(${path})`, received: path, suggestions: [], phase },
+      {
+        path,
+        expected: `wrapped|${wrap}|${path}|${entry}`, // prose key (diagnostics/prose.ts)
+        received: typeof value,
+        suggestions: [],
+        phase,
+      },
       { table: hub.table, trigger: phase },
     )
   }
@@ -905,6 +940,7 @@ export function createTable<T, S extends TableState>(
 
   setTableInternals(table, {
     features: pipeline,
+    name: options.name,
     rowCount: () => (typeof options.fetcher === 'function' ? server?.rowCount() : options.rowCount),
     hasFetcher: () => typeof options.fetcher === 'function',
     emit: hub.emit,

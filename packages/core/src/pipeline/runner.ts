@@ -1,6 +1,7 @@
 import { getValue } from '../column/get-value'
 import { keepDiagnostics } from '../diagnostics/catalog'
 import { DEV } from '../diagnostics/env'
+import { SLICED, sliceTimer } from '../diagnostics/trace-store'
 import type { Emit, Trigger } from '../diagnostics/types'
 import { featureDiagnostics } from '../feature/codes'
 import type { FeatureRuntime } from '../feature/runtime'
@@ -13,7 +14,7 @@ import { type ContextBase, createContext } from '../intercept/context'
 import { FALLBACK } from '../intercept/fallbacks'
 import type { InterceptorRuntime } from '../intercept/runtime'
 import type { TableState } from '../table/types'
-import type { ColumnCache } from './column-cache'
+import type { ColumnCache, SlicedFormatting } from './column-cache'
 import { type ResolvedColumn, type ResolvedColumns, resolveColumns } from './columns'
 import { checkStep, indexPrint, stepDiagnostics } from './dev-checks'
 import { allRows } from './indices'
@@ -170,6 +171,7 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
     enabled: () => refresh !== undefined && last !== undefined && host.base().phase === 'client',
     trigger: () => host.base().trigger,
     done: (trigger) => refresh?.(trigger),
+    timed: (feature, ms) => sliceTimer.current?.(host.base(), feature, ms),
   })
 
   /** `Row.getValue` failures: one emit per failing cell, built only when a cell fails. */
@@ -182,7 +184,7 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
         column: col.id,
         rows: [index],
         count: 1,
-        fallback: 'the cell reads as undefined',
+        fallback: 'cell-undefined',
         ...(name === undefined ? {} : { errorName: name }),
       },
       { cause: e },
@@ -241,7 +243,7 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
         slot: 'rowKey',
         rows: Array.from(keyFailures.sample()),
         count: keyFailures.count,
-        fallback: "those rows use the fallback key '#<index>'",
+        fallback: 'row-key-index',
         ...(name === undefined ? {} : { errorName: name }),
       },
       { cause: keyError },
@@ -307,7 +309,7 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
     const { run: runId, trigger } = host.base()
     lastRun = { run: runId, trigger, steps: records }
 
-    const rowModelContext = (name: string): RowModelContext => ({
+    const rowModelContext = (name: string): RowModelContext & SlicedFormatting => ({
       name,
       data,
       emit: stepEmit,
@@ -321,6 +323,10 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
       getFormattedValues: (id) => {
         const col = cols.byId.get(id)
         return col ? cache.formatted(data, col) : undefined
+      },
+      *formattedSliced(id) {
+        const col = cols.byId.get(id)
+        return col ? yield* cache.formattedSliced(data, col) : undefined
       },
       batch: (id, slot, rows, body) => {
         const col = cols.byId.get(id)
@@ -367,13 +373,15 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
             {
               feature: f.name,
               hook: 'rowModel',
-              fallback: 'the step passed its input through',
+              fallback: 'step-passthrough',
               ...(name === undefined ? {} : { errorName: name }),
             },
             { cause: e },
           )
           return input
         }
+        // The tracer adds the time of this sliced work to the step (#61).
+        if (waiting > waited) ctx.meta.set(SLICED, true)
         // Dev: a mutated input warns; a bad output passes the input through, not memoised.
         if (DEV && !checkStep(stepEmit, f.name, input, before, out, data.length)) return input
         ok = true
@@ -415,14 +423,15 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
     } finally {
       // Sliced work no step asked for in this run is stale: cancelled.
       slicer?.end()
-    }
-    if (result) model = result
-    else {
-      // pipeline:run failed: the boundary reported it; keep the last good rows.
-      const isInitialLoad = host.isInitialLoad()
-      model = last
-        ? { ...last.model, status: 'error', isInitialLoad }
-        : { rows: EMPTY, filteredCount: 0, totalCount: 0, status: 'error', isInitialLoad }
+      if (result) model = result
+      else {
+        // pipeline:run failed: the boundary reported it, or a strict throw is leaving the run
+        // (#43). Either way the last good rows with status 'error', never an empty 'idle' model.
+        const isInitialLoad = host.isInitialLoad()
+        model = last
+          ? { ...last.model, status: 'error', isInitialLoad }
+          : { rows: EMPTY, filteredCount: 0, totalCount: 0, status: 'error', isInitialLoad }
+      }
     }
     return model
   }

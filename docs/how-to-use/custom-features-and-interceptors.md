@@ -360,7 +360,8 @@ createTable({
 - An interceptor that throws is reported as `DK_INTERCEPTOR_FAILED` and skipped: when it threw
   before calling `next()`, the chain continues without it; after, the result `next()` produced is
   kept, so the operation never runs twice.
-- `column:batch` is **hot**: it runs once per column per pipeline run, never per cell. An
+- `column:batch` is **hot**: it runs once per column per pipeline run, never per cell (`rows` says
+  which rows; when search formats a large column time-sliced, once per batch of rows). An
   interceptor on it (directly or through `on: '*'`) must set `hot: true`; without it, development
   reports `DK_HOT_INTERCEPTOR` with the measured cost (the interceptor still runs).
 - `options.interceptors` is synced by `setOptions` (and by `useDataTable`): a new list recompiles
@@ -379,9 +380,12 @@ createTable({
   [`DK_FEATURE_FAILED`](../how-to-fix/errors.md#dk_feature_failed).
 - **`this` inside a nested object type** in a `FeatureTypes` interface is TS2526: hoist the state
   and API into generic types, as above.
-- **`createTable<Item>({ features })` with only the row type given** turns off the inference of the
-  features: let `T` be inferred from `data`, or spell out the feature tuple as the third type
-  argument.
+- **`createTable<Item>({ features })` with only the row type given** does not compile: the
+  features' type argument takes its default (the `datakable` preset; `[]` in `@datakable/core`), so
+  TypeScript reports `Type 'Feature<"sorting", …>' is not assignable to type
+  'Feature<"columnFilters", …>'` (or `… to type 'never'`). Let `T` be inferred from `data`, or
+  give the feature tuple as the third type argument
+  ([Reading type errors](../how-to-fix/reading-type-errors.md#7-features-with-only-the-row-type-given)).
 - **An interceptor on a hot operation** without `hot: true`:
   [`DK_HOT_INTERCEPTOR`](../how-to-fix/errors.md#dk_hot_interceptor). A throwing one:
   [`DK_INTERCEPTOR_FAILED`](../how-to-fix/errors.md#dk_interceptor_failed).

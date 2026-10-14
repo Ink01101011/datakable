@@ -46,8 +46,13 @@ export interface ExplainStep {
   readonly cached: boolean
   /** The step threw or returned a bad output and passed its input through. */
   readonly failed: boolean
-  /** Duration (tracer only, development or `interceptors: [tracer()]`). */
+  /**
+   * Duration (tracer only, development or `interceptors: [tracer()]`). A step that waited on
+   * time-sliced work: the total of its runs and of the slices between them (#61).
+   */
   readonly ms?: number
+  /** Time-sliced work (#61): the runs {@link ms} spans; absent when the step ran in one. */
+  readonly runs?: number
 }
 
 /** What `table.explain()` returns (§8.4); `String(e)` is the console summary. */
@@ -156,10 +161,10 @@ export function explainTable(host: ExplainHost): TableExplanation {
     const rec = last?.steps.find((s) => s.feature === f)
     if (!rec) continue
     flowing = rec.output.length
-    const ms = traced ? trace.steps.get(f.name)?.ms : undefined
+    const t = traced ? trace.steps.get(f.name) : undefined
     steps.push({
       ...step(f, 'client', rec.input.length, rec.output.length, rec.cached, rec.failed),
-      ...(ms === undefined ? {} : { ms }),
+      ...(t ? { ms: t.ms, ...(t.runs ? { runs: t.runs } : {}) } : {}),
     })
   }
   const mode = host.schemaMode()

@@ -16,6 +16,13 @@ one line:
 [DataKable table#1] DK_FETCH_FAILED at options.fetcher — https://github.com/Ink01101011/datakable/blob/main/docs/errors.md?v=<version>&where=options.fetcher#dk_fetch_failed
 ```
 
+The details keep their data, but a detail that is a sentence in development (`fallback`,
+`reason`, `problem`, `expected`) is a short key in production: `fallback: 'cells-undefined'`
+instead of `fallback: 'the failed cells read as undefined'`, `reason: 'page-size|10'` (a key and its
+arguments) instead of `'pageSize was replaced by 10'`. Each key is spelled out in
+[`diagnostics/prose.ts`](../../packages/core/src/diagnostics/prose.ts); with the messages imported
+([below](#fix-keep-the-text)) the details read as sentences again, exactly as in development.
+
 That is usually enough to group errors in a logger and look them up:
 
 ```ts
@@ -48,15 +55,81 @@ Some codes are never emitted in production at all (development-only checks such 
 ## Fix: keep the text
 
 Import the messages once in the app entry. Every diagnostic then has its full text in production,
-in `onDiagnostic` and `toJSON()`; it adds the message text to your bundle.
+in `onDiagnostic` and `toJSON()`, and its detail sentences instead of their keys; it adds the
+message text to your bundle.
 
 ```ts
-// In the app entry (main.tsx, _app.tsx, layout.tsx, …), once, before any table is created.
+// In the app entry (main.tsx, the pages router's _app.tsx, …), once, before any table is created.
 // Production builds then keep the full problem / impact / fix text of every diagnostic.
 import 'datakable/messages'
 ```
 
 With `@datakable/core` alone, import `@datakable/core/messages` instead.
+
+The import must be in a module of the bundle that creates the tables: the browser bundle for
+tables in client components, the server bundle for tables created on the server.
+
+### Next.js app router
+
+`app/layout.tsx` is a server component: an import there runs only in the server bundle, so the
+tables of client components still have no text in the browser. Import the messages in a
+`'use client'` module and render it once from the root layout:
+
+```tsx
+'use client'
+// app/datakable-messages.tsx — a client module: the import reaches the browser bundle (and the
+// server render of client components). An import in app/layout.tsx, a server component, does not.
+import 'datakable/messages'
+
+export function DatakableMessages() {
+  return null
+}
+```
+
+```tsx
+// app/layout.tsx — the root layout (a server component) renders the client module once.
+import type { ReactNode } from 'react'
+import { DatakableMessages } from './3-datakable-messages' // './datakable-messages' in your app
+
+export default function RootLayout({ children }: { children: ReactNode }) {
+  return (
+    <html lang="en">
+      <body>
+        <DatakableMessages />
+        {children}
+      </body>
+    </html>
+  )
+}
+```
+
+A table created in a server component (`createTable` in server code) needs the import in a server
+module too: add `import 'datakable/messages'` to the module that creates it. With the pages
+router, `pages/_app.tsx` is shared by the server and the browser, and one import there covers both.
+
+### Nuxt and other Nitro servers
+
+Nitro (Nuxt's server) treats the packages it does not bundle as free of side effects, so it drops a
+side-effect-only `import '@datakable/core/messages'` (or `import 'datakable/messages'`) from the
+server bundle: tables rendered on the server have no text, while the browser has it. Install the
+messages with a call instead, which no bundler drops, from a universal plugin (server and client):
+
+```ts
+// plugins/datakable-messages.ts — a universal Nuxt plugin. The call keeps the messages in the
+// server bundle too; a side-effect-only import would be dropped there.
+import { installMessages } from '@datakable/core'
+import { allMessages } from '@datakable/core/messages'
+
+declare function defineNuxtPlugin(setup: () => void): unknown // auto-imported by Nuxt
+
+installMessages(...allMessages)
+
+export default defineNuxtPlugin(() => {})
+```
+
+The same form works with any bundler and in any SSR framework. With `datakable`, import
+`allMessages` from `datakable/messages` and also pass `renderMessages` (from `datakable`) to
+`installMessages`, for the React codes.
 
 ## Related codes
 

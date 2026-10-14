@@ -78,7 +78,7 @@ table.toggleSort('address.city')
 | `id` | `string` | The column id of a derived column. Required with `accessor`. |
 | `accessor` | `(row: T) => unknown` | Computes a derived column's value from the row. |
 | `header` | `string` | Header text. `<DataTable />` shows the column id when it is missing. |
-| `search` | `number` | Search weight. When any column declares `search`, only the columns with a weight above 0 are searched; when none does, every column is searched at weight 1. See [Search](search.md). |
+| `search` | `number` | Search weight. When any column declares `search`, only the columns with a weight above 0 are searched; when none does, the columns of strings, numbers and booleans are searched at weight 1 (a date, array or object column needs a weight). See [Search](search.md). |
 | `sortable` | `boolean` | `false` hides the sort button in `<DataTable />`. Core's `toggleSort` / `setSorting` do not read it. On an object column, `sortable: true` needs `sortFn` or `sortBy` (a compile-time rule). |
 | `sortFn` | `(a: V, b: V) => number` | Compares two cell values (`V` is the column's value type). |
 | `sortBy` | `(row: T) => Primitive` | Sorts by a primitive computed from the row. |
@@ -235,7 +235,9 @@ console.log(byId.getRowModel().rows[0]?.key)
 - Without `rowKey`, the key is the row's index in the data. That is fine for static data, but
   indices change when rows are added or removed.
 - **Duplicates:** the first row keeps the key; later rows get `key#1`, `key#2`, … and the table
-  reports `DK_DUPLICATE_ROW_KEY`, whose fix names fields that are unique across all rows.
+  reports `DK_DUPLICATE_ROW_KEY`, whose fix names fields that are unique across all rows. Keys are
+  compared as strings (as React keys and `explainRow` compare them), so `1` and `'1'` repeat. A
+  fallback never takes a key that another row really has: it moves on to the next free `#n`.
 - **Missing keys:** a row whose key is missing, `null`, `NaN` or not a string or number gets the
   fallback `#<index>` and the table reports `DK_MISSING_ROW_KEY`.
 - A `rowKey` function that throws gives that row the `#<index>` fallback and reports

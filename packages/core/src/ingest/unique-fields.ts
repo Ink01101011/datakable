@@ -45,13 +45,13 @@ function candidates(row: unknown, skip: string | undefined): string[] {
   return out
 }
 
-/** `true` when `keyAt(i)` is a usable key for every row and never repeats. */
+/** `true` when `keyAt(i)` is a usable key for every row and never repeats (as a string). */
 function allDistinct(n: number, keyAt: (i: number) => unknown): boolean {
-  const seen = new Set<unknown>()
+  const seen = new Set<string>()
   for (let i = 0; i < n; i++) {
     const v = keyAt(i)
-    if (!isKey(v) || seen.has(v)) return false
-    seen.add(v)
+    if (!isKey(v) || seen.has(String(v))) return false
+    seen.add(String(v))
   }
   return true
 }

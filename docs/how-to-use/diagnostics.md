@@ -75,8 +75,8 @@ for (const d of table.getDiagnostics()) {
 | `kind` | Fields | Printed as |
 | --- | --- | --- |
 | `'column'` | `index`, `id` | `columns[1] (id "age")` |
-| `'feature'` | `name` | `feature "sorting"` |
-| `'option'` | `path` | `options.rowCount` (a feature option: `options.sorting.algorithm`) |
+| `'feature'` | `name` | `feature "sorting"`; also an option of the feature (`sorting({ algorithm })`), whose name is in `details.path` |
+| `'option'` | `path` | `options.rowCount`; `options.searchFn` for `search({ searchFn })` |
 | `'row'` | `index`, `key?` | `row #2 (key 42)`; `index` is the position in `options.data`, the key is hashed under `'safe'` |
 | `'interceptor'` | `name`, `op` | `interceptor "timing" on column:batch` |
 | `'operation'` | `op`, `slot?` | `operation render:cell at columns[1].cell` |
@@ -108,7 +108,10 @@ for (const d of table.getDiagnostics()) {
 
 - **Deduplicated.** A diagnostic is delivered once per code and `where` for one `data` reference;
   repeats raise `context.occurrences.count` on the stored one instead of reaching the sinks again.
-  New data (a new array reference) reports it again.
+  New data (a new array reference) reports it again. In development, `DK_SSR_ASYNC_DEFERRED` is
+  printed to the console once per process (per thread) for a table name and source: a dev server
+  that renders a page several times per request creates the table each time. Every table still
+  records it.
 - **Rate-limited console.** At most 20 console reports per second per table; when some were held
   back, one warning says how many. They are still in `getDiagnostics()` and were given to
   `onDiagnostic`.
@@ -170,8 +173,10 @@ the fingerprint, `toJSON()`, every interceptor and every sink only ever see the 
 | `'keys'` | `'safe'` + raw row-key values | development |
 | `'full'` | `'keys'` + cell values | — |
 
-- A column with `sensitive: true` is never logged, at any level (its values become `[sensitive]`).
-  When the `rowKey` column is sensitive, row keys are hashed at every level.
+- A column with `sensitive: true` is never logged, at any level (its values become `[sensitive]`),
+  and neither is a column inside it (`contact.email` under a sensitive `contact`). When the
+  `rowKey` path is a sensitive column, points into one (`rowKey: 'contact.email'`) or contains one,
+  row keys are hashed at every level.
 - A function `redact(path, value)` adds your own rule on top of the default level: return a string
   to log instead of `value`, or `undefined` to keep the built-in policy for that field. `path` names
   the field: `where.key`, `details.value`, `details.keys.2`, `details.issues.0`, … Sensitive
@@ -180,7 +185,9 @@ the fingerprint, `toJSON()`, every interceptor and every sink only ever see the 
   `code`) only, since their messages embed URLs, tokens and values. The error itself is
   `context.cause`, passed to `onDiagnostic` only.
 - Schema issue messages embed the received value, so under `'safe'` and `'keys'` they are replaced
-  by the issue path and DataKable's own text.
+  by the issue path and DataKable's own text. When the table has a `sensitive` column they are
+  replaced at every level, `'full'` included: any message (a root-level refinement, another
+  field's) may quote the sensitive value.
 - `'full'` in a production build still applies, and reports `DK_UNSAFE_REDACTION`.
 - Row-key hashes are unsalted 32-bit FNV-1a hashes: pseudonymisation, not anonymisation. Treat
   hashed diagnostics as personal data wherever the keys are.
@@ -235,6 +242,12 @@ codes):
 // problem / impact / fix empty; this import installs the full text for every code (core + React).
 import 'datakable/messages'
 ```
+
+The import must reach the bundle that creates the tables. In the Next.js app router, import it
+from a `'use client'` module, not from `app/layout.tsx`; under Nuxt / Nitro, call
+`installMessages(...allMessages)` instead of a side-effect import, which Nitro drops from the
+server bundle. See
+[Diagnostics have no text in production](../how-to-fix/diagnostics-without-text-in-production.md#fix-keep-the-text).
 
 **Development-only codes.** These checks are absent from production bundles and never reported
 there: the dev checks `DK_DATA_MUTATED`, `DK_CALLBACK_BAD_RETURN`, `DK_FEATURE_BAD_OUTPUT`,

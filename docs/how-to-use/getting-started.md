@@ -10,10 +10,15 @@ bundler setting DataKable needs. Every later guide builds on what is here.
 npm install datakable react
 ```
 
-`datakable` needs React `>=18` and ships ESM and CJS with types. It depends on
+`datakable` needs React `>=18` and ships ESM and CJS with types. Where it runs in Node.js (SSR,
+tests, scripts), it needs Node.js `>=18.18`. It depends on
 [`@datakable/react`](../../packages/react/README.md) and
 [`@datakable/core`](../../packages/core/README.md), which are installed with it and always share
 its version.
+
+The types need **TypeScript `>=5.4`** (they use `NoInfer`). An older TypeScript reports
+`Cannot find name 'NoInfer'` with `skipLibCheck: false`; with `skipLibCheck: true` the affected
+types silently become `any`. Upgrade TypeScript to 5.4 or later.
 
 ## The zero-config table
 
@@ -172,7 +177,18 @@ esbuild app.tsx --bundle --define:process.env.NODE_ENV='"production"'
 ```
 
 Without a replacement, unbundled browser code throws `ReferenceError: process is not defined`, as
-React and Redux do. Node needs nothing.
+React and Redux do.
+
+Server code that is not bundled reads the variable when it runs, so a production server must set
+it: plain Node, a Nuxt / Nitro `node-server` build (Nitro copies `@datakable/core` into
+`.output/server/node_modules` instead of bundling it), or Next.js `standalone` output with
+external packages. Without it, DataKable runs in development mode there: full checks, a console
+group per diagnostic, and raw row keys in diagnostics (the `'keys'` redaction instead of
+`'safe'`):
+
+```sh
+NODE_ENV=production node .output/server/index.mjs
+```
 
 In development (any value other than `'production'`) you get the full checks: unknown and invalid
 options, data checks, the tracer behind `explain()`, and complete diagnostic text. Production

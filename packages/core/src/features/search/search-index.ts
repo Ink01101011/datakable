@@ -1,7 +1,9 @@
 import { ExSearch, Scorer } from 'ex-search'
+import { getValue } from '../../column/get-value'
 import { DEV } from '../../diagnostics/env'
 import type { Emit } from '../../diagnostics/types'
 import type { RowModelContext } from '../../feature/types'
+import { nullishOf, type SlicedFormatting } from '../../pipeline/column-cache'
 import { resolveColumns } from '../../pipeline/columns'
 import { arrayIndex } from '../../pipeline/row'
 import { detectCapability, hasCapability } from '../../versioning/capability'
@@ -36,8 +38,14 @@ export interface SearchIndex {
   match(rows: Uint32Array, query: string): Generator<undefined, Uint32Array, undefined>
 }
 
-/** Rows per chunk between two `yield`s of the matching job. */
+/** Rows per chunk between two `yield`s of a scan (one value per row). */
 const CHUNK = 4096
+
+/**
+ * Cells (rows × searchable columns) matched per chunk between two `yield`s (#40): a table with
+ * many searchable columns matches fewer rows per chunk, so a chunk stays a few milliseconds.
+ */
+const CELLS = 16_384
 
 interface Key {
   readonly name: string
@@ -72,22 +80,65 @@ export function probeExSearch(emit: Emit): boolean {
 }
 
 /**
- * A numeric column's formatted value without the cached strings: `String(v)` is what the default
- * formatter shows for a number. Only when no value is `NaN` — a `NaN` cell is `null` / `undefined`
- * (shown as `''`) or a real `NaN` (shown as `'NaN'`), which only the formatted cache tells apart.
+ * A numeric column's formatted value without cached strings (#27): what the default formatter
+ * shows, `String(v)`, or `''` for a `null` / `undefined` cell (stored as `NaN`, like a real `NaN`,
+ * which shows `'NaN'`).
  */
-function numberReader(values: Float64Array): Read | undefined {
-  for (let r = 0; r < values.length; r++) if (Number.isNaN(values[r])) return undefined
-  return (r) => String(values[r])
+function numberReader(values: Float64Array): Read {
+  const nullish = nullishOf(values)
+  return (r) => {
+    const v = values[r] as number
+    return !Number.isNaN(v) ? String(v) : nullish?.[r] ? '' : 'NaN'
+  }
+}
+
+/**
+ * One pass over a column's values (`get(r)` per row, time-sliced by `CHUNK` rows): their text as
+ * the default formatter shows a primitive (`String(v)`, `''` when nullish), read while matching
+ * (#27: no formatted copy per row). `false` at the first object or function (a `Date`, an array):
+ * the column cache formats those. `undefined` when a read throws. The values are read in NFC (#30),
+ * normalised here, never per keystroke: the rows whose value is not NFC (rare: NFD input from
+ * macOS, Thai or Vietnamese keyboards) keep their NFC form in a sparse map. Only values with a code
+ * unit from U+0300 (combining marks and up) can change.
+ */
+function* scan(
+  size: number,
+  get: (r: number) => unknown,
+): Generator<undefined, Read | false | undefined, undefined> {
+  const over = new Map<number, string>()
+  try {
+    for (let r = 0; r < size; r++) {
+      const v = get(r)
+      if (v !== null && (typeof v === 'object' || typeof v === 'function')) return false
+      if (typeof v === 'string' && /[\u0300-\uffff]/.test(v)) {
+        const n = v.normalize('NFC')
+        if (n !== v) over.set(r, n)
+      }
+      if (r % CHUNK === CHUNK - 1) yield
+    }
+  } catch {
+    return undefined
+  }
+  const read: Read = (r) => {
+    const v = get(r)
+    return v === null || v === undefined ? '' : String(v)
+  }
+  return over.size ? (r) => over.get(r) ?? read(r) : read
 }
 
 /**
  * Builds the matcher over the formatted values of the searchable columns (what the user sees), once
  * per data + columns, as a time-sliced job (§9.1): one column read per slice. Searchable columns are
- * those with a `search` weight > 0; when no column declares `search`, every column is searchable at
- * weight 1. `null` when nothing is searchable. The values are read from the column cache, never
- * copied (§9.3 memory): a numeric column without `format` is stringified while matching, and the
- * case is folded per chunk while matching.
+ * those with a `search` weight > 0. When no column declares `search`, the columns of primitives
+ * (strings, numbers, booleans, nullable) are searchable at weight 1, and a column of dates, arrays
+ * or other objects is not (#27: it would keep a formatted string per row; it opts in with a
+ * weight; `DK_SEARCH_COLUMN_SKIPPED` in development). `null` when nothing is searchable. Nothing
+ * is copied per row (§9.3 memory): a key column of primitives without `format` is read from the
+ * rows and stringified while matching (no values array, #27); an accessor column of primitives
+ * reads the column cache's values the same way; only a column with `format` or an opted-in object
+ * column (dates, arrays) keeps its formatted strings in the column cache. A key column whose read
+ * throws goes through the column cache too, which reports it. The case is folded per chunk while
+ * matching.
  */
 export function* buildIndex(
   ctx: RowModelContext,
@@ -96,6 +147,8 @@ export function* buildIndex(
 ): Generator<undefined, SearchIndex | null, undefined> {
   const cols = resolveColumns(ctx.columns)
   const declared = cols.list.some((c) => (c.def as { search?: unknown }).search !== undefined)
+  const data = ctx.data
+  const n = data.length
   const keys: Key[] = []
   const reads: Read[] = []
   for (const col of cols.list) {
@@ -103,38 +156,66 @@ export function* buildIndex(
     const w = (col.def as { search?: unknown }).search
     const weight = declared ? (typeof w === 'number' && w > 0 ? w : 0) : 1
     if (weight === 0) continue
-    let read: Read | undefined
-    if (!col.format) {
+    const path = col.format ? undefined : col.path
+    let failed = false
+    const onError = () => {
+      failed = true
+    }
+    let read = path ? yield* scan(n, (r) => getValue(data[r], path, onError)) : undefined
+    if (failed || (read === false && declared)) read = undefined
+    if (read === undefined) {
       const values = ctx.getColumnValues(col.id)
-      if (values instanceof Float64Array) read = numberReader(values)
+      if (!values) continue
+      yield // reading a column is a task of its own (#40)
+      const numbers = values instanceof Float64Array
+      if (numbers && !col.format) read = numberReader(values)
+      else {
+        // Zero-config: a column of objects is not searched, `format` or not (#27).
+        const own =
+          numbers || (declared && col.format) ? undefined : yield* scan(n, (r) => values[r])
+        if (own === false && !declared) read = false
+        else if (own && !col.format) read = own
+        else {
+          // Time-sliced in a table run (#40): dates or a heavy `format` are not one long task.
+          const sliced = (ctx as RowModelContext & SlicedFormatting).formattedSliced
+          const formatted = sliced ? yield* sliced(col.id) : ctx.getFormattedValues(col.id)
+          if (!formatted) continue
+          read = yield* scan(n, (r) => formatted[r])
+        }
+      }
     }
     if (!read) {
-      const formatted = ctx.getFormattedValues(col.id)
-      if (!formatted) continue
-      read = (r) => formatted[r] ?? ''
+      if (DEV && read === false) {
+        ctx.emit('DK_SEARCH_COLUMN_SKIPPED', { column: col.id, index: col.index })
+      }
+      continue
     }
     keys.push({ name: `c${keys.length}`, weight })
     reads.push(read)
     yield
   }
   if (keys.length === 0) return null
-  // Values are folded per chunk while matching, and so is the query.
+  // Values (NFC already) are folded per chunk while matching; the query is normalised as well, so
+  // NFC and NFD spellings match each other like in the `contains` filter (#30).
   const fold = (v: string) => (config.caseSensitive ? v : v.toLowerCase())
+  const foldQuery = (q: string) => fold(q.normalize('NFC'))
   const at = (k: number, r: number) => fold((reads[k] as Read)(r))
   return useExSearch
-    ? exSearchIndex(ctx.data.length, keys, at, fold, config)
-    : containsIndex(keys, at, fold, config)
+    ? exSearchIndex(ctx.data.length, keys, at, foldQuery, config)
+    : containsIndex(keys, at, foldQuery, config)
 }
 
 /** Matches `rows` chunk by chunk (`score` decides alone, so chunks match like the whole). */
 function* chunked(
   rows: Uint32Array,
+  columns: number,
   matchChunk: (chunk: Uint32Array) => Hit[],
 ): Generator<undefined, Uint32Array, undefined> {
-  if (rows.length <= CHUNK) return rankHits(matchChunk(rows))
+  const size = Math.max(256, Math.floor(CELLS / columns))
+  if (rows.length <= size) return rankHits(matchChunk(rows))
   const hits: Hit[] = []
-  for (let k = 0; k < rows.length; k += CHUNK) {
-    for (const h of matchChunk(rows.subarray(k, k + CHUNK))) hits.push(h)
+  for (let k = 0; k < rows.length; k += size) {
+    for (const h of matchChunk(rows.subarray(k, k + size))) hits.push(h)
     yield
   }
   return rankHits(hits)
@@ -217,7 +298,7 @@ function exSearchIndex(
   return {
     match(rows, query) {
       const folded = fold(query)
-      return chunked(rows, (chunk) => {
+      return chunked(rows, keys.length, (chunk) => {
         // Set per chunk, like the view: another job may have matched in between.
         q = folded
         view.show(chunk)
@@ -242,7 +323,7 @@ function containsIndex(
   return {
     match(rows, query) {
       const q = fold(query)
-      return chunked(rows, (chunk) => {
+      return chunked(rows, keys.length, (chunk) => {
         const hits: Hit[] = []
         for (let j = 0; j < chunk.length; j++) {
           const r = chunk[j] as number

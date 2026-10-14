@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { optionMessages } from '../catalog/codes'
 import { DatakableConfigError } from '../diagnostics/build'
+import { installMessages } from '../diagnostics/catalog'
+import { proseMessages } from '../diagnostics/prose'
 import type { Diagnostic } from '../diagnostics/types'
 import { defineFeature } from '../feature/define'
 import { pagination } from '../features/pagination'
@@ -96,5 +99,46 @@ describe('production: an unwrapped schema / fetcher / searchFn is never ignored 
     const d = (error as DatakableConfigError).diagnostic
     expect(d.code).toBe('DK_INVALID_OPTION')
     expect(d.details).toMatchObject({ feature: 'search', path: 'searchFn', phase: 'init' })
+    // Without the messages, the wrapper to use is a prose key (structured, no sentence).
+    expect(d.details).toMatchObject({ expected: 'wrapped|withSearchFn|searchFn|search-async' })
+  })
+
+  it('with datakable/messages: the text names the entry point and the received type (#41)', () => {
+    // As datakable/messages does: the codes' text and the detail sentences (prose keys).
+    installMessages(optionMessages, proseMessages)
+    const thrown = (create: () => unknown) => {
+      try {
+        create()
+      } catch (e) {
+        return (e as DatakableConfigError).diagnostic
+      }
+      throw new Error('did not throw')
+    }
+    const fetcher = thrown(() =>
+      createTable({
+        features: [pagination({ mode: 'server' })],
+        fetcher: (async () => ({})) as never,
+      }),
+    )
+    expect(fetcher.problem).toBe(
+      "options.fetcher must be withFetcher(fetcher) from '@datakable/core/server', got function",
+    )
+    expect(fetcher.fix).toEqual([
+      "pass withFetcher(fetcher) from '@datakable/core/server' as options.fetcher, or leave " +
+        'it out for the default',
+    ])
+    const schema = thrown(() =>
+      createTable({ data: [{ id: 1 }], schema: makeSchema((v) => ({ value: v })) as never }),
+    )
+    expect(schema.problem).toBe(
+      "options.schema must be withSchema(schema) from '@datakable/core/schema', got object",
+    )
+    const searchFn = thrown(() =>
+      createTable({ data: [{ id: 1 }], features: [search({ searchFn: (() => []) as never })] }),
+    )
+    expect(searchFn.problem).toBe(
+      "search({ searchFn }) must be withSearchFn(searchFn) from '@datakable/core/search-async', got " +
+        'function',
+    )
   })
 })
