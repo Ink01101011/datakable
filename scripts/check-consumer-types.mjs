@@ -1,10 +1,11 @@
 // Type-leak guard (spec §12): compile a tiny consumer project against the BUILT packages with
-// `skipLibCheck: false`, under `moduleResolution` node16 and bundler. Fails when a published
-// `.d.ts` references a type the consumer cannot resolve (e.g. ex-search -> ex-flow), uses an
-// invalid module augmentation, or when public types (catalog codes, entry points) break.
+// `skipLibCheck: false`, under `moduleResolution` node16, bundler and node10, with the current TypeScript
+// and the minimum supported one (#32). Fails when a published `.d.ts` references a type the
+// consumer cannot resolve (e.g. ex-search -> ex-flow), uses an invalid module augmentation, needs
+// a newer TypeScript than documented, or when public types (catalog codes, entry points) break.
 // Run after `pnpm build`.
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -20,6 +21,9 @@ link(join(root, 'packages/react'), '@datakable/react')
 link(join(root, 'packages/datakable'), 'datakable')
 link(join(root, 'node_modules/react'), 'react')
 link(join(root, 'node_modules/@types/react'), '@types/react')
+// @types/react's own dependency, found next to it in pnpm's store; the node10 config resolves from
+// the symlinked paths (preserveSymlinks, as in an npm install), where it is not otherwise visible.
+link(join(realpathSync(join(root, 'node_modules/@types/react')), '../../csstype'), 'csstype')
 
 writeFileSync(
   join(dir, 'package.json'),
@@ -45,6 +49,9 @@ import { validity } from '@datakable/core/validity'
 import { useDataTable } from '@datakable/react'
 import { createTable } from 'datakable'
 import 'datakable/messages'
+// The stylesheet exports carry types (#34): TS 6 checks side-effect imports by default.
+import 'datakable/styles.css'
+import '@datakable/react/styles.css'
 import { createTable as fromCore } from 'datakable/core'
 
 type User = { id: number; name: string; address: { city: string } }
@@ -86,40 +93,69 @@ export { allMessages, core, d, defineFeature, fromCore, useDataTable }
 `,
 )
 
-const tsc = createRequire(join(root, 'package.json')).resolve('typescript/bin/tsc')
+// A CommonJS consumer (.cts, checked under node16): the stylesheet's `types` condition resolves to
+// a .d.cts, not the ESM .d.ts that a `require` cannot load (TS1479).
+writeFileSync(
+  join(dir, 'index-cjs.cts'),
+  `import 'datakable/styles.css'
+import '@datakable/react/styles.css'
+import { createTable } from 'datakable'
+export const z = createTable({ data: [{ id: 1 }], rowKey: 'id' })
+`,
+)
+
+const req = createRequire(join(root, 'package.json'))
+// The current TypeScript, and the minimum the docs promise (getting-started, READMEs: TS >= 5.4,
+// #32): the root devDependency `typescript-min` pins it, so a published .d.ts that needs a newer
+// TS (as `NoInfer` needs 5.4) fails here instead of in a consumer's build.
+const compilers = ['typescript', 'typescript-min'].map((pkg) => ({
+  tsc: req.resolve(`${pkg}/bin/tsc`),
+  version: req(`${pkg}/package.json`).version,
+}))
+// node10 (`moduleResolution: node`, #33) ignores `exports`: the subpaths resolve through the
+// packages' `typesVersions`. TS 6 deprecates node10, hence `ignoreDeprecations` there.
 const configs = {
-  node16: { module: 'node16', moduleResolution: 'node16' },
-  bundler: { module: 'esnext', moduleResolution: 'bundler' },
+  node16: { module: 'node16', moduleResolution: 'node16', files: ['index.ts', 'index-cjs.cts'] },
+  bundler: { module: 'esnext', moduleResolution: 'bundler', files: ['index.ts'] },
+  node10: {
+    module: 'commonjs',
+    moduleResolution: 'node10',
+    preserveSymlinks: true,
+    files: ['index.ts'],
+  },
 }
 let failed = false
-for (const [name, resolution] of Object.entries(configs)) {
-  writeFileSync(
-    join(dir, `tsconfig.${name}.json`),
-    JSON.stringify({
-      compilerOptions: {
-        ...resolution,
-        target: 'es2022',
-        lib: ['es2022', 'dom'],
-        strict: true,
-        exactOptionalPropertyTypes: true,
-        skipLibCheck: false,
-        noEmit: true,
-        jsx: 'react-jsx',
-        types: [],
-      },
-      files: ['index.ts'],
-    }),
-  )
-  try {
-    execFileSync(process.execPath, [tsc, '-p', `tsconfig.${name}.json`], {
-      cwd: dir,
-      stdio: 'pipe',
-    })
-    console.log(`check:consumer: ${name} consumer compiles with skipLibCheck: false`)
-  } catch (e) {
-    failed = true
-    console.error(`check:consumer: ${name} consumer FAILED with skipLibCheck: false`)
-    console.error(String(e.stdout))
+for (const [name, { files, ...resolution }] of Object.entries(configs)) {
+  for (const { tsc, version } of compilers) {
+    const major = Number(version.split('.')[0])
+    const config = `tsconfig.${name}.ts${major}.json`
+    writeFileSync(
+      join(dir, config),
+      JSON.stringify({
+        compilerOptions: {
+          ...resolution,
+          ...(name === 'node10' && major >= 6 ? { ignoreDeprecations: '6.0' } : {}),
+          target: 'es2022',
+          lib: ['es2022', 'dom'],
+          strict: true,
+          exactOptionalPropertyTypes: true,
+          skipLibCheck: false,
+          noEmit: true,
+          jsx: 'react-jsx',
+          types: [],
+        },
+        files,
+      }),
+    )
+    const label = `${name} consumer (TypeScript ${version})`
+    try {
+      execFileSync(process.execPath, [tsc, '-p', config], { cwd: dir, stdio: 'pipe' })
+      console.log(`check:consumer: ${label} compiles with skipLibCheck: false`)
+    } catch (e) {
+      failed = true
+      console.error(`check:consumer: ${label} FAILED with skipLibCheck: false`)
+      console.error(String(e.stdout))
+    }
   }
 }
 if (failed) process.exit(1)

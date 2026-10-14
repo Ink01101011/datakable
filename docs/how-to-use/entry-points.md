@@ -15,6 +15,10 @@ schema validation, the server source and async search.
 The three are released together with one version; install versions that match (development
 builds report a mismatch as [`DK_VERSION_MISMATCH`](../how-to-fix/errors.md#dk_version_mismatch)).
 
+TypeScript resolves every subpath below under `moduleResolution` `bundler`, `node16` / `nodenext`
+and the legacy `node10` (`node`), through `exports` and a `typesVersions` fallback; the stylesheet
+exports carry an empty declaration, so `import 'datakable/styles.css'` type-checks too.
+
 ## `datakable`
 
 | Import | What it brings |
