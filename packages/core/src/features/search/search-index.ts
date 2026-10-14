@@ -2,6 +2,7 @@ import { ExSearch, Scorer } from 'ex-search'
 import { DEV } from '../../diagnostics/env'
 import type { Emit } from '../../diagnostics/types'
 import type { RowModelContext } from '../../feature/types'
+import { nullishOf } from '../../pipeline/column-cache'
 import { resolveColumns } from '../../pipeline/columns'
 import { arrayIndex } from '../../pipeline/row'
 import { detectCapability, hasCapability } from '../../versioning/capability'
@@ -72,13 +73,40 @@ export function probeExSearch(emit: Emit): boolean {
 }
 
 /**
- * A numeric column's formatted value without the cached strings: `String(v)` is what the default
- * formatter shows for a number. Only when no value is `NaN` — a `NaN` cell is `null` / `undefined`
- * (shown as `''`) or a real `NaN` (shown as `'NaN'`), which only the formatted cache tells apart.
+ * A numeric column's formatted value without cached strings (#27): what the default formatter
+ * shows, `String(v)`, or `''` for a `null` / `undefined` cell (stored as `NaN`, like a real `NaN`,
+ * which shows `'NaN'`).
  */
-function numberReader(values: Float64Array): Read | undefined {
-  for (let r = 0; r < values.length; r++) if (Number.isNaN(values[r])) return undefined
-  return (r) => String(values[r])
+function numberReader(values: Float64Array): Read {
+  const nullish = nullishOf(values)
+  return (r) => {
+    const v = values[r] as number
+    return !Number.isNaN(v) ? String(v) : nullish?.[r] ? '' : 'NaN'
+  }
+}
+
+/** A value the default formatter shows as `String(v)` (or `''` when nullish): not an object. */
+const isPrimitive = (v: unknown) => v === null || (typeof v !== 'object' && typeof v !== 'function')
+
+/**
+ * A column of primitives (strings, numbers, booleans, … mixed or not) without `format`: its formatted
+ * value read on the fly (#27), as the default formatter shows it, instead of a cached string per
+ * row. All strings: the values themselves. `undefined` when a value is an object (a `Date`, an
+ * array): those are formatted once, by the column cache.
+ */
+function primitiveReader(values: readonly unknown[]): Read | undefined {
+  let strings = true
+  for (let r = 0; r < values.length; r++) {
+    const v = values[r]
+    if (typeof v === 'string') continue
+    if (!isPrimitive(v)) return undefined
+    strings = false
+  }
+  if (strings) return (r) => values[r] as string
+  return (r) => {
+    const v = values[r]
+    return typeof v === 'string' ? v : v === null || v === undefined ? '' : String(v)
+  }
 }
 
 /** `s` may change under NFC: it has a code unit from U+0300 (combining marks and up). */
@@ -115,8 +143,10 @@ function* nfc(size: number, read: Read): Generator<undefined, Read, undefined> {
  * per data + columns, as a time-sliced job (§9.1): one column read per slice. Searchable columns are
  * those with a `search` weight > 0; when no column declares `search`, every column is searchable at
  * weight 1. `null` when nothing is searchable. The values are read from the column cache, never
- * copied (§9.3 memory): a numeric column without `format` is stringified while matching, and the
- * case is folded per chunk while matching.
+ * copied (§9.3 memory): a column of numbers or other primitives without `format` is stringified
+ * while matching (no formatted strings are cached for it, #27), and the case is folded per chunk
+ * while matching. Only a column with `format` or with object values (dates, arrays) keeps its
+ * formatted strings in the column cache.
  */
 export function* buildIndex(
   ctx: RowModelContext,
@@ -133,16 +163,19 @@ export function* buildIndex(
     const weight = declared ? (typeof w === 'number' && w > 0 ? w : 0) : 1
     if (weight === 0) continue
     let read: Read | undefined
+    let raw: Read | undefined
     if (!col.format) {
       const values = ctx.getColumnValues(col.id)
       if (values instanceof Float64Array) read = numberReader(values)
+      else if (values) raw = primitiveReader(values)
     }
-    if (!read) {
+    if (!read && !raw) {
       const formatted = ctx.getFormattedValues(col.id)
       if (!formatted) continue
-      const strings: Read = (r) => formatted[r] ?? ''
-      read = yield* nfc(ctx.data.length, strings)
+      raw = (r) => formatted[r] ?? ''
     }
+    if (!read && raw) read = yield* nfc(ctx.data.length, raw)
+    if (!read) continue
     keys.push({ name: `c${keys.length}`, weight })
     reads.push(read)
     yield

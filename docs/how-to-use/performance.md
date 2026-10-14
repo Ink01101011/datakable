@@ -47,7 +47,11 @@ pnpm check:budgets  # sizes against their limits, then the memory and interactio
   `Float64Array`. The cache is keyed by the data array in a `WeakMap`, so it is released with the
   data.
 - **Search** builds its matcher once per data and columns (not per keystroke), over the column
-  cache, and reads the searchable values a chunk of rows at a time without keeping a copy.
+  cache, and matches a chunk of rows at a time. A searchable column of strings, numbers or other
+  primitives without `format` keeps no formatted copy: it is stringified while matching. A column
+  with `format`, or with dates, arrays or objects, keeps its formatted strings in the column cache
+  (repeated strings share one copy), and every searchable column keeps its values array: memory
+  grows with the number of searchable columns, so give the columns that matter a `search` weight.
 - **Sorting** picks a stable algorithm per sort from one scan of the keys (`algorithm: 'auto'`):
   integer and date keys go to tim / counting / radix sort, and from 10k rows a string column is
   sorted by precomputed collation ranks instead of calling `Intl.Collator` per comparison. See

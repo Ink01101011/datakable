@@ -207,6 +207,36 @@ describe('search(): client matching (§6.3)', () => {
     expect(clean.getRowModel().rows.map((r) => r.index)).toEqual([2])
   })
 
+  it('a column of mixed primitives matches what the default formatter shows (#27)', async () => {
+    const data = [
+      { v: 'abc' },
+      { v: 42 },
+      { v: true },
+      { v: null },
+      { v: undefined },
+      { v: 10n },
+      { v: 'TRUE' },
+      { v: false },
+    ]
+    const t = createTable({
+      data,
+      features: [search({ threshold: 0.9, fuzzyMaxDistance: 0 })],
+    })
+    const at = () => t.getRowModel().rows.map((r) => r.index)
+    await t.setSearch('true')
+    expect(at()).toEqual([2, 6])
+    await t.setSearch('42')
+    expect(at()).toEqual([1])
+    await t.setSearch('10')
+    expect(at()).toEqual([5])
+    await t.setSearch('false')
+    expect(at()).toEqual([7])
+    await t.setSearch('null')
+    expect(at()).toEqual([])
+    await t.setSearch('undefined')
+    expect(at()).toEqual([])
+  })
+
   it('matches across chunks of rows like over the whole (case folded per chunk)', async () => {
     const data = Array.from({ length: 10_000 }, (_, i) => ({ id: i, name: `Item ${i}` }))
     const t = createTable({

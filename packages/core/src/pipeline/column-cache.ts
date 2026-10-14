@@ -61,12 +61,43 @@ interface Entry {
 const NULL = 1
 const UNDEFINED = 2
 
+/** The nullish kinds of each cached numeric column that has any (see {@link nullishOf}). */
+const nullishKinds = new WeakMap<Float64Array, Uint8Array>()
+
+/**
+ * Which rows of a cached all-number column (`values` from the column cache) hold `null` /
+ * `undefined` (non-zero) rather than a real `NaN`: both are stored as `NaN`. `undefined` when no
+ * row does. Lets search format such a column on the fly (`''` / `'NaN'`) instead of caching a
+ * string per row (#27).
+ */
+export function nullishOf(values: Float64Array): Uint8Array | undefined {
+  return nullishKinds.get(values)
+}
+
 function allStrings(values: readonly unknown[]): boolean {
   for (let i = 0; i < values.length; i++) if (typeof values[i] !== 'string') return false
   return true
 }
 
 const typeName = (v: unknown) => (Array.isArray(v) ? 'array' : typeof v)
+
+/** Distinct strings {@link share} remembers per column: enough for categories, tags, flags. */
+const SHARED = 1024
+
+/**
+ * Repeated formatted strings of a column share one copy (§9.3 memory, #27): each formatted cell is
+ * a fresh string, so a column of tags or categories would keep one per row. Only the first
+ * {@link SHARED} distinct strings are remembered; once per column, after formatting.
+ */
+function share(cells: string[]) {
+  const seen = new Map<string, string>()
+  for (let r = 0; r < cells.length; r++) {
+    const s = cells[r] as string
+    const hit = seen.get(s)
+    if (hit !== undefined) cells[r] = hit
+    else if (seen.size < SHARED) seen.set(s, s)
+  }
+}
 
 /**
  * The lazy column cache (§9.1): a column is read only when a step asks for it, once per data
@@ -176,6 +207,7 @@ export function createColumnCache(host: ColumnCacheHost): ColumnCache {
       }
     }
     e.nullish = kinds
+    if (kinds) nullishKinds.set(out, kinds)
     return out
   }
 
@@ -281,6 +313,7 @@ export function createColumnCache(host: ColumnCacheHost): ColumnCache {
         })
       }
     })
+    if (out && out !== vals) share(out)
     // An interceptor skipped the batch: every cell is the slot fallback.
     e.formatted = out ?? new Array<string>(n).fill('')
     if (flags && flags.count > before) e.flaggedFormatted = true

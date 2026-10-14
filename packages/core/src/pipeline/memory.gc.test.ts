@@ -98,4 +98,27 @@ describe('pipeline memory (100k rows)', () => {
     expect(mb).toBeLessThanOrEqual(5)
     expect(t.getData()).toBe(data)
   })
+
+  it('zero-config client search over mixed primitive columns stays ≤ 5 MB (#27)', async () => {
+    // Every column searchable (no `search` weight): nullable numbers, number | string, booleans.
+    // None of them keeps a formatted string per row: they are stringified while matching.
+    const data = Array.from({ length: N }, (_, i) => ({
+      id: i,
+      name: `name ${i}`,
+      age: i % 17 === 0 ? null : i % 23 === 0 ? Number.NaN : (i * 7919) % 100,
+      balance: i % 25 === 0 ? `${9007199254740993n + BigInt(i)}` : ((i * 31) % 100_000) / 100,
+      active: i % 3 !== 0,
+    }))
+    const before = used()
+    const t = createTable({ data, rowKey: 'id', features: [search(), pager(10)] })
+    await t.setSearch('name 99')
+    const m = t.getRowModel()
+    const mb = (used() - before) / MB
+    console.info(
+      `[#27] zero-config search, 5 mixed primitive columns, 100k rows: ${mb.toFixed(2)} MB`,
+    )
+    expect(m.filteredCount).toBeGreaterThan(0)
+    expect(mb).toBeLessThanOrEqual(5)
+    expect(t.getData()).toBe(data)
+  })
 })
