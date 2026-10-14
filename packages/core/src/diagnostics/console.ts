@@ -55,20 +55,23 @@ export function createConsoleSink(o: ConsoleSinkOptions): (d: Diagnostic) => voi
       return
     }
     printed++
-    if (!DEV || !o.dev) {
-      console.error(`[DataKable ${o.table}] ${d.code} at ${formatWhere(d.where)} — ${d.docs}`)
+    // `DEV &&` first, not an early `if (!DEV) return`: a branch that folds to `false` is removed
+    // while parsing, so a production bundle keeps no `formatDiagnostic` (code after a folded early
+    // return is dropped only when printing, after tree shaking kept what it calls).
+    if (DEV && o.dev) {
+      const { header, body } = formatDiagnostic(d)
+      const log = d.level === 'error' ? 'error' : d.level === 'warn' ? 'warn' : 'info'
+      // Runtimes without console groups (the Edge Runtime: log/info/warn/error/debug only) get the
+      // same text as one call.
+      if (typeof console.groupCollapsed !== 'function' || typeof console.groupEnd !== 'function') {
+        console[log](`${header}\n${body}`)
+        return
+      }
+      console.groupCollapsed(header)
+      console[log](body)
+      console.groupEnd()
       return
     }
-    const { header, body } = formatDiagnostic(d)
-    const log = d.level === 'error' ? 'error' : d.level === 'warn' ? 'warn' : 'info'
-    // Runtimes without console groups (the Edge Runtime: log/info/warn/error/debug only) get the
-    // same text as one call.
-    if (typeof console.groupCollapsed !== 'function' || typeof console.groupEnd !== 'function') {
-      console[log](`${header}\n${body}`)
-      return
-    }
-    console.groupCollapsed(header)
-    console[log](body)
-    console.groupEnd()
+    console.error(`[DataKable ${o.table}] ${d.code} at ${formatWhere(d.where)} — ${d.docs}`)
   }
 }
