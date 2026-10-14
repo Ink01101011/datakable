@@ -143,6 +143,30 @@ describe('rowKey: DK_DUPLICATE_ROW_KEY', () => {
     expect(new Set(keys(t)).size).toBe(3)
   })
 
+  it("1 and '1' are the same key (compared as strings, like React keys and explainRow) (#24)", () => {
+    const t = createTable({
+      data: [
+        { id: 1, n: 'number one' },
+        { id: '1', n: 'string one' },
+      ],
+      rowKey: 'id',
+      onDiagnostic,
+    })
+    expect(keys(t)).toEqual([1, '1#1'])
+    expect(codes()).toEqual(['DK_DUPLICATE_ROW_KEY'])
+    expect(seen[0]?.details).toMatchObject({ key: '1', rows: [0, 1], shared: 2, count: 1 })
+    expect(t.explainRow('1').index).toBe(0)
+    expect(t.explainRow('1#1').index).toBe(1)
+  })
+
+  it("a field unique only by type (1 vs '1') is never suggested (#24)", () => {
+    const data = [
+      { id: 7, code: 1, uuid: 'a' },
+      { id: 7, code: '1', uuid: 'b' },
+    ]
+    expect(findUniqueFields(data, 'id').unique).toEqual(['uuid'])
+  })
+
   it('several duplicated values: one diagnostic with the group count', () => {
     const t = createTable({ data: users([1, 1, 2, 2, 3]), rowKey: 'id', onDiagnostic })
     expect(keys(t)).toEqual([1, '1#1', 2, '2#1', 3])

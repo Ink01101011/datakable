@@ -29,7 +29,8 @@ const typeOf = (v: unknown): string => {
  * change with filtering, sorting or paging:
  *
  * - a repeated key: the first row keeps it, later rows get `key#1`, `key#2`, …
- *   (`DK_DUPLICATE_ROW_KEY`, whose `fix` names fields that are unique across all rows);
+ *   (`DK_DUPLICATE_ROW_KEY`, whose `fix` names fields that are unique across all rows). Keys are
+ *   compared as strings (`1` repeats `'1'`), as React keys and `explainRow` compare them;
  * - a missing / `null` / non-string-or-number key: `#index` (`DK_MISSING_ROW_KEY`);
  * - a throwing `rowKey` function: `#index`, passed to `onThrow` (reported by the runner as
  *   `DK_CALLBACK_FAILED`, as in T09).
@@ -103,17 +104,17 @@ function scan(
   read: Read,
   emit: Emit,
 ): Map<number, RowKey> | undefined {
-  /** Every key handed out so far (raw keys and fallbacks) → the row that holds it. */
-  const taken = new Map<RowKey, number>()
-  /** Repeated raw key → the next `#n` to try. */
-  const suffix = new Map<RowKey, number>()
+  /** Every key handed out so far (raw keys and fallbacks), as a string → the row that holds it. */
+  const taken = new Map<string, number>()
+  /** Repeated raw key, as a string → the next `#n` to try. */
+  const suffix = new Map<string, number>()
   /** Only the rows that got a fallback key. */
   let fallbacks: Map<number, RowKey> | undefined
   /** `base#n` for the first free `n ≥ from` (a fallback can collide with a real key). */
   const free = (base: RowKey, from: number): [RowKey, number] => {
     let s = from
     let k: RowKey = `${base}#${s++}`
-    while (taken.has(k)) k = `${base}#${s++}`
+    while (taken.has(k as string)) k = `${base}#${s++}`
     return [k, s]
   }
 
@@ -122,6 +123,7 @@ function scan(
 
   for (let i = 0; i < data.length; i++) {
     const raw = read(data[i], i)
+    const str = String(raw)
     let key: RowKey
     if (!usable(raw)) {
       if (raw !== THREW) {
@@ -131,25 +133,25 @@ function scan(
       }
       key = `#${i}`
       if (taken.has(key)) key = free(key, 1)[0]
-    } else if (taken.has(raw)) {
+    } else if (taken.has(str)) {
       dup.count++
       if (dup.key === undefined) {
         dup.key = raw
-        dup.rows.push(taken.get(raw) as number)
+        dup.rows.push(taken.get(str) as number)
         dup.shared = 1
       }
-      if (raw === dup.key) {
+      if (str === String(dup.key)) {
         dup.shared++
         if (dup.rows.length < SAMPLE) dup.rows.push(i)
       }
-      const [k, next] = free(raw, suffix.get(raw) ?? 1)
-      suffix.set(raw, next)
+      const [k, next] = free(raw, suffix.get(str) ?? 1)
+      suffix.set(str, next)
       key = k
     } else {
-      taken.set(raw, i)
+      taken.set(str, i)
       continue
     }
-    taken.set(key, i)
+    taken.set(key as string, i)
     if (fallbacks === undefined) fallbacks = new Map()
     fallbacks.set(i, key)
   }
