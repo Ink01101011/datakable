@@ -75,8 +75,8 @@ for (const d of table.getDiagnostics()) {
 | `kind` | Fields | Printed as |
 | --- | --- | --- |
 | `'column'` | `index`, `id` | `columns[1] (id "age")` |
-| `'feature'` | `name` | `feature "sorting"` |
-| `'option'` | `path` | `options.rowCount` (a feature option: `options.sorting.algorithm`) |
+| `'feature'` | `name` | `feature "sorting"`; also an option of the feature (`sorting({ algorithm })`), whose name is in `details.path` |
+| `'option'` | `path` | `options.rowCount`; `options.searchFn` for `search({ searchFn })` |
 | `'row'` | `index`, `key?` | `row #2 (key 42)`; `index` is the position in `options.data`, the key is hashed under `'safe'` |
 | `'interceptor'` | `name`, `op` | `interceptor "timing" on column:batch` |
 | `'operation'` | `op`, `slot?` | `operation render:cell at columns[1].cell` |

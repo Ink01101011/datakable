@@ -37,10 +37,11 @@ In development, the console prints one collapsed group per diagnostic:
   the code and the **problem**, computed from your data.
 - **where**: the exact place in your code or data:
   - `columns[1] (id "age")`: a column, by position in `options.columns` and id;
-  - `options.<path>`: an option. A feature's function option is written as an option path:
-    `options.searchFn` is `search({ searchFn })`, `options.sorting.algorithm` is
-    `sorting({ algorithm })`;
-  - `feature "sorting"`: a feature (or a plugin's `defineFeature`);
+  - `options.<path>`: an option of the table, e.g. `options.fetcher`, `options.rowCount`;
+    `options.searchFn` is `search({ searchFn })` (an unwrapped or failing `searchFn`);
+  - `feature "sorting"`: a feature (or a plugin's `defineFeature`), and the options of a feature
+    passed to its factory: `sorting({ algorithm })` is reported at `feature "sorting"`, with the
+    option's name in `details.path` (`'algorithm'`);
   - `row #2 (key 42)`: a row, by its index in `options.data` (the key is hashed under `'safe'`);
   - `interceptor "timing" on column:batch`: an interceptor on an operation;
   - `operation table.setPageSize`, `operation render:cell at columns[1].cell`: a public method, or

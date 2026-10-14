@@ -126,3 +126,32 @@ describe('#49: setOptions({ state }) replaces the whole state option', () => {
     expect(table.getState().pagination.pageIndex).toBe(1)
   })
 })
+
+describe('#50: a feature\'s option is reported at feature "<name>", the option in details.path', () => {
+  it('matches what errors.md and diagnostics.md say', async () => {
+    const { createTable, sorting } = await import('./index')
+    const seen: { code: string; where: unknown; details?: unknown }[] = []
+    const t = createTable({
+      data: [
+        { id: 1, s: 'x' },
+        { id: 2, s: 'y' },
+      ],
+      rowKey: 'id',
+      features: [sorting({ algorithm: 'radix' })],
+      onDiagnostic: (d) => void seen.push(d),
+    })
+    t.toggleSort('s')
+    t.getRowModel()
+    const d = seen.find((x) => x.code === 'DK_OPTION_NO_EFFECT')
+    expect(d?.where).toEqual({ kind: 'feature', name: 'sorting' })
+    expect((d?.details as { path?: string } | undefined)?.path).toBe('algorithm')
+
+    const errors = prose('docs/how-to-fix/errors.md')
+    const guide = prose('docs/how-to-use/diagnostics.md')
+    for (const text of [errors, guide]) expect(text).not.toContain('options.sorting.algorithm')
+    expect(errors).toContain('`sorting({ algorithm })` is reported at `feature "sorting"`')
+    expect(guide).toMatch(
+      /`'feature'` \| `name` \| `feature "sorting"`; also an option of the feature/,
+    )
+  })
+})
