@@ -505,7 +505,7 @@ export function createTable<T, S extends TableState>(
     data = next
     pending = true
     // After `data` is set: diagnostics dedupe per data reference.
-    dataChecks?.check(data, options.columns)
+    if (DEV) dataChecks?.check(data, options.columns)
     // The pipeline runs before the next notification (or on getRowModel), as `pipeline:run` with
     // ctx.meta[FALLBACK] = the last good row model (pipeline/runner.ts).
     rowModelDirty = true
@@ -713,7 +713,7 @@ export function createTable<T, S extends TableState>(
     } finally {
       // Dev (§5.3): fingerprint `data` after the core read it, so the check never takes reads
       // first; also when the ingest threw, so a later same-reference check compares this data.
-      if (!fetched) dataCheck?.remember(options.data)
+      if (DEV && !fetched) dataCheck?.remember(options.data)
     }
   }
 
@@ -803,7 +803,7 @@ export function createTable<T, S extends TableState>(
         if (next.fetcher !== previous.fetcher) server?.reset()
         // New data is checked when applied (setData); same data with new columns is checked here.
         if (next.data !== previous.data) ingest()
-        else {
+        else if (DEV) {
           if ('data' in partial) dataCheck?.check(next.data)
           if (next.columns !== previous.columns) dataChecks?.check(data, next.columns)
         }
