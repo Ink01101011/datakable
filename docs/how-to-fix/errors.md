@@ -469,7 +469,7 @@ prints (development console):
 
 `warn` · fault test: [pipeline.test.ts](../../packages/core/src/pipeline/pipeline.test.ts)
 
-**Problem.** Cells of a column hold objects, arrays or functions, which the default formatter cannot turn into text. Those cells render `''` and match no search.
+**Problem.** Cells of a column hold objects, arrays or functions, which the default formatter cannot turn into text. Those cells render `''` and match no search. Reported once per column and data: when the column is first searched (`count` over every row), or when `<DataTable />` renders such a cell (`count` over the rendered rows).
 
 **Common causes.**
 

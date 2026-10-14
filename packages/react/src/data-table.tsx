@@ -238,6 +238,9 @@ interface Failure {
   /** Bad return: what the contract expects and the type received. */
   expected?: string
   received?: string
+  /** A value the default formatter cannot render (`DK_UNRENDERABLE_VALUE`): its type. */
+  lost?: string
+  index?: number
 }
 
 const WARN = '⚠'
@@ -293,7 +296,7 @@ const tableOf = (view: object): object =>
 function report(table: object, failures: readonly Failure[]) {
   const bySlot = new Map<string, Failure[]>()
   for (const f of failures) {
-    const k = `${f.slot}\0${f.expected === undefined ? 'throw' : 'return'}`
+    const k = `${f.slot}\0${f.lost ? '' : f.expected === undefined ? 'throw' : 'return'}`
     const list = bySlot.get(k)
     if (list) list.push(f)
     else bySlot.set(k, [f])
@@ -303,7 +306,16 @@ function report(table: object, failures: readonly Failure[]) {
     const rows = list.slice(0, 3).map((f) => f.row)
     const fallback = 'those cells rendered ⚠'
     try {
-      if (first.expected === undefined) {
+      if (first.lost !== undefined) {
+        // Deduped by the table per column and data reference, like the column cache's report.
+        emitTableDiagnostic(table, 'DK_UNRENDERABLE_VALUE', {
+          column: first.column,
+          index: first.index as number,
+          count: list.length,
+          rows,
+          valueType: first.lost,
+        })
+      } else if (first.expected === undefined) {
         const e = first.error
         emitTableDiagnostic(
           table,
@@ -333,6 +345,15 @@ function report(table: object, failures: readonly Failure[]) {
       // Not a table made by createTable (a hand-made `table` prop): nothing to report to.
     }
   }
+}
+
+/**
+ * The value `defaultFormat` could not render in the current cell (an object, array or function,
+ * never `undefined`). One module-level callback: no closure per cell.
+ */
+let lost: unknown
+const onLost = (v: unknown) => {
+  lost = v
 }
 
 /**
@@ -379,7 +400,14 @@ function cellContent(
       bad(failures, col, row, slot, 'a string', out)
       return defaultFormat(value)
     }
-    return defaultFormat(value)
+    const text = defaultFormat(value, onLost)
+    if (lost !== undefined) {
+      const { id: column, index } = col
+      const type = Array.isArray(lost) ? 'array' : typeof lost
+      failures.push({ slot: `columns[${index}]`, column, index, row: row.index, lost: type })
+      lost = undefined
+    }
+    return text
   } catch (error) {
     failures.push({ slot: `columns[${col.index}].${slot}`, column: col.id, row: row.index, error })
     return WARN
@@ -497,6 +525,9 @@ function DataTableView(props: {
       )
     })
   }
+
+  // The server runs no effects: report now (setting state is a no-op there).
+  if (typeof window === 'undefined' && failures.length > 0) report(table, failures)
 
   return (
     <div

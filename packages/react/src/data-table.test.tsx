@@ -251,6 +251,60 @@ describe('<DataTable /> inline data with new row objects (R11 BUG: render loop)'
   })
 })
 
+describe('<DataTable /> unrenderable cell values (#18)', () => {
+  type Row = { id: number; obj: unknown }
+  const rows: Row[] = [
+    { id: 1, obj: { a: 1 } },
+    { id: 2, obj: 'ok' },
+    { id: 3, obj: [{ a: 1 }] },
+  ]
+
+  it("renders '' and reports DK_UNRENDERABLE_VALUE once per column (client)", () => {
+    const seen: Diagnostic[] = []
+    let rerender = () => {}
+    const columns = [{ key: 'id' }, { key: 'obj' }] as const
+    function Parent() {
+      const [n, setN] = useState(0)
+      rerender = () => setN(n + 1)
+      return <DataTable data={rows} columns={columns} onDiagnostic={(d) => seen.push(d)} />
+    }
+    render(<Parent />)
+    act(() => rerender())
+    expect(names()).toEqual(['', 'ok', ''])
+    const d = seen.filter((x) => x.code === 'DK_UNRENDERABLE_VALUE')
+    expect(d).toHaveLength(1)
+    expect(d[0]?.where).toEqual({ kind: 'column', index: 1, id: 'obj' })
+    expect(d[0]?.details).toEqual({
+      column: 'obj',
+      index: 1,
+      count: 2,
+      rows: [0, 2],
+      valueType: 'object',
+    })
+  })
+
+  it('zero-config (derived columns) reports it too', () => {
+    const codes: string[] = []
+    render(<DataTable data={[{ id: 1, obj: { a: 1 } }]} onDiagnostic={(d) => codes.push(d.code)} />)
+    expect(codes).toContain('DK_UNRENDERABLE_VALUE')
+  })
+
+  it('a column with cell or format renders itself: nothing reported', () => {
+    const codes: string[] = []
+    render(
+      <DataTable
+        data={rows}
+        columns={[
+          { key: 'obj', cell: () => 'x' },
+          { key: 'id', format: () => 'y' },
+        ]}
+        onDiagnostic={(d) => codes.push(d.code)}
+      />,
+    )
+    expect(codes).not.toContain('DK_UNRENDERABLE_VALUE')
+  })
+})
+
 describe('<DataTable columns={inline array} /> (#23)', () => {
   it('reports DK_UNSTABLE_COLUMNS once after two parent re-renders, like useDataTable', () => {
     const codes: string[] = []
