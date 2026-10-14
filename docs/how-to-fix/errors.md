@@ -215,6 +215,7 @@ To trace a production table, install it: `createTable({ interceptors: [tracer()]
 | [`DK_RENDER_FAILED`](#dk_render_failed) | error | Lifecycle and SSR |
 | [`DK_DEPRECATED`](#dk_deprecated) | warn | Versions |
 | [`DK_DUPLICATE_CORE`](#dk_duplicate_core) | error | Versions |
+| [`DK_DUPLICATE_CORE_SAME_VERSION`](#dk_duplicate_core_same_version) | info | Versions |
 | [`DK_VERSION_MISMATCH`](#dk_version_mismatch) | warn | Versions |
 | [`DK_DEP_INCOMPATIBLE`](#dk_dep_incompatible) | warn | Versions |
 | [`DK_ENV_FALLBACK`](#dk_env_fallback) | info | Environment and performance |
@@ -2442,7 +2443,7 @@ prints (development console):
 
 `error` · development only · fault test: [versioning.test.ts](../../packages/core/src/versioning/versioning.test.ts)
 
-**Problem.** Two copies of `@datakable/core` are loaded in one page (detected through a global registry). Each table works with its own copy, but plugins built against the other copy may be ignored or fail registry checks, and the bundle ships core twice. One known false positive: a dev server's hot module reload that re-runs core reports it once.
+**Problem.** Two copies of `@datakable/core` of different versions are loaded in one page (detected through a global registry). Each table works with its own copy, but plugins built against the other copy may be ignored or fail registry checks, and the bundle ships core twice. Copies of one version (ESM and CJS builds, a Next.js dev server's layers, a hot reload) are not this error: they report [`DK_DUPLICATE_CORE_SAME_VERSION`](#dk_duplicate_core_same_version), an info.
 
 **Common causes.**
 
@@ -2466,6 +2467,40 @@ Needs two copies of core in one bundle (the test loads core twice). Built from i
           2. dedupe it: pnpm dedupe (npm dedupe), and align @datakable/react and datakable to one version
           3. or force one version: "pnpm": { "overrides": { "@datakable/core": "<version>" } } in package.json (npm "overrides", yarn "resolutions")
   docs    https://github.com/Ink01101011/datakable/blob/main/docs/errors.md#dk_duplicate_core
+  context trigger=init run=0 phase=client
+```
+
+### DK_DUPLICATE_CORE_SAME_VERSION
+
+`info` · development only · once per session · fault test: [versioning.test.ts](../../packages/core/src/versioning/versioning.test.ts)
+
+**Problem.** `@datakable/core` of one version was evaluated more than once in one process. Tables work, each with its own copy, and `strict: true` does not throw it. Two things differ between the copies: a `DatakableError` from one is not an `instanceof` the other's classes, and a browser bundle that holds both ships core twice.
+
+**Common causes.**
+
+- Node code that both `import`s and `require`s `@datakable/core`: the ESM and the CJS build each load.
+- A Next.js dev server: the RSC, SSR and route-handler layers each load core.
+- A dev server's hot reload that re-runs core.
+- Two installs of the same version (a package manager that could not dedupe them).
+
+**Fix.**
+
+- Compare errors by their `.code` (`err.code === 'DK_INVALID_OPTION'`), not `instanceof`.
+- In one Node process, load `@datakable/core` one way: `import` or `require`.
+- In a browser bundle, find the second install: `pnpm why @datakable/core`, then `pnpm dedupe`.
+
+**Example.**
+
+Needs core evaluated twice in one process (the test loads it three times). Built from its details:
+
+```text
+ℹ [DataKable table#1] DK_DUPLICATE_CORE_SAME_VERSION: @datakable/core 1.2.0 is loaded 2 times, all this version: its ESM and CJS builds, a bundler's layers (Next.js dev: RSC, SSR, route handlers), a hot reload, or two installs of it
+  where   operation createTable
+  impact  tables work, each with its own copy; a DatakableError thrown by one copy is not an instanceof the classes of the other, and a browser bundle with both ships core twice
+  fix     1. compare errors by their .code (e.g. err.code === "DK_INVALID_OPTION"), not instanceof
+          2. mixed import and require of @datakable/core in one Node process: use one of them
+          3. in a browser bundle, find the second install: pnpm why @datakable/core, then pnpm dedupe
+  docs    https://github.com/Ink01101011/datakable/blob/main/docs/errors.md#dk_duplicate_core_same_version
   context trigger=init run=0 phase=client
 ```
 

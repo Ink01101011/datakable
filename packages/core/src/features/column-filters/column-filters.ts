@@ -241,12 +241,14 @@ export const columnFilters = (opts: ColumnFiltersOptions = {}) =>
     createApi: (ctx) => ({
       setColumnFilter: (id, filter) =>
         ctx.setState((prev) => {
+          // No change (the same filter, or clearing a column without one): keep the slice.
+          if ((prev as Record<string, unknown>)[id] === filter) return prev
           const next: Record<string, unknown> = { ...prev }
           if (filter === undefined) delete next[id]
           else next[id] = filter
           return next as ColumnFiltersState<unknown>
         }),
-      resetColumnFilters: () => ctx.setState({}),
+      resetColumnFilters: () => ctx.setState((prev) => (Object.keys(prev).length ? {} : prev)),
     }),
     rowModel: filterRows,
   })

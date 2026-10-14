@@ -146,6 +146,19 @@ describe('DK_COLUMN_PATH_NOT_FOUND (§5.3)', () => {
     expect(seen[0]?.fix.join(' ')).toContain('accessor')
   })
 
+  it('text reads as English for one sampled row and no suggestion (#44)', () => {
+    const one = collect({ data: [{ id: 1 }], columns: [{ key: 'zzz' }] }).seen[0] as Diagnostic
+    expect(one.problem).toBe('columns[0] key "zzz" does not exist in the first row')
+    expect(one.fix[0]).toBe("compute the value: columns[0]: { id: 'zzz', accessor: (row) => … }")
+    const two = collect({ data: [{ id: 1 }, { id: 2 }], columns: [{ key: 'zzz' }] })
+      .seen[0] as Diagnostic
+    expect(two.problem).toBe('columns[0] key "zzz" does not exist in any of the first 2 rows')
+    // With a suggestion first, the alternative keeps its "or".
+    const typo = collect({ data: [{ name: 'a' }], columns: [{ key: 'nmae' }] })
+      .seen[0] as Diagnostic
+    expect(typo.fix[1]).toMatch(/^or compute the value/)
+  })
+
   it('a path through a primitive is absent', () => {
     const { seen } = collect({ data: [{ name: 'Ada' }], columns: [{ key: 'name.first' }] })
     expect(codes(seen)).toEqual(['DK_COLUMN_PATH_NOT_FOUND'])

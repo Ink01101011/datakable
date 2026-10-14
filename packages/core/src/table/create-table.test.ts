@@ -81,6 +81,35 @@ describe('createTable: state', () => {
     expect(Object.isFrozen(t.getState())).toBe(true)
   })
 
+  it('slices are deep-frozen in development: a nested write throws, the table is unchanged (#20)', () => {
+    class Box {
+      v = 1
+    }
+    const box = new Box()
+    const t = createTable<
+      Row,
+      { pagination: { pageIndex: number }; sort: { by: { id: string }[] } }
+    >({
+      data: rows,
+      initialState: { pagination: { pageIndex: 0 }, sort: { by: [{ id: 'a' }] } },
+    })
+    const s = t.getState()
+    expect(Object.isFrozen(s.pagination)).toBe(true)
+    expect(Object.isFrozen(s.sort.by)).toBe(true)
+    expect(Object.isFrozen(s.sort.by[0])).toBe(true)
+    expect(() => {
+      s.pagination.pageIndex = 2
+    }).toThrow(TypeError)
+    expect(t.getState().pagination.pageIndex).toBe(0)
+    // A slice committed later is frozen too; class instances (and typed arrays) are left alone.
+    const ids = new Uint32Array(3)
+    t.setState({ pagination: { pageIndex: 1, box, ids } as never })
+    const p = t.getState().pagination as unknown as { box: Box; ids: Uint32Array }
+    expect(Object.isFrozen(p)).toBe(true)
+    expect(Object.isFrozen(p.box)).toBe(false)
+    expect(Object.isFrozen(p.ids)).toBe(false)
+  })
+
   it('gives the data', () => {
     const t = make()
     expect(t.getData()).toBe(rows)
@@ -499,6 +528,14 @@ describe('createTable: diagnostics wiring', () => {
       state: { page: 0 },
     })
     expect(() => t.setState({ page: 1 })).toThrow(DatakableError)
+  })
+
+  it("strict: after getRowModel() throws, the model is the 'error' fallback, not empty 'idle' (#43)", () => {
+    const t = createTable({ data: [{ id: 1 }, { id: 1 }], rowKey: 'id', strict: true })
+    expect(() => t.getRowModel()).toThrow(/DK_DUPLICATE_ROW_KEY/)
+    // No good rows yet: empty with status 'error' (a later failed run keeps the last good rows).
+    expect(t.getRowModel()).toMatchObject({ rows: [], status: 'error' })
+    expect(t.getData()).toHaveLength(2)
   })
 })
 

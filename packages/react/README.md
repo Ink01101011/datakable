@@ -16,6 +16,7 @@ React `>=18`. The modules of `<DataTable />` and `useDataTable` carry a `"use cl
 so the Next.js app router treats them as client code even when a server component imports them
 from here; the rest (core's `createTable`, …) stays usable on the server. Like core,
 it needs a bundler that replaces `process.env.NODE_ENV` (see [core](https://github.com/Ink01101011/datakable/tree/main/packages/core)).
+In Node.js (SSR, tests) it needs Node `>=18.18`. The types need TypeScript `>=5.4`.
 
 ## useDataTable
 

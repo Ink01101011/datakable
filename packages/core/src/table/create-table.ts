@@ -72,7 +72,31 @@ const RANK: readonly RowModelStatus[] = [
 const isThenable = (v: unknown): v is PromiseLike<unknown> =>
   v != null && typeof (v as { then?: unknown }).then === 'function'
 
-const freeze = <S extends object>(s: S): S => (DEV ? Object.freeze(s) : s)
+/** Objects already deep-frozen (dev): an unchanged slice is not walked again on the next commit. */
+const deepFrozen = DEV ? new WeakSet<object>() : undefined
+
+/**
+ * Freezes plain objects and arrays reachable from `v` (dev). Class instances (Date, Map, typed
+ * arrays, user classes) are left alone: freezing them would break their own methods.
+ */
+function deepFreeze(v: unknown): void {
+  if (v === null || typeof v !== 'object' || deepFrozen?.has(v)) return
+  const isArray = Array.isArray(v)
+  if (!isArray) {
+    const proto = Object.getPrototypeOf(v)
+    if (proto !== Object.prototype && proto !== null) return
+  }
+  deepFrozen?.add(v)
+  Object.freeze(v)
+  if (isArray) for (let i = 0; i < v.length; i++) deepFreeze(v[i])
+  else for (const k in v) deepFreeze((v as Record<string, unknown>)[k])
+}
+
+/** Snapshots and their slices are immutable in development (#20); production skips the walk. */
+const freeze = <S extends object>(s: S): S => {
+  if (DEV) deepFreeze(s)
+  return s
+}
 
 /** The row type: the schema output with a `schema` (§5.1), else `T`. */
 export type SchemaRow<T, Sch> = [Sch] extends [TableSchema] ? StandardSchemaV1.InferOutput<Sch> : T
@@ -268,7 +292,7 @@ export function createTable<T, S extends TableState>(
     () => options.columns,
   )
   // Never silent (§8.6): in production (no option validator) an unwrapped schema would be ignored.
-  if (options.schema && !schemaIngest) unwrapped('schema', 'withSchema')
+  if (options.schema && !schemaIngest) unwrapped('schema', options.schema, 'withSchema')
 
   function sensitiveColumns(): string[] {
     const out: string[] = []
@@ -857,7 +881,7 @@ export function createTable<T, S extends TableState>(
     const factory = (fetcher as Partial<ServerFetcher<unknown>> | undefined)?.[SERVER_SOURCE]
     if (factory) server = use(factory)
     // Never silent (§8.6): in production an unwrapped fetcher would never run.
-    else if (fetcher) unwrapped('fetcher', 'withFetcher', phase)
+    else if (fetcher) unwrapped('fetcher', fetcher, 'withFetcher', 'server', phase)
     return server
   }
 
@@ -867,12 +891,20 @@ export function createTable<T, S extends TableState>(
    */
   function unwrapped(
     path: 'schema' | 'fetcher',
+    value: unknown,
     wrap: string,
+    entry: string = path,
     phase: 'init' | 'setOptions' = 'init',
   ): never {
     return throwConfigError(
       'DK_INVALID_OPTION',
-      { path, expected: `${wrap}(${path})`, received: path, suggestions: [], phase },
+      {
+        path,
+        expected: `${wrap}(${path}) from '@datakable/core/${entry}'`,
+        received: typeof value,
+        suggestions: [],
+        phase,
+      },
       { table: hub.table, trigger: phase },
     )
   }

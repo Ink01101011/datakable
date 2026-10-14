@@ -99,6 +99,31 @@ describe('typing: debounce (debouncedSignal)', () => {
     expect(slice(t).query).toBe('bob')
   })
 
+  it('leading: a dropped keystroke settles superseded when the silence window ends (#28)', async () => {
+    const t = make({ strategy: 'debounce', wait: { ms: 50 }, behavior: 'leading' })
+    const log: string[] = []
+    for (const q of ['b', 'bo', 'bob']) {
+      void t.setSearch(q).then((r) => log.push(`${q}:${r.status}`))
+    }
+    await vi.advanceTimersByTimeAsync(49)
+    expect(log).toEqual(['b:applied', 'bo:superseded'])
+    await vi.advanceTimersByTimeAsync(1)
+    expect(log).toEqual(['b:applied', 'bo:superseded', 'bob:superseded'])
+    // The input is kept: flushSearch() still applies it.
+    expect(slice(t)).toEqual({ input: 'bob', query: 'b', status: 'idle' })
+    await expect(t.flushSearch()).resolves.toEqual({ status: 'applied' })
+    expect(slice(t).query).toBe('bob')
+  })
+
+  it('leading: flushSearch within the silence window applies the dropped keystroke (#28)', async () => {
+    const t = make({ strategy: 'debounce', wait: 200, behavior: 'leading' })
+    void t.setSearch('b')
+    const dropped = t.setSearch('bo')
+    void t.flushSearch()
+    await expect(dropped).resolves.toEqual({ status: 'applied' })
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
   it('flushSearch (Enter) applies the input now; the timer does not fire again', () => {
     const t = make({ strategy: 'debounce', wait: 200 })
     void t.setSearch('cara')
@@ -240,12 +265,63 @@ describe('typing: RowModel.status (§6.6, never silent)', () => {
 
   it("the search slice's 'searching' / 'error' reach RowModel.status", () => {
     const t = make(undefined)
+    // 'searching' reaches it while a searchFn runs (search-fn.test.ts); set from outside with no
+    // search in flight it ends at once instead of staying forever (#22).
     t.setState({ search: { input: 'b', query: '', status: 'searching' } })
-    expect(t.getRowModel().status).toBe('searching')
+    expect(t.getRowModel().status).toBe('idle')
     t.setState({ search: { input: 'b', query: '', status: 'error', error: new Error('x') } })
     expect(t.getRowModel().status).toBe('error')
     t.setState({ search: { input: 'b', query: '', status: 'idle' } })
     expect(t.getRowModel().status).toBe('idle')
+  })
+})
+
+describe('typing: a restored transient status (#22)', () => {
+  const restore = (typing: SearchTyping | undefined, status: 'pending' | 'searching') =>
+    createTable({
+      data: users,
+      onDiagnostic,
+      columns: [{ key: 'name', search: 1 }],
+      features: [search(typing ? { typing } : {})],
+      initialState: { search: { input: 'ad', query: '', status } },
+    })
+
+  it("initialState 'pending' commits the restored input at creation", () => {
+    const t = restore(undefined, 'pending')
+    expect(slice(t)).toEqual({ input: 'ad', query: 'ad', status: 'idle' })
+    expect(t.getRowModel().status).toBe('idle')
+    expect(ids(t)).toEqual([0])
+    // The same with a debounce: nothing was scheduled, so nothing would ever commit it.
+    const d = restore({ strategy: 'debounce', wait: 200 }, 'pending')
+    expect(slice(d)).toEqual({ input: 'ad', query: 'ad', status: 'idle' })
+  })
+
+  it("initialState 'searching' without a searchFn in flight goes back to 'idle'", () => {
+    const t = restore(undefined, 'searching')
+    expect(slice(t)).toEqual({ input: 'ad', query: '', status: 'idle' })
+    expect(t.getRowModel().status).toBe('idle')
+  })
+
+  it("commitOn 'enter': a restored 'pending' keeps the input uncommitted, status 'idle'", () => {
+    const t = restore({ commitOn: 'enter' }, 'pending')
+    expect(slice(t)).toEqual({ input: 'ad', query: '', status: 'idle' })
+  })
+
+  it("setState with 'pending' / 'searching' and nothing scheduled is not stuck", () => {
+    const t = make(undefined)
+    t.setState({ search: { input: 'bo', query: '', status: 'pending' } })
+    expect(slice(t)).toEqual({ input: 'bo', query: 'bo', status: 'idle' })
+    t.setState({ search: { input: 'x', query: 'bo', status: 'searching' } })
+    expect(slice(t)).toEqual({ input: 'x', query: 'bo', status: 'idle' })
+    expect(t.getRowModel().status).toBe('idle')
+  })
+
+  it("a real debounce 'pending' is left alone and commits after wait", () => {
+    const t = make({ strategy: 'debounce', wait: 200 })
+    void t.setSearch('bo')
+    expect(slice(t)).toEqual({ input: 'bo', query: '', status: 'pending' })
+    vi.advanceTimersByTime(200)
+    expect(slice(t)).toEqual({ input: 'bo', query: 'bo', status: 'idle' })
   })
 })
 

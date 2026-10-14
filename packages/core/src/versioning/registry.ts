@@ -78,7 +78,9 @@ export function firstInSession(key: string): boolean {
 /**
  * Version checks of one `createTable` (§8.5), cold path:
  * - feature `requires.core` against this core → `DatakableConfigError` `DK_FEATURE_INCOMPATIBLE`;
- * - registers this copy on its first table; a copy finding another one → `DK_DUPLICATE_CORE` (once);
+ * - registers this copy on its first table; a copy finding one of another version →
+ *   `DK_DUPLICATE_CORE` (once per copy), only copies of its own version →
+ *   `DK_DUPLICATE_CORE_SAME_VERSION` (info, once per session);
  * - fixed-group packages with another version → `DK_VERSION_MISMATCH` (once per package version).
  */
 export function checkVersions(features: readonly AnyFeature[], emit: Emit, table: string): void {
@@ -96,8 +98,12 @@ export function checkVersions(features: readonly AnyFeature[], emit: Emit, table
   const reg = getVersionRegistry()
   if (!reg.cores.includes(self)) {
     reg.cores.push(self)
-    if (reg.cores.length > 1) {
-      emit('DK_DUPLICATE_CORE', { versions: reg.cores.map((c) => String(c?.version)) })
+    const versions = reg.cores.map((c) => String(c?.version))
+    // One version evaluated again (ESM + CJS builds, bundler layers, HMR) is not a second install
+    // (#14): an info, once per session, that strict never throws.
+    if (versions.some((v) => v !== VERSION)) emit('DK_DUPLICATE_CORE', { versions })
+    else if (versions.length > 1 && firstInSession('DK_DUPLICATE_CORE_SAME_VERSION')) {
+      emit('DK_DUPLICATE_CORE_SAME_VERSION', { version: VERSION, copies: versions.length })
     }
   }
   for (const name of FIXED_GROUP) {

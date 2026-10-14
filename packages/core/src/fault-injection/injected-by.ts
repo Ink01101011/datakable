@@ -24,6 +24,7 @@ export const injectedBy: Readonly<Record<string, string>> = {
   DK_DEP_INCOMPATIBLE: 'versioning/versioning.test.ts',
   DK_DEPRECATED: 'versioning/versioning.test.ts',
   DK_DUPLICATE_CORE: 'versioning/versioning.test.ts',
+  DK_DUPLICATE_CORE_SAME_VERSION: 'versioning/versioning.test.ts',
   DK_DUPLICATE_ROW_KEY: 'ingest/row-key.test.ts',
   DK_ENV_FALLBACK: 'pipeline/env.test.ts',
   DK_FEATURE_API_CONFLICT: 'feature/feature.test.ts',

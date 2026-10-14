@@ -1,6 +1,6 @@
 {
   "name": "@datakable/react",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "React bindings for DataKable — useDataTable hook and DataTable component.",
   "license": "MIT",
   "author": "Supakit Kitjanabumrungsak",
@@ -24,9 +24,19 @@
   "sideEffects": [
     "./dist/styles.css"
   ],
+  "engines": {
+    "node": ">=18.18.0"
+  },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "styles.css": [
+        "./dist/styles.css.d.ts"
+      ]
+    }
+  },
   "exports": {
     ".": {
       "import": {
@@ -38,17 +48,23 @@
         "default": "./dist/index.cjs"
       }
     },
-    "./styles.css": "./dist/styles.css",
+    "./styles.css": {
+      "types": {
+        "import": "./dist/styles.css.d.ts",
+        "require": "./dist/styles.css.d.cts"
+      },
+      "default": "./dist/styles.css"
+    },
     "./package.json": "./package.json"
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && node ../../scripts/write-styles-dts.mjs",
     "dev": "tsup --watch",
     "typecheck": "tsc -p tsconfig.json",
-    "check:pkg": "publint --strict && attw --pack . --profile node16 --exclude-entrypoints styles.css && node scripts/check-catalog.mjs",
+    "check:pkg": "publint --strict && attw --pack . && node scripts/check-catalog.mjs",
     "check:catalog": "node scripts/check-catalog.mjs"
   },
   "dependencies": {
