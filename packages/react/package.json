@@ -30,6 +30,13 @@
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "styles.css": [
+        "./dist/styles.css.d.ts"
+      ]
+    }
+  },
   "exports": {
     ".": {
       "import": {
@@ -57,7 +64,7 @@
     "build": "tsup && node ../../scripts/write-styles-dts.mjs",
     "dev": "tsup --watch",
     "typecheck": "tsc -p tsconfig.json",
-    "check:pkg": "publint --strict && attw --pack . --profile node16 && node scripts/check-catalog.mjs",
+    "check:pkg": "publint --strict && attw --pack . && node scripts/check-catalog.mjs",
     "check:catalog": "node scripts/check-catalog.mjs"
   },
   "dependencies": {

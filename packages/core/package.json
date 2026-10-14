@@ -31,6 +31,37 @@
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "column-filters": [
+        "./dist/column-filters.d.ts"
+      ],
+      "validity": [
+        "./dist/validity.d.ts"
+      ],
+      "search": [
+        "./dist/search.d.ts"
+      ],
+      "sorting": [
+        "./dist/sorting.d.ts"
+      ],
+      "pagination": [
+        "./dist/pagination.d.ts"
+      ],
+      "messages": [
+        "./dist/messages.d.ts"
+      ],
+      "schema": [
+        "./dist/schema.d.ts"
+      ],
+      "search-async": [
+        "./dist/search-async.d.ts"
+      ],
+      "server": [
+        "./dist/server.d.ts"
+      ]
+    }
+  },
   "exports": {
     ".": {
       "import": {
@@ -141,7 +172,7 @@
     "build": "tsup && node scripts/postbuild.mjs",
     "dev": "tsup --watch",
     "typecheck": "tsc -p tsconfig.json",
-    "check:pkg": "publint --strict && attw --pack . --profile node16 && node scripts/check-catalog.mjs",
+    "check:pkg": "publint --strict && attw --pack . && node scripts/check-catalog.mjs",
     "check:catalog": "node scripts/check-catalog.mjs"
   },
   "dependencies": {

@@ -1,11 +1,11 @@
 // Type-leak guard (spec §12): compile a tiny consumer project against the BUILT packages with
-// `skipLibCheck: false`, under `moduleResolution` node16 and bundler, with the current TypeScript
+// `skipLibCheck: false`, under `moduleResolution` node16, bundler and node10, with the current TypeScript
 // and the minimum supported one (#32). Fails when a published `.d.ts` references a type the
 // consumer cannot resolve (e.g. ex-search -> ex-flow), uses an invalid module augmentation, needs
 // a newer TypeScript than documented, or when public types (catalog codes, entry points) break.
 // Run after `pnpm build`.
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -21,6 +21,9 @@ link(join(root, 'packages/react'), '@datakable/react')
 link(join(root, 'packages/datakable'), 'datakable')
 link(join(root, 'node_modules/react'), 'react')
 link(join(root, 'node_modules/@types/react'), '@types/react')
+// @types/react's own dependency, found next to it in pnpm's store; the node10 config resolves from
+// the symlinked paths (preserveSymlinks, as in an npm install), where it is not otherwise visible.
+link(join(realpathSync(join(root, 'node_modules/@types/react')), '../../csstype'), 'csstype')
 
 writeFileSync(
   join(dir, 'package.json'),
@@ -109,36 +112,44 @@ const compilers = ['typescript', 'typescript-min'].map((pkg) => ({
   tsc: req.resolve(`${pkg}/bin/tsc`),
   version: req(`${pkg}/package.json`).version,
 }))
+// node10 (`moduleResolution: node`, #33) ignores `exports`: the subpaths resolve through the
+// packages' `typesVersions`. TS 6 deprecates node10, hence `ignoreDeprecations` there.
 const configs = {
   node16: { module: 'node16', moduleResolution: 'node16', files: ['index.ts', 'index-cjs.cts'] },
   bundler: { module: 'esnext', moduleResolution: 'bundler', files: ['index.ts'] },
+  node10: {
+    module: 'commonjs',
+    moduleResolution: 'node10',
+    preserveSymlinks: true,
+    files: ['index.ts'],
+  },
 }
 let failed = false
 for (const [name, { files, ...resolution }] of Object.entries(configs)) {
-  writeFileSync(
-    join(dir, `tsconfig.${name}.json`),
-    JSON.stringify({
-      compilerOptions: {
-        ...resolution,
-        target: 'es2022',
-        lib: ['es2022', 'dom'],
-        strict: true,
-        exactOptionalPropertyTypes: true,
-        skipLibCheck: false,
-        noEmit: true,
-        jsx: 'react-jsx',
-        types: [],
-      },
-      files,
-    }),
-  )
   for (const { tsc, version } of compilers) {
+    const major = Number(version.split('.')[0])
+    const config = `tsconfig.${name}.ts${major}.json`
+    writeFileSync(
+      join(dir, config),
+      JSON.stringify({
+        compilerOptions: {
+          ...resolution,
+          ...(name === 'node10' && major >= 6 ? { ignoreDeprecations: '6.0' } : {}),
+          target: 'es2022',
+          lib: ['es2022', 'dom'],
+          strict: true,
+          exactOptionalPropertyTypes: true,
+          skipLibCheck: false,
+          noEmit: true,
+          jsx: 'react-jsx',
+          types: [],
+        },
+        files,
+      }),
+    )
     const label = `${name} consumer (TypeScript ${version})`
     try {
-      execFileSync(process.execPath, [tsc, '-p', `tsconfig.${name}.json`], {
-        cwd: dir,
-        stdio: 'pipe',
-      })
+      execFileSync(process.execPath, [tsc, '-p', config], { cwd: dir, stdio: 'pipe' })
       console.log(`check:consumer: ${label} compiles with skipLibCheck: false`)
     } catch (e) {
       failed = true
