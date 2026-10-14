@@ -365,7 +365,7 @@ describe('search(): pipeline (§3.3)', () => {
     await t.setSearch('ada')
     const before = t.getRowModel()
     const run = vi.spyOn(ExSearch.prototype, 'search')
-    t.setState({ search: { input: 'adam', query: 'ada', status: 'pending' } })
+    t.setState({ search: { input: 'adam', query: 'ada', status: 'idle' } })
     const after = t.getRowModel()
     expect(run).not.toHaveBeenCalled()
     expect(after.rows.map((r) => r.index)).toEqual(before.rows.map((r) => r.index))
