@@ -58,6 +58,7 @@ in your app entry), then sets the theme:
   --dk-bg: #0d1117;
   --dk-subtle: #151b23;
   --dk-border: #3d444d;
+  --dk-control-border: #6e7681;
   --dk-danger: #f85149;
   --dk-danger-bg: #25171c;
 }
@@ -68,6 +69,7 @@ in your app entry), then sets the theme:
   --dk-bg: #fff;
   --dk-subtle: #f6f8fa;
   --dk-border: #d1d9e0;
+  --dk-control-border: #818b98;
   --dk-danger: #d1242f;
   --dk-danger-bg: #ffebe9;
 }
@@ -93,8 +95,9 @@ in your app entry), then sets the theme:
 ## Variations
 
 - **The variables:** `--dk-font-size`, `--dk-fg`, `--dk-muted`, `--dk-bg`, `--dk-subtle`,
-  `--dk-border`, `--dk-accent`, `--dk-danger`, `--dk-danger-bg`, `--dk-radius`, `--dk-cell-py`,
-  `--dk-cell-px`.
+  `--dk-border`, `--dk-control-border`, `--dk-accent`, `--dk-danger`, `--dk-danger-bg`,
+  `--dk-radius`, `--dk-cell-py`, `--dk-cell-px`. `--dk-control-border` is the search input's
+  border; keep it at 3:1 or more against `--dk-bg` (the defaults: 3.45:1 light, 4.12:1 dark).
 - **No stylesheet at all:** skip the import and style the hooks yourself: `[data-datakable]` on the
   root, with `data-status` and `data-initial-load`; `aria-sort` / `data-sort` on headers;
   `data-invalid` on flagged rows and cells; `data-dk-state` on the Loading / Empty / Error row;

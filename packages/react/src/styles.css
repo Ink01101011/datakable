@@ -14,6 +14,8 @@
   --dk-bg: #fff;
   --dk-subtle: #f6f8fa;
   --dk-border: #d1d9e0;
+  /* Form-control boundary: ≥ 3:1 against --dk-bg (WCAG 1.4.11); --dk-border is for table rules. */
+  --dk-control-border: #818b98;
   --dk-accent: #0969da;
   --dk-danger: #d1242f;
   --dk-danger-bg: #ffebe9;
@@ -34,6 +36,7 @@
     --dk-bg: #0d1117;
     --dk-subtle: #151b23;
     --dk-border: #3d444d;
+    --dk-control-border: #6e7681;
     --dk-accent: #4493f8;
     --dk-danger: #f85149;
     --dk-danger-bg: #25171c;
@@ -81,7 +84,7 @@
   cursor: pointer;
 }
 
-:where([data-datakable] button:disabled) {
+:where([data-datakable] button:disabled, [data-datakable] button[aria-disabled="true"]) {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -123,7 +126,7 @@
   min-width: 12rem;
   padding: 0.375rem 0.625rem;
   background: var(--dk-bg);
-  border: 1px solid var(--dk-border);
+  border: 1px solid var(--dk-control-border);
   border-radius: var(--dk-radius);
 }
 
@@ -174,9 +177,10 @@
   border-radius: var(--dk-radius);
 }
 
+/* Busy over stale rows: the "Updating…" indicator says so. No fading: the rows stay readable
+   content, and any opacity drops their text below 4.5:1 (flagged cells are 4.57:1 at full). */
 :where([data-datakable][aria-busy="true"]:not([data-initial-load="true"]) tbody) {
-  opacity: 0.6;
-  transition: opacity 0.15s;
+  cursor: progress;
 }
 
 /* Flagged rows and cells (invalidRows: 'flag') */

@@ -21,10 +21,12 @@ import {
 import {
   Component,
   type ComponentType,
+  type CSSProperties,
   type ReactNode,
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
 } from 'react'
 import {
   cellSlot,
@@ -62,6 +64,8 @@ export interface SearchInputProps {
   onSubmit(): void
   /** `clearSearch()` (Esc). */
   onClear(): void
+  /** The input's accessible name: `'Search <caption>'` with a text `caption`, else `'Search'`. */
+  label: string
 }
 
 /** Props of `components.Pagination` (the pagination feature's state and API). */
@@ -75,6 +79,8 @@ export interface PaginationProps {
   next(): void
   setPageIndex(index: number): void
   setPageSize(size: number): void
+  /** The pager's accessible name: `'<caption> pagination'` with a text `caption`, else `'Pagination'`. */
+  label: string
 }
 
 /** Props of `components.Empty`: shown when the table has loaded and has no rows to show. */
@@ -244,6 +250,12 @@ interface Failure {
 }
 
 const WARN = '⚠'
+/** A failed cell's content: the `⚠` with its text alternative (#60). One element for every cell. */
+const FAILED = (
+  <span role="img" aria-label="Could not display this value">
+    {WARN}
+  </span>
+)
 const BUSY: readonly RowModelStatus[] = ['validating', 'pending', 'searching', 'fetching']
 const LOADING: readonly RowModelStatus[] = ['validating', 'searching', 'fetching']
 
@@ -410,7 +422,7 @@ function cellContent(
     return text
   } catch (error) {
     failures.push({ slot: `columns[${col.index}].${slot}`, column: col.id, row: row.index, error })
-    return WARN
+    return FAILED
   }
 }
 
@@ -445,10 +457,25 @@ function bad(
     expected,
     received: describeReturn(out),
   })
-  return WARN
+  return FAILED
 }
 
 type Page = { pageIndex: number; pageSize: number }
+
+/** Visually hidden, still read by screen readers (inline: the table ships no CSS). */
+const HIDDEN: CSSProperties = {
+  position: 'absolute',
+  width: 1,
+  height: 1,
+  overflow: 'hidden',
+  clipPath: 'inset(50%)',
+  whiteSpace: 'nowrap',
+}
+
+const serverPaged = (view: Api) =>
+  (view.getOptions() as { features?: readonly { stage?: string; mode?: string }[] }).features?.some(
+    (f) => f?.stage === 'paginate' && f.mode === 'server',
+  ) === true
 
 /**
  * The pager of the rendered snapshot, like the pagination API computes it live: the hydrating
@@ -456,11 +483,8 @@ type Page = { pageIndex: number; pageSize: number }
  * pages over the row model's `filteredCount`; server mode over the fetched `rowCount`, which only
  * the table knows (and no render changes).
  */
-function pages(view: Api, page: Page, count: number) {
-  const features = (
-    view.getOptions() as { features?: readonly { stage?: string; mode?: string }[] }
-  ).features
-  if (features?.some((f) => f?.stage === 'paginate' && f.mode === 'server')) {
+function pages(view: Api, page: Page, count: number, server: boolean) {
+  if (server) {
     return {
       ...page,
       pageCount: view.getPageCount?.() ?? 0,
@@ -511,7 +535,52 @@ function DataTableView(props: {
     isInitialLoad && (LOADING.includes(status) || (status === 'pending' && hasAsyncSource(view)))
   const failed = isInitialLoad && status === 'error'
   const span = Math.max(columns.length, 1)
-  const retryLoad = () => void view.refetch()
+  const tableEl = useRef<HTMLTableElement>(null)
+  /**
+   * Retry unmounts the focused Retry button (Error → Loading → rows, or the refresh error): focus
+   * the table first, else it falls to `<body>` (#56). Only when focus is in a state row or the
+   * refresh indicator, so a retry called from elsewhere leaves focus alone.
+   */
+  const keepFocus = () => {
+    const t = tableEl.current
+    const from = document.activeElement?.closest('[data-dk-state],[data-dk-refresh]')
+    if (t && from && t.parentElement?.contains(from)) {
+      t.tabIndex = -1
+      t.focus()
+    }
+  }
+  const retryLoad = () => {
+    keepFocus()
+    void view.refetch()
+  }
+  const server = paged && serverPaged(view)
+  const pager = paged ? pages(view, state.pagination as Page, rowModel.filteredCount, server) : null
+
+  // Status messages (#54): one polite live region, in the markup from the first render (a region
+  // inserted with its text is often not announced). Written after commit, only when the message
+  // changes, so the first render (and the hydrating one) matches the server HTML.
+  // Worded unlike the visible parts ("No rows", "Searching…"), so a text query finds one element.
+  const n = rowModel.filteredCount
+  const count = `${n} row${n === 1 ? '' : 's'}`
+  const page = pager ? `age ${pager.pageIndex + 1} of ${Math.max(pager.pageCount, 1)}` : ''
+  let said = ''
+  if (searchState?.status === 'pending' || searchState?.status === 'searching') {
+    said = 'Searching rows…'
+  } else if (status === 'idle' && !loading) {
+    // Server mode: `filteredCount` is the page's rows, so only the page (or "0 rows").
+    said = server && n ? `P${page}` : page ? `${count}, p${page}` : count
+  }
+  const liveEl = useRef<HTMLDivElement>(null)
+  const saidBefore = useRef<string | null>(null)
+  useEffect(() => {
+    const el = liveEl.current
+    if (el && saidBefore.current !== null && saidBefore.current !== said) el.textContent = said
+    saidBefore.current = said
+  })
+
+  // A text caption names the search box and the pager, so two tables get distinct names (#59).
+  const cap = props.caption
+  const named = typeof cap === 'string' || typeof cap === 'number' ? `${cap}` : ''
 
   const Empty = parts.Empty ?? DefaultEmpty
   const Loading = parts.Loading ?? DefaultLoading
@@ -571,13 +640,14 @@ function DataTableView(props: {
             onChange: (q) => void view.setSearch?.(q),
             onSubmit: () => void view.flushSearch?.(),
             onClear: () => view.clearSearch?.(),
+            label: named ? `Search ${named}` : 'Search',
           })}
         </div>
       )}
       {!loading && !failed && status !== 'idle' && (
         <RefreshIndicator status={status} retry={retryLoad} />
       )}
-      <table>
+      <table ref={tableEl}>
         {props.caption != null && <caption>{props.caption}</caption>}
         <thead>
           <tr>
@@ -616,21 +686,34 @@ function DataTableView(props: {
             table={table}
             resetKey={rowModel}
             fallback={(retry) =>
-              stateRow(span, 'error', <ErrorState status={status} reason="render" retry={retry} />)
+              stateRow(
+                span,
+                'error',
+                <ErrorState
+                  status={status}
+                  reason="render"
+                  retry={() => {
+                    keepFocus()
+                    retry()
+                  }}
+                />,
+              )
             }
           >
             {body}
           </BodyBoundary>
         </tbody>
       </table>
-      {paged &&
+      {pager &&
         part(table, 'Pagination', parts.Pagination, DefaultPagination, {
-          ...pages(view, state.pagination as Page, rowModel.filteredCount),
+          ...pager,
           prev: () => view.prevPage?.(),
           next: () => view.nextPage?.(),
           setPageIndex: (i) => view.setPageIndex?.(i),
           setPageSize: (n) => view.setPageSize?.(n),
+          label: named ? `${named} pagination` : 'Pagination',
         })}
+      <div aria-live="polite" style={HIDDEN} ref={liveEl} />
     </div>
   )
 }
@@ -779,18 +862,25 @@ class CellBoundary extends Component<CellBoundaryProps, CellBoundaryState> {
   }
 
   override render() {
-    return this.state.failed ? WARN : this.props.children
+    return this.state.failed ? FAILED : this.props.children
   }
 }
 
 // --- default parts (unstyled) --------------------------------------------------------------------
 
-function DefaultSearchInput({ value, status, onChange, onSubmit, onClear }: SearchInputProps) {
+function DefaultSearchInput({
+  value,
+  status,
+  onChange,
+  onSubmit,
+  onClear,
+  label,
+}: SearchInputProps) {
   return (
     <>
       <input
         type="search"
-        aria-label="Search"
+        aria-label={label}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
@@ -799,22 +889,37 @@ function DefaultSearchInput({ value, status, onChange, onSubmit, onClear }: Sear
         }}
       />
       {(status === 'pending' || status === 'searching') && (
-        <span role="status" data-dk-spinner="" aria-label="Searching" />
+        // Decorative: the live region says "Searching…" (an empty status announces nothing).
+        <span data-dk-spinner="" aria-hidden="true" />
       )}
     </>
   )
 }
 
+/**
+ * `aria-disabled`, not `disabled`, at the first / last page: a disabled button loses focus (to
+ * `<body>`) the moment paging makes it unavailable (#55).
+ */
 function DefaultPagination(p: PaginationProps) {
   return (
-    <nav aria-label="Pagination" data-dk-pagination="">
-      <button type="button" aria-label="Previous page" disabled={!p.canPrev} onClick={p.prev}>
+    <nav aria-label={p.label} data-dk-pagination="">
+      <button
+        type="button"
+        aria-label="Previous page"
+        aria-disabled={!p.canPrev || undefined}
+        onClick={p.canPrev ? p.prev : undefined}
+      >
         ‹
       </button>
       <span data-dk-page="">
         Page {p.pageIndex + 1} of {Math.max(p.pageCount, 1)}
       </span>
-      <button type="button" aria-label="Next page" disabled={!p.canNext} onClick={p.next}>
+      <button
+        type="button"
+        aria-label="Next page"
+        aria-disabled={!p.canNext || undefined}
+        onClick={p.canNext ? p.next : undefined}
+      >
         ›
       </button>
     </nav>
