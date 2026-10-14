@@ -174,9 +174,10 @@
   border-radius: var(--dk-radius);
 }
 
+/* Busy over stale rows: the "Updating…" indicator says so. No fading: the rows stay readable
+   content, and any opacity drops their text below 4.5:1 (flagged cells are 4.57:1 at full). */
 :where([data-datakable][aria-busy="true"]:not([data-initial-load="true"]) tbody) {
-  opacity: 0.6;
-  transition: opacity 0.15s;
+  cursor: progress;
 }
 
 /* Flagged rows and cells (invalidRows: 'flag') */
