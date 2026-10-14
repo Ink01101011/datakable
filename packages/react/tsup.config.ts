@@ -13,7 +13,10 @@ export default defineConfig([
     ],
     format: ['esm', 'cjs'],
     // tsup injects `baseUrl` for the dts pass, which TS 6 flags as deprecated.
-    dts: { entry: { index: 'src/index.ts' }, compilerOptions: { ignoreDeprecations: '6.0' } },
+    dts: {
+      entry: { index: 'src/index.ts', messages: 'src/messages.ts' },
+      compilerOptions: { ignoreDeprecations: '6.0' },
+    },
     // styles.css is written by the config below, in parallel: keep it out of the clean.
     clean: ['!styles.css'],
     sourcemap: true,

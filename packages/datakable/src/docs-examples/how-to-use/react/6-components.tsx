@@ -4,7 +4,7 @@ import {
   type ErrorProps,
   type PaginationProps,
   type SearchInputProps,
-} from 'datakable'
+} from 'datakable/react'
 
 function Search({ value, status, onChange, onSubmit, onClear }: SearchInputProps) {
   return (

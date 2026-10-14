@@ -44,7 +44,7 @@ It is read once, at creation, on the server and in the browser alike, so both st
 state. Pass it to `useDataTable` or as a `<DataTable />` prop.
 
 ```tsx
-import { type SortEntry, useDataTable } from 'datakable'
+import { type SortEntry, useDataTable } from 'datakable/react'
 
 type User = { id: number; name: string; age: number }
 
@@ -111,7 +111,7 @@ import {
   pagination,
   sorting,
   withFetcher,
-} from 'datakable'
+} from 'datakable/react'
 
 export type User = { id: number; name: string }
 

@@ -1,4 +1,4 @@
-import { DataTable, type DataTableComponents, useDataTable } from 'datakable'
+import { DataTable, type DataTableComponents, useDataTable } from 'datakable/react'
 
 type User = { id: number; name: string; age: number }
 

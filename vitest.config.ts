@@ -26,14 +26,16 @@ export default defineConfig({
         replacement: coreSrc('features/search/search-async-entry.ts'),
       },
       { find: /^@datakable\/core$/, replacement: src('core') },
+      {
+        find: /^@datakable\/react\/messages$/,
+        replacement: fileURLToPath(new URL('./packages/react/src/messages.ts', import.meta.url)),
+      },
       { find: /^@datakable\/react$/, replacement: src('react') },
       // The docs examples (packages/datakable/src/docs-examples) import what a consumer writes.
       { find: /^datakable$/, replacement: src('datakable') },
       {
-        find: /^datakable\/messages$/,
-        replacement: fileURLToPath(
-          new URL('./packages/datakable/src/messages.ts', import.meta.url),
-        ),
+        find: /^datakable\/(messages|react)$/,
+        replacement: fileURLToPath(new URL('./packages/datakable/src/$1.ts', import.meta.url)),
       },
     ],
   },
@@ -100,9 +102,17 @@ export default defineConfig({
       },
       {
         extends: true,
-        // The playground (apps/docs) imports `datakable`: map it to source like the packages.
+        // The playground (apps/docs) imports `datakable/react`: map it to source like the packages.
         resolve: {
-          alias: [{ find: /^datakable$/, replacement: src('datakable') }],
+          alias: [
+            { find: /^datakable$/, replacement: src('datakable') },
+            {
+              find: /^datakable\/react$/,
+              replacement: fileURLToPath(
+                new URL('./packages/datakable/src/react.ts', import.meta.url),
+              ),
+            },
+          ],
         },
         test: {
           name: 'docs',

@@ -22,7 +22,7 @@ export async function measure(entry) {
   const dir = join(root, 'packages', entry.pkg)
   const result = await esbuild.build({
     stdin: {
-      contents: `export { ${entry.import.join(', ')} } from './dist/index.js'`,
+      contents: `export { ${entry.import.join(', ')} } from './dist/${entry.entry ?? 'index'}.js'`,
       resolveDir: dir,
       loader: 'js',
     },

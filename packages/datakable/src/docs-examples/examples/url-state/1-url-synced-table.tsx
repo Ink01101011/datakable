@@ -1,4 +1,9 @@
-import { type PaginationState, type SearchState, type SortingState, useDataTable } from 'datakable'
+import {
+  type PaginationState,
+  type SearchState,
+  type SortingState,
+  useDataTable,
+} from 'datakable/react'
 import { useEffect, useState } from 'react'
 
 export type User = { id: number; name: string; age: number }

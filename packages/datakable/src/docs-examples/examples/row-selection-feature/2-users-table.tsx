@@ -1,4 +1,4 @@
-import { pagination, search, sorting, useDataTable } from 'datakable'
+import { pagination, search, sorting, useDataTable } from 'datakable/react'
 import { rowSelection } from './1-row-selection' // './row-selection' in your app
 
 export type User = { id: number; name: string }

@@ -3,7 +3,7 @@ import { REGISTRY_KEY, type VersionRegistry } from '@datakable/core'
 import { renderToString } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { version } from '../package.json'
-import { createTable, useDataTable } from './index'
+import { createTable, useDataTable } from './react'
 
 type User = { id: number; name: string; age: number }
 const users: User[] = [

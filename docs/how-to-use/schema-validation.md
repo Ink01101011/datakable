@@ -162,7 +162,7 @@ row and the cell with `data-invalid` / `aria-invalid` and a `title` listing the 
 the messages, which often embed the received value).
 
 ```tsx
-import { type ColumnDef, type StandardSchemaV1, useDataTable, withSchema } from 'datakable'
+import { type ColumnDef, type StandardSchemaV1, useDataTable, withSchema } from 'datakable/react'
 import type { ReactNode } from 'react'
 
 type User = { id: number; name: string; email: string }

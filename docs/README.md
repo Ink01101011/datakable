@@ -81,8 +81,8 @@ The diagnostics reference and the type-error guide used to live at `docs/errors.
 
 Each package README is the API reference for that package:
 
-- [`datakable`](../packages/datakable/README.md) — the main entry: `useDataTable`, `createTable`
-  and `<DataTable />` with the default feature preset.
+- [`datakable`](../packages/datakable/README.md) — the main entry: `createTable` with the default
+  feature preset (no React), and `useDataTable` and `<DataTable />` on `datakable/react`.
 - [`@datakable/react`](../packages/react/README.md) — the React bindings, with no features unless
   you pass them.
 - [`@datakable/core`](../packages/core/README.md) — the headless, framework-agnostic table store,

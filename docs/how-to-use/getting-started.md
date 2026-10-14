@@ -1,8 +1,8 @@
 # Getting started
 
 This page takes you from `npm install` to a working table: the zero-config `<DataTable />`, the
-headless `useDataTable` hook, `createTable` without React, which package to import, and the one
-bundler setting DataKable needs. Every later guide builds on what is here.
+headless `useDataTable` hook (both from `datakable/react`), `createTable` without React (from
+`datakable`), which package to import, and the one bundler setting DataKable needs. Every later guide builds on what is here.
 
 ## Install
 
@@ -10,7 +10,8 @@ bundler setting DataKable needs. Every later guide builds on what is here.
 npm install datakable react
 ```
 
-`datakable` needs React `>=18` and ships ESM and CJS with types. Where it runs in Node.js (SSR,
+Without React, `npm install datakable` is enough: `react` is an optional peer dependency, needed
+only by `datakable/react` (React `>=18`). `datakable` ships ESM and CJS with types. Where it runs in Node.js (SSR,
 tests, scripts), it needs Node.js `>=18.18`. It depends on
 [`@datakable/react`](../../packages/react/README.md) and
 [`@datakable/core`](../../packages/core/README.md), which are installed with it and always share
@@ -27,7 +28,7 @@ rows), and the default features are installed: column filters, validity, search,
 pagination.
 
 ```tsx
-import { DataTable } from 'datakable'
+import { DataTable } from 'datakable/react'
 
 type User = { id: number; name: string; age: number; city: string }
 
@@ -54,7 +55,7 @@ table: its methods, the installed features' methods, and `state` and `rowModel` 
 render.
 
 ```tsx
-import { useDataTable } from 'datakable'
+import { useDataTable } from 'datakable/react'
 
 type User = { id: number; name: string; age: number; city: string }
 
@@ -93,10 +94,9 @@ rejects; `void` it in an event handler. You can also hand the hook's result to
 ## Without React: `createTable`
 
 `createTable` is the same table as a plain object. It runs anywhere JavaScript runs: Node, a worker,
-a test, or your own framework bindings. A bundle that uses only `createTable` contains no React.
-`datakable` still lists `react` as a peer dependency (its root entry also exports the hook and the
-component); a project without React can install `@datakable/core` instead and pass
-`features: createDefaultFeatures()` for the same preset.
+a test, or your own framework bindings. `datakable` imports no React (the hook and the component
+are on `datakable/react`), so it works in a project without React installed, and a bundle that
+uses only `createTable` contains no React.
 
 ```ts
 import { createTable } from 'datakable'
@@ -155,12 +155,13 @@ of the message to read.
 
 | Package | Install it when | Default features |
 | --- | --- | --- |
-| `datakable` | you use React and want the batteries included | `columnFilters`, `validity`, `search`, `sorting`, `pagination` |
+| `datakable` | you want the batteries included: `datakable` without React, `datakable/react` with it | `columnFilters`, `validity`, `search`, `sorting`, `pagination` |
 | `@datakable/react` | you use React and choose every feature yourself | none |
 | `@datakable/core` | you do not use React (or write your own bindings) | none |
 
-`datakable` re-exports everything from the other two, so one import line is enough. Its
-`createTable`, `useDataTable` and `<DataTable />` install the default preset when you pass no
+`datakable` re-exports everything from `@datakable/core`, and `datakable/react` everything from
+`datakable` and `@datakable/react`, so one import line is enough. `datakable`'s `createTable` and
+`datakable/react`'s `useDataTable` and `<DataTable />` install the default preset when you pass no
 `features`; passing `features` replaces the preset entirely. The `createTable` of
 `@datakable/core` (also available as `datakable/core`) installs nothing unless you pass features,
 which keeps a bare import small. [Features](features.md) shows how to choose them, and
@@ -197,8 +198,8 @@ builds keep the diagnostics themselves but drop their text unless you opt in; se
 
 ## Next.js app router
 
-Only the modules of `<DataTable />` and `useDataTable` are marked `"use client"`, in `datakable` as
-in `@datakable/react`. `createTable` and the rest also work in server code, and a server component
+Only the modules of `<DataTable />` and `useDataTable` are marked `"use client"`, in
+`datakable/react` as in `@datakable/react`; `datakable` reaches neither. `createTable` and the rest also work in server code, and a server component
 that only calls `createTable` sends no table code to the browser. A server component can render
 `<DataTable />` with plain data props; call `useDataTable`, or pass functions (cell components,
 features, a fetcher), from a client component:
@@ -209,7 +210,7 @@ features, a fetcher), from a client component:
 // app/users/users-table.tsx — a client component of the Next.js app router. Only the modules of
 // <DataTable /> and useDataTable are "use client" (createTable also runs on the server); call the
 // hook, or pass functions such as cell components, features or a fetcher, from a file like this.
-import { DataTable } from 'datakable'
+import { DataTable } from 'datakable/react'
 
 type User = { id: number; name: string }
 

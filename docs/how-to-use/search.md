@@ -157,7 +157,7 @@ Bind the element to `input`, not `query`, so typing stays responsive while a deb
 `<DataTable />` renders this input for you (Enter = `flushSearch`, Esc = `clearSearch`).
 
 ```tsx
-import { useDataTable } from 'datakable'
+import { useDataTable } from 'datakable/react'
 
 type User = { id: number; name: string }
 

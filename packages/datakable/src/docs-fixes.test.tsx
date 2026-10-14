@@ -162,7 +162,7 @@ describe('#51: SSR with data and an async searchFn for an initial query', () => 
   it('the server HTML lists the rows unsearched, status pending, no Loading state', async () => {
     const { createElement: h } = await import('react')
     const { renderToString } = await import('react-dom/server')
-    const { DataTable, search, withSearchFn } = await import('./index')
+    const { DataTable, search, withSearchFn } = await import('./react')
     const data = ['Ada Lovelace', 'Grace Hopper', 'Alan Turing', 'Adele Goldberg'].map(
       (name, i) => ({ id: i + 1, name }),
     )

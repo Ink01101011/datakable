@@ -6,10 +6,12 @@ export default defineConfig([
   {
     // One output file per source module, like core and react (#9): `createTable` no longer shares
     // a file with `<DataTable />` / `useDataTable`, so a bundler drops React when only
-    // `createTable` is used, and a server module that imports `datakable` gets client references
-    // for the two React modules (their source starts with 'use client', kept per output file).
+    // `createTable` is used, and a server module that imports `datakable/react` gets client
+    // references for the two React modules (their source starts with 'use client', kept per output
+    // file). Since 2.0 (#63) the root `datakable` reaches neither of them.
     entry: [
       'src/index.ts',
+      'src/react.ts',
       'src/core.ts',
       'src/messages.ts',
       'src/create-table.ts',
@@ -20,7 +22,12 @@ export default defineConfig([
     format: ['esm', 'cjs'],
     // tsup injects `baseUrl` for the dts pass, which TS 6 flags as deprecated.
     dts: {
-      entry: { index: 'src/index.ts', core: 'src/core.ts', messages: 'src/messages.ts' },
+      entry: {
+        index: 'src/index.ts',
+        react: 'src/react.ts',
+        core: 'src/core.ts',
+        messages: 'src/messages.ts',
+      },
       compilerOptions: { ignoreDeprecations: '6.0' },
     },
     // styles.css is written by the config below, in parallel: keep it out of the clean.

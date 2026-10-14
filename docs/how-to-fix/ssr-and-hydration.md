@@ -34,7 +34,7 @@ import {
   pagination,
   sorting,
   withFetcher,
-} from 'datakable'
+} from 'datakable/react'
 
 type User = { id: number; name: string }
 
@@ -77,7 +77,7 @@ table during the hydrating render (calling a table method in the component body)
 an effect, after hydration:
 
 ```tsx
-import { type SortingState, useDataTable } from 'datakable'
+import { type SortingState, useDataTable } from 'datakable/react'
 import { useEffect } from 'react'
 
 type User = { id: number; name: string; age: number }

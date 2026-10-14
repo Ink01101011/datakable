@@ -2,7 +2,7 @@
 
 React bindings for DataKable: the `useDataTable` hook over the
 [`@datakable/core`](https://github.com/Ink01101011/datakable/tree/main/packages/core) table store. Most apps want
-[`datakable`](https://github.com/Ink01101011/datakable/tree/main/packages/datakable), whose `useDataTable` also installs the default feature
+[`datakable/react`](https://github.com/Ink01101011/datakable/tree/main/packages/datakable), whose `useDataTable` also installs the default feature
 preset; this package installs **no** features unless you pass them.
 
 > Version 1.0: the public API is stable and follows semantic versioning from here. Guides,
@@ -17,6 +17,8 @@ so the Next.js app router treats them as client code even when a server componen
 from here; the rest (core's `createTable`, …) stays usable on the server. Like core,
 it needs a bundler that replaces `process.env.NODE_ENV` (see [core](https://github.com/Ink01101011/datakable/tree/main/packages/core)).
 In Node.js (SSR, tests) it needs Node `>=18.18`. The types need TypeScript `>=5.4`.
+`import '@datakable/react/messages'` once in the app entry keeps the full diagnostic text (core's
+and `<DataTable />`'s) in production builds; it imports no React.
 
 ## useDataTable
 

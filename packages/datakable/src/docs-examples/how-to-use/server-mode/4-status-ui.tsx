@@ -5,7 +5,7 @@ import {
   sorting,
   useDataTable,
   withFetcher,
-} from 'datakable'
+} from 'datakable/react'
 
 type Order = { id: string; customer: string; total: number }
 

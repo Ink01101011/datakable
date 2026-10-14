@@ -8,11 +8,12 @@ renders, replacing parts of `<DataTable />`, and styling it.
 
 | Import from | `useDataTable` / `<DataTable />` with no `features` | `"use client"` |
 | --- | --- | --- |
-| `datakable` | install the default preset: `columnFilters`, `validity`, `search`, `sorting`, `pagination` | on the `useDataTable` and `<DataTable />` modules only (`createTable` also runs on the server) |
+| `datakable/react` | install the default preset: `columnFilters`, `validity`, `search`, `sorting`, `pagination` | on the `useDataTable` and `<DataTable />` modules only (`createTable` also runs on the server) |
 | `@datakable/react` | install **no** features | on the `useDataTable` and `<DataTable />` modules only |
 
 Both take the same options and return the same types; passing `features` replaces the preset
-entirely. Most apps import from `datakable`. With the Next.js app router, a server component can
+entirely. Most apps import from `datakable/react` (the framework-free `datakable` root has no React
+API since 2.0; see [Migrating from 1.x](entry-points.md#migrating-from-1x)). With the Next.js app router, a server component can
 render `<DataTable />` with plain data props; call `useDataTable`, or pass functions (cell
 components, features, a fetcher), from a client component (a file starting with `'use client'`):
 
@@ -21,7 +22,7 @@ components, features, a fetcher), from a client component (a file starting with 
 // app/users/users-table.tsx — a client component of the Next.js app router. Only the modules of
 // <DataTable /> and useDataTable are "use client" (createTable also runs on the server); call the
 // hook, or pass functions such as cell components, features or a fetcher, from a file like this.
-import { DataTable } from 'datakable'
+import { DataTable } from 'datakable/react'
 
 type User = { id: number; name: string }
 
@@ -45,7 +46,7 @@ The returned object is new whenever the table notifies and the same object other
 as a `useMemo` dependency or a prop of a `memo` child.
 
 ```tsx
-import { type ColumnDef, useDataTable } from 'datakable'
+import { type ColumnDef, useDataTable } from 'datakable/react'
 import type { ReactNode } from 'react'
 
 type User = { id: number; name: string; email: string; age: number }
@@ -58,7 +59,7 @@ const columns: ColumnDef<User, ReactNode>[] = [
 ]
 
 export function Users({ users }: { users: User[] }) {
-  // `datakable`: the default preset (filters, validity, search, sorting, pagination).
+  // `datakable/react`: the default preset (filters, validity, search, sorting, pagination).
   const table = useDataTable({ data: users, rowKey: 'id', columns })
   const { rows, filteredCount } = table.rowModel
 
@@ -145,7 +146,7 @@ merges only the changed controlled slices into the value you give it. Slices you
 with the table. Details: [State](state.md).
 
 ```tsx
-import { type PaginationState, useDataTable } from 'datakable'
+import { type PaginationState, useDataTable } from 'datakable/react'
 import { useState } from 'react'
 
 type User = { id: number; name: string }
@@ -191,7 +192,7 @@ model is in [Core concepts](core-concepts.md), and a fetcher example in
 | …options | `UseDataTableOptions` | `data`, `rowKey`, `columns`, `features`, `fetcher`, … (with no `table`) |
 
 ```tsx
-import { DataTable } from 'datakable'
+import { DataTable } from 'datakable/react'
 
 type User = { id: number; name: string; age: number }
 
@@ -251,7 +252,7 @@ import {
   type ErrorProps,
   type PaginationProps,
   type SearchInputProps,
-} from 'datakable'
+} from 'datakable/react'
 
 function Search({ value, status, onChange, onSubmit, onClear }: SearchInputProps) {
   return (

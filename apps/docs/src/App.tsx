@@ -10,7 +10,7 @@ import {
   VERSION,
   withFetcher,
   withSchema,
-} from 'datakable'
+} from 'datakable/react'
 import { type ReactNode, useCallback, useId, useRef, useState } from 'react'
 import { AccountSchema, createFakeServer, rawAccounts, rows } from './data'
 

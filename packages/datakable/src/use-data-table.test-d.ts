@@ -8,7 +8,7 @@ import {
   type ValidityState,
 } from '@datakable/core'
 import { describe, expectTypeOf, it } from 'vitest'
-import { useDataTable } from './index'
+import { useDataTable } from './react'
 
 type User = { id: number; name: string; address: { city: string } }
 declare const users: User[]

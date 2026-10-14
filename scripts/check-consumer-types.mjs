@@ -48,7 +48,9 @@ import { sorting } from '@datakable/core/sorting'
 import { validity } from '@datakable/core/validity'
 import { useDataTable } from '@datakable/react'
 import { createTable } from 'datakable'
+import { DataTable, useDataTable as usePresetTable } from 'datakable/react'
 import 'datakable/messages'
+import '@datakable/react/messages'
 // The stylesheet exports carry types (#34): TS 6 checks side-effect imports by default.
 import 'datakable/styles.css'
 import '@datakable/react/styles.css'
@@ -89,7 +91,8 @@ t.toggleSort('address.city')
 t.toggleSort('nope')
 const z = createTable({ data: users })
 z.setSearch('x')
-export { allMessages, core, d, defineFeature, fromCore, useDataTable }
+const preset = () => usePresetTable({ data: users }).setSearch('x')
+export { allMessages, core, d, DataTable, defineFeature, fromCore, preset, useDataTable }
 `,
 )
 
