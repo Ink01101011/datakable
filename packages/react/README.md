@@ -1,5 +1,10 @@
 # @datakable/react
 
+[![npm version](https://img.shields.io/npm/v/%40datakable%2Freact?color=cb3837&logo=npm)](https://www.npmjs.com/package/@datakable/react)
+[![npm downloads](https://img.shields.io/npm/dm/%40datakable%2Freact?color=cb3837)](https://www.npmjs.com/package/@datakable/react)
+[![types: TypeScript](https://img.shields.io/npm/types/%40datakable%2Freact?logo=typescript&logoColor=white)](https://www.npmjs.com/package/@datakable/react)
+[![license: MIT](https://img.shields.io/npm/l/%40datakable%2Freact)](https://github.com/Ink01101011/datakable/blob/main/LICENSE)
+
 React bindings for DataKable: the `useDataTable` hook over the
 [`@datakable/core`](https://github.com/Ink01101011/datakable/tree/main/packages/core) table store. Most apps want
 [`datakable/react`](https://github.com/Ink01101011/datakable/tree/main/packages/datakable), whose `useDataTable` also installs the default feature

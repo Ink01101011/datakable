@@ -1978,7 +1978,7 @@ import { createTable, defineFeature } from '@datakable/core'
 const heatmap = defineFeature({
   name: 'heatmap',
   stage: 'none',
-  requires: { core: '^2.0.0' },
+  requires: { core: '^99.0.0' },
   initialState: () => ({}),
   createApi: () => ({}),
 })
@@ -1989,9 +1989,9 @@ createTable({ data: [], features: [heatmap] })
 throws:
 
 ```text
-DatakableConfigError: DK_FEATURE_INCOMPATIBLE: feature "heatmap" requires @datakable/core ^2.0.0, but this is <version>
+DatakableConfigError: DK_FEATURE_INCOMPATIBLE: feature "heatmap" requires @datakable/core ^99.0.0, but this is <version>
   where   feature "heatmap"
-  fix     1. upgrade core: pnpm add @datakable/core@"^2.0.0" (and @datakable/react / datakable to the same version)
+  fix     1. upgrade core: pnpm add @datakable/core@"^99.0.0" (and @datakable/react / datakable to the same version)
           2. or use a version of feature "heatmap" that supports @datakable/core <version>
   docs    https://github.com/Ink01101011/datakable/blob/main/docs/errors.md#dk_feature_incompatible
 ```
