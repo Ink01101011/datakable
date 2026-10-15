@@ -1,6 +1,6 @@
 {
   "name": "@datakable/react",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "React bindings for DataKable — useDataTable hook and DataTable component.",
   "license": "MIT",
   "author": "Supakit Kitjanabumrungsak",
@@ -13,12 +13,26 @@
   "bugs": "https://github.com/Ink01101011/datakable/issues",
   "keywords": [
     "react",
+    "react-table",
     "datatable",
-    "table",
+    "data-table",
     "data-grid",
+    "datagrid",
+    "table",
     "typescript",
     "type-safe",
-    "headless"
+    "headless",
+    "headless-ui",
+    "zero-config",
+    "sorting",
+    "filtering",
+    "search",
+    "pagination",
+    "react-hooks",
+    "react-component",
+    "use-data-table",
+    "ssr",
+    "rsc"
   ],
   "type": "module",
   "sideEffects": [

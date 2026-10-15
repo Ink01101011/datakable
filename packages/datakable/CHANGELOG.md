@@ -1,5 +1,14 @@
 # datakable
 
+## 2.0.1
+
+### Patch Changes
+
+- fbdd731: Add npm badges to the package READMEs and broaden package keywords so the packages are easier to find on npm.
+- Updated dependencies [fbdd731]
+  - @datakable/core@2.0.1
+  - @datakable/react@2.0.1
+
 ## 2.0.0
 
 ### Major Changes
