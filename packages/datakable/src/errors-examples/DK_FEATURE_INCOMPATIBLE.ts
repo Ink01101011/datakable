@@ -4,7 +4,7 @@ import { createTable, defineFeature } from '@datakable/core'
 const heatmap = defineFeature({
   name: 'heatmap',
   stage: 'none',
-  requires: { core: '^2.0.0' },
+  requires: { core: '^99.0.0' },
   initialState: () => ({}),
   createApi: () => ({}),
 })

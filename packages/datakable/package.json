@@ -1,6 +1,6 @@
 {
   "name": "datakable",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "description": "Type-safe generic data tables: a framework-free core with a zero-config preset, and React on datakable/react. Headless when you need it.",
   "license": "MIT",
   "author": "Supakit Kitjanabumrungsak",
@@ -13,12 +13,25 @@
   "bugs": "https://github.com/Ink01101011/datakable/issues",
   "keywords": [
     "react",
+    "react-table",
     "datatable",
-    "table",
+    "data-table",
     "data-grid",
+    "datagrid",
+    "table",
     "typescript",
     "type-safe",
-    "headless"
+    "headless",
+    "headless-ui",
+    "zero-config",
+    "sorting",
+    "filtering",
+    "search",
+    "pagination",
+    "react-hooks",
+    "react-component",
+    "framework-agnostic",
+    "ssr"
   ],
   "type": "module",
   "sideEffects": [
