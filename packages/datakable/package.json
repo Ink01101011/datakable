@@ -1,6 +1,6 @@
 {
   "name": "datakable",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Type-safe generic data tables: a framework-free core with a zero-config preset, and React on datakable/react. Headless when you need it.",
   "license": "MIT",
   "author": "Supakit Kitjanabumrungsak",
