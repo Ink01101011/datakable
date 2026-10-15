@@ -1,7 +1,7 @@
 {
   "name": "@datakable/core",
   "version": "2.0.0",
-  "description": "Headless, framework-agnostic core of DataKable \u2014 table state, sorting, filtering and types.",
+  "description": "Headless, framework-agnostic core of DataKable — table state, sorting, filtering and types.",
   "license": "MIT",
   "author": "Supakit Kitjanabumrungsak",
   "repository": {
@@ -13,12 +13,24 @@
   "bugs": "https://github.com/Ink01101011/datakable/issues",
   "keywords": [
     "react",
+    "react-table",
     "datatable",
-    "table",
+    "data-table",
     "data-grid",
+    "datagrid",
+    "table",
     "typescript",
     "type-safe",
-    "headless"
+    "headless",
+    "headless-ui",
+    "zero-config",
+    "sorting",
+    "filtering",
+    "search",
+    "pagination",
+    "framework-agnostic",
+    "vanilla-js",
+    "table-state"
   ],
   "type": "module",
   "sideEffects": [

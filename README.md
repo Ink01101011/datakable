@@ -1,5 +1,11 @@
 # DataKable
 
+[![npm version](https://img.shields.io/npm/v/datakable?color=cb3837&logo=npm)](https://www.npmjs.com/package/datakable)
+[![npm downloads](https://img.shields.io/npm/dm/datakable?color=cb3837)](https://www.npmjs.com/package/datakable)
+[![types: TypeScript](https://img.shields.io/npm/types/datakable?logo=typescript&logoColor=white)](https://www.npmjs.com/package/datakable)
+[![license: MIT](https://img.shields.io/npm/l/datakable)](https://github.com/Ink01101011/datakable/blob/main/LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/Ink01101011/datakable?style=social)](https://github.com/Ink01101011/datakable)
+
 Type-safe generic data table for React: zero-config by default, headless when you need it.
 
 - **One line to a working table.** `useDataTable({ data })` sorts, filters, searches and paginates,

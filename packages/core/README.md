@@ -1,5 +1,10 @@
 # @datakable/core
 
+[![npm version](https://img.shields.io/npm/v/%40datakable%2Fcore?color=cb3837&logo=npm)](https://www.npmjs.com/package/@datakable/core)
+[![npm downloads](https://img.shields.io/npm/dm/%40datakable%2Fcore?color=cb3837)](https://www.npmjs.com/package/@datakable/core)
+[![types: TypeScript](https://img.shields.io/npm/types/%40datakable%2Fcore?logo=typescript&logoColor=white)](https://www.npmjs.com/package/@datakable/core)
+[![license: MIT](https://img.shields.io/npm/l/%40datakable%2Fcore)](https://github.com/Ink01101011/datakable/blob/main/LICENSE)
+
 The headless, framework-agnostic core of DataKable: a table store, a row pipeline built from
 features (column filters, validity, search, sorting, pagination), data modes, schema validation,
 diagnostics and `explain()`. No React. For React, use [`datakable/react`](https://github.com/Ink01101011/datakable/tree/main/packages/datakable) or
