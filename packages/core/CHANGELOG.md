@@ -1,5 +1,11 @@
 # @datakable/core
 
+## 2.0.1
+
+### Patch Changes
+
+- fbdd731: Add npm badges to the package READMEs and broaden package keywords so the packages are easier to find on npm.
+
 ## 2.0.0
 
 ### Patch Changes
