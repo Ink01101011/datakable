@@ -176,21 +176,25 @@ the fingerprint, `toJSON()`, every interceptor and every sink only ever see the 
 - A column with `sensitive: true` is never logged, at any level (its values become `[sensitive]`),
   and neither is a column inside it (`contact.email` under a sensitive `contact`). When the
   `rowKey` path is a sensitive column, points into one (`rowKey: 'contact.email'`) or contains one,
-  row keys are hashed at every level.
+  row keys are logged as `[sensitive]` at every level: not even a hash, since a short hash of an
+  SSN or email can be reversed by trying candidates. Diagnostics still name the row by `index`.
 - A function `redact(path, value)` adds your own rule on top of the default level: return a string
   to log instead of `value`, or `undefined` to keep the built-in policy for that field. `path` names
   the field: `where.key`, `details.value`, `details.keys.2`, `details.issues.0`, … Sensitive
   columns never reach it, and a rule that throws logs `[redacted]`.
 - Thrown errors (a fetcher's, a `searchFn`'s, a callback's) are logged as `error.name` (and
   `code`) only, since their messages embed URLs, tokens and values. The error itself is
-  `context.cause`, passed to `onDiagnostic` only.
+  `context.cause`, passed to `onDiagnostic` only (and, under `strict`, as the thrown error's
+  `cause`): `getDiagnostics()`, `toJSON()` and the console leave it out.
 - Schema issue messages embed the received value, so under `'safe'` and `'keys'` they are replaced
   by the issue path and DataKable's own text. When the table has a `sensitive` column they are
   replaced at every level, `'full'` included: any message (a root-level refinement, another
   field's) may quote the sensitive value.
 - `'full'` in a production build still applies, and reports `DK_UNSAFE_REDACTION`.
-- Row-key hashes are unsalted 32-bit FNV-1a hashes: pseudonymisation, not anonymisation. Treat
-  hashed diagnostics as personal data wherever the keys are.
+- Row-key hashes (`'safe'`, non-sensitive keys) are unsalted 32-bit FNV-1a hashes:
+  pseudonymisation, not anonymisation. Short or enumerable keys (sequential ids, phone numbers) can
+  be recovered by hashing candidates, so treat hashed diagnostics as personal data wherever the
+  keys are, and mark a `rowKey` column `sensitive: true` if the key itself must never be logged.
 
 ```ts
 import { createTable } from 'datakable'

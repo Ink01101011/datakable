@@ -179,11 +179,14 @@ describe('buildDiagnostic: sensitive columns and rowKey', () => {
     expect(d.details.value).toBe(SENSITIVE)
   })
 
-  it('a sensitive rowKey column is hashed at every level', () => {
+  it('a sensitive rowKey is never emitted, not even as a hash, at any level', () => {
+    // an unsalted 32-bit FNV-1a hash of a sensitive key is reversible.
     for (const level of ['safe', 'keys', 'full'] as const) {
       const d = build(details, { level, rowKeySensitive: () => true })
-      expect(d.where).toEqual({ kind: 'row', index: 1, key: hashRowKey('k1') })
-      expect(d.details.key).toBe(hashRowKey('k1'))
+      expect(d.where).toEqual({ kind: 'row', index: 1, key: SENSITIVE })
+      expect(d.details.key).toBe(SENSITIVE)
+      expect(JSON.stringify(d)).not.toContain(hashRowKey('k1'))
+      expect(d.fingerprint).not.toContain(hashRowKey('k1'))
     }
   })
 })

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DatakableError } from '../diagnostics/build'
 import { defineDiagnostic } from '../diagnostics/catalog'
 import type { Diagnostic } from '../diagnostics/types'
+import { sorting } from '../features/sorting/sorting'
 import { defineInterceptor } from '../intercept/define'
 import { FALLBACK } from '../intercept/fallbacks'
 import { createTable } from './create-table'
@@ -628,7 +629,7 @@ describe('createTable: redaction mapping (diagnostics.redact, sensitive, rowKey)
     expect(seen[0]?.details).toMatchObject({ value: '<v>', key: 42 })
   })
 
-  it('a sensitive column is never logged; a sensitive rowKey column is always hashed', () => {
+  it('a sensitive column is never logged; a sensitive rowKey is never logged, not even hashed', () => {
     const t = make({
       diagnostics: { redact: 'full' },
       rowKey: 'email',
@@ -637,10 +638,12 @@ describe('createTable: redaction mapping (diagnostics.redact, sensitive, rowKey)
     })
     t.setState({ page: 1 })
     expect(seen[0]?.details.value).toBe('[sensitive]')
-    expect(seen[0]?.details.key).toMatch(/^h:[0-9a-f]{8}$/)
+    // an unsalted 32-bit hash of an SSN/email is reversible by brute force.
+    expect(seen[0]?.details.key).toBe('[sensitive]')
+    expect(JSON.stringify(seen[0])).not.toMatch(/h:[0-9a-f]{8}/)
   })
 
-  it('a rowKey path into a sensitive column is hashed at every level (#45)', () => {
+  it('a rowKey path into a sensitive column is never logged, not even hashed, at any level (#45)', () => {
     const data = [
       { id: 1, contact: { email: 'ann@private.example' } },
       { id: 2, contact: { email: 'ann@private.example' } },
@@ -658,14 +661,15 @@ describe('createTable: redaction mapping (diagnostics.redact, sensitive, rowKey)
       })
       t.getRowModel()
       const dup = got.find((d) => d.code === 'DK_DUPLICATE_ROW_KEY')
-      expect(dup?.details.key).toMatch(/^h:[0-9a-f]{8}$/)
+      expect(dup?.details.key).toBe('[sensitive]')
+      expect(JSON.stringify(dup)).not.toMatch(/h:[0-9a-f]{8}/)
       expect(JSON.stringify(dup)).not.toContain('@private.example')
       expect(String(dup)).not.toContain('@private.example')
       expect(JSON.stringify(t.explainRow('cat@private.example'))).not.toContain('@private.example')
     }
   })
 
-  it('a rowKey path above a sensitive column is hashed too (#45)', () => {
+  it('a rowKey path above a sensitive column is not logged either (#45)', () => {
     const t = make({
       diagnostics: { redact: 'full' },
       rowKey: 'contact' as never,
@@ -674,7 +678,7 @@ describe('createTable: redaction mapping (diagnostics.redact, sensitive, rowKey)
     })
     t.setState({ page: 1 })
     const d = seen.find((x) => x.code === 'DK_TEST_TABLE_VALUE')
-    expect(d?.details.key).toMatch(/^h:[0-9a-f]{8}$/)
+    expect(d?.details.key).toBe('[sensitive]')
   })
 
   it('a value of a column inside a sensitive column is never logged (#45)', () => {
@@ -686,6 +690,47 @@ describe('createTable: redaction mapping (diagnostics.redact, sensitive, rowKey)
     t.setState({ page: 1 })
     const d = seen.find((x) => x.code === 'DK_TEST_TABLE_VALUE')
     expect(d?.details.value).toBe('[sensitive]')
+  })
+
+  it('a thrown error quoting a sensitive value is not kept in getDiagnostics(), before or after destroy', () => {
+    const got: Diagnostic[] = []
+    const t = createTable({
+      features: [sorting()],
+      data: [
+        { id: 1, ssn: '123-45-6789' },
+        { id: 2, ssn: '987-65-4321' },
+      ],
+      rowKey: 'id',
+      diagnostics: { redact: 'safe' },
+      columns: [
+        { key: 'id' },
+        {
+          id: 'ssnMasked',
+          sensitive: true,
+          accessor: (r: { ssn: string }) => {
+            throw new Error(`bad ssn ${r.ssn}`)
+          },
+        },
+      ],
+      onDiagnostic: (d) => got.push(d),
+    })
+    t.toggleSort('ssnMasked' as never)
+    t.getRowModel()
+    expect(
+      got.some((d) => String((d.context.cause as Error | undefined)?.message).includes('bad ssn')),
+    ).toBe(true)
+    const leaks = () =>
+      t
+        .getDiagnostics()
+        .filter(
+          (d) =>
+            d.context.cause !== undefined ||
+            /\d{3}-\d{2}-\d{4}/.test(JSON.stringify(structuredClone(d))),
+        )
+    expect(t.getDiagnostics().length).toBeGreaterThan(0)
+    expect(leaks()).toEqual([])
+    t.destroy()
+    expect(leaks()).toEqual([])
   })
 
   it('follows column changes made with setOptions', () => {

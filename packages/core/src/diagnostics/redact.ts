@@ -27,7 +27,7 @@ export interface RedactionOptions {
   redact?: RedactFn
   /** Ids / keys of `sensitive: true` columns: never logged at any level. */
   sensitiveColumns?: () => Iterable<string>
-  /** The `rowKey` path is, is inside or contains a sensitive column: keys hashed at every level. */
+  /** The `rowKey` path is, is inside or contains a sensitive column: keys logged as `[sensitive]` at every level. */
   rowKeySensitive?: () => boolean
 }
 
@@ -109,8 +109,9 @@ function custom(r: Redactor, path: string, value: unknown): string | undefined {
 }
 
 function redactKey(r: Redactor, path: string, key: unknown): unknown {
-  // A sensitive rowKey column wins over the custom rule and the level.
-  if (r.rowKeySensitive) return hashRowKey(key)
+  // A sensitive rowKey column wins over the custom rule and the level. No key-derived value at all:
+  // an unsalted 32-bit hash of an SSN or email is reversible by brute force.
+  if (r.rowKeySensitive) return SENSITIVE
   const c = custom(r, path, key)
   if (c !== undefined) return c
   return r.level === 'safe' ? hashRowKey(key) : key
