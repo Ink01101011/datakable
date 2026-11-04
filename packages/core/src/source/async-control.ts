@@ -61,7 +61,7 @@ export function asyncControl(options: AsyncControlOptions = {}): AsyncControl {
   // Production has no option validator (#94): NaN, 0 or a negative value would disable the timer,
   // so anything but a positive number (or Infinity) falls back to the default.
   const given = options.timeout
-  const timeout = typeof given === 'number' && given > 0 ? given : DEFAULT_ASYNC_TIMEOUT
+  const timeout = given !== undefined && given > 0 ? given : DEFAULT_ASYNC_TIMEOUT
   /** source → how to end its in-flight request. */
   const inflight = new Map<string, (status: AsyncStatus) => void>()
 

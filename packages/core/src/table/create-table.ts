@@ -735,13 +735,6 @@ export function createTable<T, S extends TableState>(
     }
   }
 
-  /** `options.initialState` without a `__proto__` key (#102), for a table without features. */
-  function withoutProto(given: object | undefined): TableState {
-    const out: TableState = { ...given }
-    for (const k of Object.keys(out)) if (protoKey(k)) delete out[k]
-    return out
-  }
-
   // --- API ---------------------------------------------------------------------------------------
 
   /** `state:dispatch` (where = `slot`, a constant method / feature name); notifies unless batched. */
@@ -982,13 +975,10 @@ export function createTable<T, S extends TableState>(
   controlled = controlledKeys(options.state)
   if (DEV) feedback?.settle(options.state as TableState | undefined, controlled)
   // Feature `initialState()` slices, with `options.initialState` on top per slice.
-  snapshot = overlay(
-    freeze(
-      (rt
-        ? rt.initialSlices(features, options.initialState, hub.emit)
-        : withoutProto(options.initialState)) as S,
-    ),
-  )
+  // A copy without a `__proto__` key (#102): safe for `Object.assign` in initialSlices.
+  const restored: TableState = { ...options.initialState }
+  if (Object.hasOwn(restored, PROTO_KEY) && protoKey(PROTO_KEY)) delete restored[PROTO_KEY]
+  snapshot = overlay(freeze((rt ? rt.initialSlices(features, restored, hub.emit) : restored) as S))
   notified = snapshot
   // Merges the feature APIs onto the table; a name clash throws DK_FEATURE_API_CONFLICT.
   rt?.installApis(features, {

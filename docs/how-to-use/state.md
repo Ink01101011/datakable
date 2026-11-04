@@ -274,9 +274,9 @@ console.log(filters, validity, search.query, sorting.by, pagination.pageSize)
   validity value is replaced or ignored and reported
   ([`DK_INVALID_PAGINATION`](../how-to-fix/errors.md#dk_invalid_pagination),
   [`DK_INVALID_VALIDITY`](../how-to-fix/errors.md#dk_invalid_validity)). A malformed `sorting` or
-  `columnFilters` slice (e.g. `null` restored from the URL) is replaced, keeping the valid sort
-  entries, and reported as [`DK_INVALID_STATE`](../how-to-fix/errors.md#dk_invalid_state);
-  `toggleSort` and `setColumnFilter` keep working.
+  `columnFilters` slice (e.g. `null` restored from the URL) reads as empty (only the valid sort
+  entries are kept), so `toggleSort` and `setColumnFilter` keep working; in development it is
+  also replaced and reported as [`DK_INVALID_STATE`](../how-to-fix/errors.md#dk_invalid_state).
 - **A `"__proto__"` key** (which `JSON.parse` creates as an own key) is never written into the
   state, in `initialState`, `setState`, a controlled `state` or `setColumnFilter`: it would replace
   the prototype of the state object. It is dropped and reported as

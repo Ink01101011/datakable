@@ -10,7 +10,6 @@ import { errorName } from '../../intercept/classify'
 import { boundaryDiagnostics } from '../../intercept/codes'
 import type { ColumnValues } from '../../pipeline/types'
 import { type DataMode, modeOption } from '../../source/mode'
-import { PROTO_KEY } from '../../table/state-codes'
 import { columnFiltersDiagnostics } from './codes'
 import {
   BAD,
@@ -238,7 +237,8 @@ const fixSlice = (s: unknown): SliceFix<ColumnFiltersState<unknown>> | undefined
  * ```
  */
 export const columnFilters = (opts: ColumnFiltersOptions = {}) => {
-  const guard = sliceGuard('columnFilters', fixSlice)
+  // Dev only (§9.3): production reads a malformed slice as no filters and stays cheap.
+  const guard = DEV ? sliceGuard('columnFilters', fixSlice) : undefined
   return defineFeature<'columnFilters', ColumnFiltersTypes>({
     name: 'columnFilters',
     stage: 'filter',
@@ -248,34 +248,27 @@ export const columnFilters = (opts: ColumnFiltersOptions = {}) => {
       DEV ? columnFiltersOptions : ({} as typeof columnFiltersOptions),
       opts,
     ),
-    interceptors: [guard.interceptor],
+    ...(guard ? { interceptors: [guard.interceptor] } : undefined),
     initialState: () => ({}),
     createApi: (ctx) => {
-      guard.install(ctx)
+      guard?.install(ctx)
       // Values, not updaters: a library step is never reported as a failing user `updater` (#89).
-      // A controlled slice not fed back yet may still be malformed: it reads as no filters.
-      const current = (): Record<string, unknown> => {
-        const s = ctx.getState()
-        return isSlice(s) ? s : {}
-      }
       return {
         setColumnFilter: (id, filter) => {
-          // `next[id] =` would swap the slice's prototype (#102); never a column id.
-          if (id === PROTO_KEY) {
-            ctx.emit('DK_STATE_UNKNOWN_KEY', { slice: 'columnFilters', key: id, known: [] })
-            return
-          }
-          const prev = current()
+          // A controlled slice not fed back yet may still be malformed: it reads as no filters.
+          const s = ctx.getState()
+          const prev: Record<string, unknown> = s && typeof s === 'object' ? s : {}
           // No change (the same filter, or clearing a column without one): keep the slice.
-          if ((Object.hasOwn(prev, id) ? prev[id] : undefined) === filter) return
-          const next: Record<string, unknown> = { ...prev }
+          if (prev[id] === filter) return
+          // A computed key defines an own property: `"__proto__"` never swaps the prototype
+          // (#102); the row model reports it as DK_STATE_UNKNOWN_KEY like any unknown column.
+          const next: Record<string, unknown> = { ...prev, [id]: filter }
           if (filter === undefined) delete next[id]
-          else next[id] = filter
           ctx.setState(next as ColumnFiltersState<unknown>)
         },
         resetColumnFilters: () => {
           const s = ctx.getState()
-          if (!isSlice(s) || Object.keys(s).length > 0) ctx.setState({})
+          if (!s || Object.keys(s).length > 0) ctx.setState({})
         },
       }
     },

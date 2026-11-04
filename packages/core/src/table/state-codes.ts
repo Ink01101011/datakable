@@ -26,8 +26,6 @@ declare module '../diagnostics/catalog' {
 /** The one key a plain `=` / `Object.assign` write turns into a prototype change (#102). */
 export const PROTO_KEY = '__proto__'
 
-const at = (slice: string, key: string) => (slice ? `state.${slice}.${key}` : `state.${key}`)
-
 /** Message text (§8.2): development builds, or production via `@datakable/core/messages`. */
 export const stateMessages: DiagnosticMessages<'DK_STATE_UNKNOWN_KEY' | 'DK_INVALID_STATE'> = {
   DK_STATE_UNKNOWN_KEY: {
@@ -65,22 +63,17 @@ export const stateMessages: DiagnosticMessages<'DK_STATE_UNKNOWN_KEY' | 'DK_INVA
   },
 }
 
-/** Codes about the state itself, shared by core and features (§7.2, §8.3). */
+/**
+ * Codes about the state itself, shared by core and features (§7.2, §8.3). `DK_INVALID_STATE` is
+ * reported by the development-only slice guard (`feature/slice-guard.ts`), which defines it.
+ */
 export const stateDiagnostics = [
   defineDiagnostic(
     {
       code: 'DK_STATE_UNKNOWN_KEY',
       level: 'warn',
-      where: (d) => ({ kind: 'option', path: at(d.slice, d.key) }),
+      where: (d) => ({ kind: 'option', path: `state.${d.slice && `${d.slice}.`}${d.key}` }),
     },
     DEV && stateMessages.DK_STATE_UNKNOWN_KEY,
-  ),
-  defineDiagnostic(
-    {
-      code: 'DK_INVALID_STATE',
-      level: 'warn',
-      where: (d) => ({ kind: 'option', path: `state.${d.slice}` }),
-    },
-    DEV && stateMessages.DK_INVALID_STATE,
   ),
 ]

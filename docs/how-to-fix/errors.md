@@ -980,7 +980,7 @@ prints (development console):
 
 `warn` · fault test: [state-hardening.test.ts](../../packages/core/src/table/state-hardening.test.ts)
 
-**Problem.** The `sorting` or `columnFilters` slice (from `initialState`, `setState` or a controlled `state`) does not have the shape the feature uses: `columnFilters` is not an object (e.g. `null`), or `sorting` has no `by` array, or `by` holds entries without an `id`. The slice is replaced (valid sort entries are kept), and `toggleSort` / `setColumnFilter` keep working.
+**Problem.** The `sorting` or `columnFilters` slice (from `initialState`, `setState` or a controlled `state`) does not have the shape the feature uses: `columnFilters` is not an object (e.g. `null`), or `sorting` has no `by` array, or `by` holds entries without an `id`. In development the slice is replaced (valid sort entries are kept) and reported here. A production build does not report it: the features read a malformed slice as empty (no filters, or only the valid sort entries). Either way, `toggleSort` / `setColumnFilter` keep working.
 
 **Common causes.**
 

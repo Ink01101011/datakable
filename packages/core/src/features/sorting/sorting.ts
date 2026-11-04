@@ -55,10 +55,8 @@ export type SortingState<T> = { by: readonly SortEntry<T>[] }
 
 export type SortDirection = 'asc' | 'desc'
 
-const isEntry = (e: unknown): e is SortEntry<unknown> => {
-  const t = typeof (e as { id?: unknown } | null)?.id
-  return t === 'string' || t === 'number'
-}
+/** An entry with an `id` (a `null` entry or one without an id is malformed, #89). */
+const isEntry = (e: unknown): e is SortEntry<unknown> => (e as { id?: unknown } | null)?.id != null
 
 const byOf = (s: unknown): unknown => (s as { by?: unknown } | null | undefined)?.by
 
@@ -68,14 +66,14 @@ const byOf = (s: unknown): unknown => (s as { by?: unknown } | null | undefined)
  */
 const entriesOf = (s: unknown): readonly SortEntry<unknown>[] => {
   const by = byOf(s)
-  return !Array.isArray(by) ? [] : by.every(isEntry) ? by : by.filter(isEntry)
+  return Array.isArray(by) ? by.filter(isEntry) : []
 }
 
 /** A malformed restored slice: the valid entries are kept (#89). */
 function fixSlice(s: unknown): SliceFix<SortingState<unknown>> | undefined {
   const raw = byOf(s)
   const by = entriesOf(s)
-  if (raw === by) return undefined
+  if (Array.isArray(raw) && raw.length === by.length) return undefined
   const bad = Array.isArray(raw) ? raw.findIndex((e) => !isEntry(e)) : -1
   return [
     { by },
@@ -90,7 +88,7 @@ const setSort = (
   by: readonly SortEntry<unknown>[],
 ) => {
   if (JSON.stringify(byOf(ctx.getState())) === JSON.stringify(by)) return
-  // A value that is not an array reaches the guard, which replaces it (DK_INVALID_STATE).
+  // A value that is not an array reaches the guard (dev: replaced, DK_INVALID_STATE).
   ctx.setState({ by: Array.isArray(by) ? by.slice() : by })
 }
 
@@ -242,7 +240,8 @@ class SortFnFailed {
  * choice (`DK_SORT_STRATEGY`).
  */
 export const sorting = (opts: SortingOptions = {}) => {
-  const guard = sliceGuard('sorting', fixSlice)
+  // Dev only (§9.3): production reads a malformed slice as no sort and stays cheap.
+  const guard = DEV ? sliceGuard('sorting', fixSlice) : undefined
   let collator: Intl.Collator | undefined
   /** The collator; `DK_ENV_FALLBACK` when the runtime supports none of the requested locales. */
   const getCollator = (emit: Emit) => {
@@ -349,12 +348,12 @@ export const sorting = (opts: SortingOptions = {}) => {
       DEV ? sortingOptions : ({} as typeof sortingOptions),
       opts,
     ),
-    interceptors: [guard.interceptor],
+    ...(guard ? { interceptors: [guard.interceptor] } : undefined),
     initialState: () => ({ by: [] }),
     // After destroy(): still a declared value (`aria-sort` reads it during teardown renders).
     destroyedResult: { getSortDirection: () => false },
     createApi: (ctx) => {
-      guard.install(ctx)
+      guard?.install(ctx)
       // Values, not updaters: a library step is never reported as a failing user `updater` (#89).
       return {
         toggleSort: (id, options) => {
