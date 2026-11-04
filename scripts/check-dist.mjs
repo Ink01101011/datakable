@@ -1,8 +1,9 @@
 // Package-contents guard for the BUILT packages: every emitted .js / .cjs file carries exactly one
 // `//# sourceMappingURL=` comment (#35: a rollup treeshake pass over esbuild output appended a
-// second one), and every package declares `engines.node` (#37). Run after `pnpm build`.
+// second one), every package declares `engines.node` (#37), no test-only `test-*` module ships, and
+// every package ships the root MIT LICENSE (#83). Run after `pnpm build`.
 import { readdirSync, readFileSync } from 'node:fs'
-import { join, relative } from 'node:path'
+import { basename, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
@@ -17,6 +18,12 @@ const walk = (dir) =>
 let files = 0
 for (const pkg of packages) {
   for (const file of walk(join(root, 'packages', pkg, 'dist'))) {
+    // #83: test helpers and fixtures (`src/**/test-*.ts`) are excluded from the tsup entry.
+    if (basename(file).startsWith('test-')) {
+      errors.push(
+        `${relative(root, file)}: a test-only module ships — exclude it in packages/${pkg}/tsup.config.ts`,
+      )
+    }
     if (!/\.c?js$/.test(file)) continue
     files++
     const n = readFileSync(file, 'utf8').match(/^\/\/# sourceMappingURL=/gm)?.length ?? 0
@@ -61,8 +68,29 @@ for (const pkg of packages) {
   }
 }
 
+// #83: npm packs a LICENSE file from the package root whatever `files` says; each package keeps a
+// copy of the root one.
+const license = readFileSync(join(root, 'LICENSE'), 'utf8')
+for (const pkg of packages) {
+  let own
+  try {
+    own = readFileSync(join(root, 'packages', pkg, 'LICENSE'), 'utf8')
+  } catch {
+    own = undefined
+  }
+  if (own !== license) {
+    errors.push(
+      `packages/${pkg}/LICENSE: ${own === undefined ? 'missing' : 'differs from the root LICENSE'}` +
+        ' — copy the root LICENSE into the package',
+    )
+  }
+}
+
 if (errors.length > 0) {
   for (const e of errors) console.error(`check:dist: ${e}`)
   process.exit(1)
 }
-console.log(`check:dist: ${files} JS files, one sourceMappingURL each; engines.node declared`)
+console.log(
+  `check:dist: ${files} JS files, one sourceMappingURL each; engines.node declared; no test-only` +
+    ' modules; LICENSE in every package',
+)
