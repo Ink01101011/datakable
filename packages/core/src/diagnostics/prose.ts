@@ -84,6 +84,7 @@ export const proseMessages: Readonly<Record<string, string>> = {
   'prims-or-dates': 'an array of primitives or Dates',
   'prim-or-date': 'a primitive or a Date',
   'range-bound': 'number | bigint or a valid Date bound',
+  'not-nan': 'a value other than NaN (NaN equals no cell)',
   'same-type': 'min and max of the same type ({0})',
   // An option given without its wrapper (`DK_INVALID_OPTION` expected).
   wrapped: "{0}({1}) from '@datakable/core/{2}'",
