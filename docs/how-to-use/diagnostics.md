@@ -184,8 +184,9 @@ the fingerprint, `toJSON()`, every interceptor and every sink only ever see the 
   columns never reach it, and a rule that throws logs `[redacted]`.
 - Thrown errors (a fetcher's, a `searchFn`'s, a callback's) are logged as `error.name` (and
   `code`) only, since their messages embed URLs, tokens and values. The error itself is
-  `context.cause`, passed to `onDiagnostic` only (and, under `strict`, as the thrown error's
-  `cause`): `getDiagnostics()`, `toJSON()` and the console leave it out.
+  `context.cause`, passed to code you install (`onDiagnostic`, `diagnostic:emit` interceptors, the
+  `redact` seam) and, under `strict`, to the thrown error as its `cause`. `getDiagnostics()`,
+  `toJSON()` and the console leave it out.
 - Schema issue messages embed the received value, so under `'safe'` and `'keys'` they are replaced
   by the issue path and DataKable's own text. When the table has a `sensitive` column they are
   replaced at every level, `'full'` included: any message (a root-level refinement, another
@@ -320,7 +321,7 @@ step threw or returned a bad output and passed its input through) and `ms?` (tra
 
 | Field | |
 | --- | --- |
-| `key` | the key asked for, redacted (a hash under `'safe'`) |
+| `key` | the key asked for, redacted (a hash under `'safe'`, `[sensitive]` for a sensitive `rowKey`) |
 | `found` | the key exists in the current data (or in the rows the schema dropped) |
 | `index?`, `rawIndex?` | position in `getData()`; or in `options.data` for a row the schema dropped |
 | `schema` | `'none'`, `'valid'`, `'flagged'` or `'dropped'` |
