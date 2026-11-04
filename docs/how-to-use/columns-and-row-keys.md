@@ -242,8 +242,10 @@ console.log(byId.getRowModel().rows[0]?.key)
   fallback `#<index>` and the table reports `DK_MISSING_ROW_KEY`.
 - A `rowKey` function that throws gives that row the `#<index>` fallback and reports
   `DK_CALLBACK_FAILED`.
-- A `rowKey` path that points into a `sensitive` column is hashed in diagnostics at every
-  redaction level.
+- A `rowKey` path that is, points into or contains a `sensitive` column is logged as
+  `[sensitive]` in diagnostics at every redaction level (no hash). This is detected from the
+  path only: a `rowKey` *function* that returns a sensitive value (`(r) => r.ssn`) is logged like
+  any other key (hashed under `'safe'`, raw under `'keys'`), so use a path for sensitive keys.
 
 ## Loose row types
 

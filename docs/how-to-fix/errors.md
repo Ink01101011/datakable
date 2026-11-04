@@ -127,13 +127,14 @@ text, `toJSON()` and every sink):
 | `'full'` | `'keys'` + cell values | — (warns in production: [`DK_UNSAFE_REDACTION`](#dk_unsafe_redaction)) |
 
 - A column with `sensitive: true` (and any column inside it) is never logged, at any level; row
-  keys are hashed at every level when the `rowKey` path is a sensitive column, points into one or
-  contains one. A function `redact: (path, value) => string | undefined` adds
+  keys are logged as `[sensitive]` (no hash) at every level when the `rowKey` path is a sensitive
+  column, points into one or contains one. A function `redact: (path, value) => string | undefined` adds
   your own rules.
 - **Row-key hashes are pseudonymisation, not anonymisation.** They are unsalted 32-bit FNV-1a
   hashes: anyone who knows a key can hash it and find its diagnostics, and short or enumerable keys
   (sequential ids, emails from a known list) can be recovered by hashing candidates. Treat hashed
-  diagnostics as personal data wherever the keys are.
+  diagnostics as personal data wherever the keys are. A sensitive `rowKey` is never hashed: it is
+  logged as `[sensitive]`.
 - Schema issue messages are replaced by DataKable's own text under `'safe'` and `'keys'`, and at
   every level when the table has a `sensitive` column (a message may quote its value).
 - Thrown errors are logged as `error.name` (and `code`) only: messages of validators, fetchers and

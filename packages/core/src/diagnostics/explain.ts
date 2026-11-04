@@ -99,7 +99,7 @@ export interface RowStep {
 
 /** What `table.explainRow(key)` returns (§8.4); `String(e)` is the console report. */
 export interface RowExplanation {
-  /** The key asked for, redacted (a hash under `'safe'`). */
+  /** The key asked for, redacted (a hash under `'safe'`, `[sensitive]` for a sensitive rowKey). */
   readonly key: unknown
   readonly found: boolean
   /** Position in `getData()`; absent when not found or dropped by the schema. */
