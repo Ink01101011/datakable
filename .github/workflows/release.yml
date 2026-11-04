@@ -1,8 +1,10 @@
 name: Release
 
+# Manual only: the maintainer publishes by hand (`pnpm release`), and a push to main must not
+# publish to npm or open a "Version Packages" PR. Run it from the Actions tab once npm Trusted
+# Publishing is configured for all three packages (#79).
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 concurrency: release-${{ github.ref }}
 
