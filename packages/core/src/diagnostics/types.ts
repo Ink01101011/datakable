@@ -44,7 +44,11 @@ export interface DiagnosticContext {
   occurrences: { count: number; first: number; last: number }
   /** e.g. `DK_SCHEMA_INVALID_ROW#run57` */
   causedBy?: string
-  /** Original error (ES2022 cause). Reaches `onDiagnostic` only; `toJSON` and the console leave it out. */
+  /**
+   * Original error (ES2022 cause). Reaches code you install (`onDiagnostic`, `diagnostic:emit`
+   * interceptors, the `redact` seam) and, under `strict`, the thrown `DatakableError`'s `cause`;
+   * `getDiagnostics()`, `toJSON` and the console leave it out.
+   */
   cause?: unknown
 }
 

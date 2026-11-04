@@ -404,8 +404,9 @@ for (const d of table.getDiagnostics()) console.log(d.code, d.where, d.fix)
 - **Redaction** (`diagnostics.redact`): `'safe'` logs paths, indices, counts, value types and
   hashed row keys (production default); `'keys'` adds raw row keys (development default); `'full'`
   adds row values. A custom `redact(path, value)` can rewrite any field. Columns with
-  `sensitive: true` are never logged at any level, and fetcher errors are logged by name only (the
-  original goes to `onDiagnostic` as `context.cause`).
+  `sensitive: true` are never logged at any level (a sensitive `rowKey` is logged as
+  `[sensitive]`, not hashed), and fetcher errors are logged by name only (the original goes to
+  `onDiagnostic` as `context.cause`; `getDiagnostics()` leaves it out).
 - **Production text:** production builds keep `code`, `where`, `context` and a docs URL and drop
   the `problem` / `impact` / `fix` text. To keep it:
 
