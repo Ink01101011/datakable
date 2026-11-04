@@ -159,7 +159,9 @@ export interface Table<
   explainRow(key: RowKey): RowExplanation
   /**
    * Runs `options.fetcher` again with the current params (§7.1), e.g. a Retry button after
-   * `DK_FETCH_FAILED`. Never rejects. Without a fetcher: `{ status: 'applied' }` at once.
+   * `DK_FETCH_FAILED`. Never rejects. Without a fetcher: `{ status: 'applied' }` at once. On a
+   * `createDeferred` table it settles with the request that runs after `startTable`
+   * (`'superseded'` when the table is destroyed first, #90).
    */
   refetch(): Promise<FetchOutcome>
   /** Releases listeners. Later mutating calls are no-ops that report `DK_TABLE_DESTROYED`. */

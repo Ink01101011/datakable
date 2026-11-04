@@ -193,6 +193,7 @@ To trace a production table, install it: `createTable({ interceptors: [tracer()]
 | [`DK_SEARCH_COLUMN_SKIPPED`](#dk_search_column_skipped) | info | Features |
 | [`DK_SEARCH_UNKNOWN_KEYS`](#dk_search_unknown_keys) | warn | Features |
 | [`DK_INVALID_PAGINATION`](#dk_invalid_pagination) | warn | Features |
+| [`DK_INVALID_STATE`](#dk_invalid_state) | warn | Features |
 | [`DK_INVALID_VALIDITY`](#dk_invalid_validity) | warn | Features |
 | [`DK_FETCH_FAILED`](#dk_fetch_failed) | error | Async |
 | [`DK_FETCH_ABORTED`](#dk_fetch_aborted) | info | Async |
@@ -995,7 +996,7 @@ prints (development console):
 
 `warn` · fault test: [pagination.test.ts](../../packages/core/src/features/pagination/pagination.test.ts)
 
-**Problem.** `setPageIndex()` / `setPageSize()`, or the pagination state (from `initialState`, `setState` or a controlled `state`), got a value that is not an integer in range (`pageIndex` ≥ 0, `pageSize` > 0). A method call is ignored; a bad state slice is replaced with a valid one. In a production build, an invalid `pagination({ pageSize })` option is reported here too (`where: { kind: 'feature', name: 'pagination' }`) and replaced with the default of 10; development builds throw `DK_INVALID_OPTION` at creation instead.
+**Problem.** `setPageIndex()` / `setPageSize()`, or the pagination state (from `initialState`, `setState` or a controlled `state`), got a value that is not a safe integer in range (`pageIndex` ≥ 0, `pageSize` > 0; `1e308` is out of range). A method call is ignored; a bad state slice is replaced with a valid one. In a production build, an invalid `pagination({ pageSize })` option is reported here too (`where: { kind: 'feature', name: 'pagination' }`) and replaced with the default of 10; development builds throw `DK_INVALID_OPTION` at creation instead.
 
 **Common causes.**
 
@@ -1028,6 +1029,51 @@ prints (development console):
   fix     1. pass an integer > 0 to setPageSize()
   docs    https://github.com/Ink01101011/datakable/blob/main/docs/errors.md#dk_invalid_pagination
   context trigger=api:setPageSize run=0 phase=client
+```
+
+### DK_INVALID_STATE
+
+`warn` · fault test: [state-hardening.test.ts](../../packages/core/src/table/state-hardening.test.ts)
+
+**Problem.** The `sorting` or `columnFilters` slice (from `initialState`, `setState` or a controlled `state`) does not have the shape the feature uses: `columnFilters` is not an object (e.g. `null`), or `sorting` has no `by` array, or `by` holds entries without an `id`. In development the slice is replaced (valid sort entries are kept) and reported here. A production build does not report it: the features read a malformed slice as empty (no filters, or only the valid sort entries). Either way, `toggleSort` / `setColumnFilter` keep working.
+
+**Common causes.**
+
+- State restored from the URL or storage that was cleared to `null` or edited by hand.
+- A slice written in another shape, e.g. `sorting: [{ id: 'name' }]` instead of `sorting: { by: [...] }`.
+
+**Fix.**
+
+- Write the slice in the feature's shape: `sorting: { by: [{ id, desc }] }`, `columnFilters: { [columnId]: filter }`.
+- Validate restored state before passing it, or drop the slice when it does not parse.
+
+**Example.**
+
+```ts
+import { createTable, sorting } from '@datakable/core'
+
+const users = [
+  { id: 1, name: 'Ada' },
+  { id: 2, name: 'Grace' },
+]
+
+// Restored from the URL: a hand-edited link left a null entry in the sort.
+const saved = JSON.parse('{"sorting":{"by":[{"id":"name","desc":true},null]}}')
+
+const table = createTable({ data: users, features: [sorting()], initialState: saved })
+table.toggleSort('id') // works: the null entry was dropped
+```
+
+prints (development console):
+
+```text
+⚠ [DataKable table#1] DK_INVALID_STATE: state.sorting is malformed (by[1]: null)
+  where   options.state.sorting
+  impact  the slice was replaced with { by: [1 valid] }; the table keeps working
+  fix     1. write state.sorting in the shape the feature uses (check initialState, setState and the controlled options.state, e.g. a value restored from the URL or storage)
+          2. validate restored state before passing it, or drop sorting when it does not parse
+  docs    https://github.com/Ink01101011/datakable/blob/main/docs/errors.md#dk_invalid_state
+  context trigger=init run=0 phase=client
 ```
 
 ### DK_INVALID_VALIDITY
@@ -2306,12 +2352,13 @@ prints (development console):
 
 `warn` · fault test: [column-filters.test.ts](../../packages/core/src/features/column-filters/column-filters.test.ts)
 
-**Problem.** A state slice (from `initialState`, `state` or `setState`) has an entry for a column that does not exist, e.g. a filter on a renamed column. The entry is ignored; the other entries still apply.
+**Problem.** A state slice (from `initialState`, `state` or `setState`) has an entry for a column that does not exist, e.g. a filter on a renamed column. The entry is ignored; the other entries still apply. A `"__proto__"` key (top-level, or as a column id in `columnFilters` / `setColumnFilter`) is reported here too: it is dropped, because writing it would replace the prototype of the state object. With `sorting({ mode: 'server' })`, a fetcher and `columns`, a sort entry whose id names no column (or a column with `sortable: false`) is reported with `slice: 'sorting'` and left out of `FetchParams.sort`.
 
 **Common causes.**
 
 - State restored from the URL or storage that was saved before a column was renamed or removed.
 - A typo in a column id.
+- `JSON.parse` of untrusted input (a URL or storage value) with a `"__proto__"` key.
 
 **Fix.**
 

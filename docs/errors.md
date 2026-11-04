@@ -112,6 +112,10 @@ Moved: [DK_SEARCH_UNKNOWN_KEYS](how-to-fix/errors.md#dk_search_unknown_keys).
 
 Moved: [DK_INVALID_PAGINATION](how-to-fix/errors.md#dk_invalid_pagination).
 
+### DK_INVALID_STATE
+
+Moved: [DK_INVALID_STATE](how-to-fix/errors.md#dk_invalid_state).
+
 ### DK_INVALID_VALIDITY
 
 Moved: [DK_INVALID_VALIDITY](how-to-fix/errors.md#dk_invalid_validity).

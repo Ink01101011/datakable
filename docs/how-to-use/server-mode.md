@@ -105,7 +105,8 @@ goes through one async control:
   result is never applied, even if the fetcher ignores the signal.
 - **Timeout.** A request still running after `timeout` ms (default 30 000) is aborted and reported
   as `DK_ASYNC_TIMEOUT`. `timeout: Infinity` disables the timer; `timeout` is read once, at
-  creation.
+  creation. Any other value that is not a positive number (`0`, a negative number, `NaN`) throws
+  `DK_INVALID_OPTION` in development; a production build uses the 30 000 ms default instead.
 - **Validated result.** The result must be `{ rows, rowCount? }`. A missing `rows`, a `rowCount`
   that is not an integer ≥ 0, a `rowCount` smaller than `rows.length`, or no `rowCount` with
   server-mode pagination is `DK_FETCH_BAD_RESPONSE`.
@@ -131,6 +132,19 @@ in server mode.
 | `pageIndex` | `number` | `pagination({ mode: 'server' })` |
 | `pageSize` | `number` | `pagination({ mode: 'server' })` |
 | `signal` | `AbortSignal` | always: aborted when the request is superseded, timed out or the table is destroyed |
+
+`sort` holds only `{ id: string, desc: boolean }` entries. With `columns`, an entry whose id names no
+column, or a column with `sortable: false`, is left out and reported as
+[`DK_STATE_UNKNOWN_KEY`](../how-to-fix/errors.md#dk_state_unknown_key). `pageIndex` and `pageSize` are
+safe integers (`pageIndex ≥ 0`, `pageSize > 0`); any other restored value is replaced before the first
+request and reported as [`DK_INVALID_PAGINATION`](../how-to-fix/errors.md#dk_invalid_pagination).
+
+**`FetchParams` are untrusted input.** They come from table state, and state is often restored from
+the URL or storage, which anyone can edit. The table checks their shape, not what your backend
+allows. On the server, validate sort ids against an allow-list, cap `pageSize` (the table does not:
+`pageSize: 1000000000` is a valid page size), and treat filter values and the query like any other
+user input. When you build a request URL, encode every parameter (`URLSearchParams` or
+`encodeURIComponent`); never paste ids or values into the string.
 
 ### `FetchResult<T>`
 
@@ -160,7 +174,10 @@ It never rejects; it resolves with a `FetchOutcome`:
 | `'superseded'` | a newer request (or `destroy()`) replaced this one |
 | `'error'` | it failed (`DK_FETCH_FAILED`, `DK_FETCH_BAD_RESPONSE`, `DK_ASYNC_TIMEOUT`); the previous rows are kept |
 
-Without a fetcher, `refetch()` resolves `{ status: 'applied' }` at once.
+Without a fetcher, `refetch()` resolves `{ status: 'applied' }` at once. On a table created inside
+[`createDeferred`](ssr.md), `refetch()` before `startTable` starts nothing: its promise settles with
+the outcome of the request that runs after `startTable`, or `'superseded'` when the table is destroyed
+before it starts.
 
 ```ts
 import { createTable, type FetchResult } from '@datakable/core'
@@ -196,7 +213,8 @@ else if (status === 'error') console.log('still failing; the previous rows stay'
 - `status: 'error'` after a failed request, until a request applies. During a `refetch()` after an
   error the status stays `'error'` (it outranks `'fetching'`); follow the retry with the promise
   `refetch()` returns.
-- `isInitialLoad: true` until the first rows are applied (an empty result counts). With
+- `isInitialLoad: true` until the first rows are applied (an empty result counts; `data: null`
+  does not: development throws `DK_INVALID_OPTION`, production treats it as no data yet). With
   `isInitialLoad`, `'fetching'` is a full loading state and `'error'` an error with nothing behind
   it; without it, both show over the previous rows.
 
@@ -384,6 +402,8 @@ the server matches the query. Details in [Search](search.md).
 - **Reading `filteredCount` as the server's total** — in server mode it is the length of the
   current page; keep the fetcher result's `rowCount`
   ([Counting rows in server mode](#counting-rows-in-server-mode)).
+- **Trusting `FetchParams` on the backend** — they come from restorable state: validate sort ids,
+  cap `pageSize` and encode every URL parameter ([`FetchParams`](#fetchparams)).
 - **Superseded requests** are reported as [`DK_FETCH_ABORTED`](../how-to-fix/errors.md#dk_fetch_aborted)
   (info): a newer request replaced them, which is expected while the user types or pages quickly.
 

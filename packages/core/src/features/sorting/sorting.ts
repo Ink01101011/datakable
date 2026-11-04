@@ -7,8 +7,10 @@ import type { Path } from '../../column/path'
 import { keepDiagnostics } from '../../diagnostics/catalog'
 import { DEV } from '../../diagnostics/env'
 import { proseArg } from '../../diagnostics/prose'
+import { describeValue } from '../../diagnostics/redact'
 import type { Emit } from '../../diagnostics/types'
 import { defineFeature } from '../../feature/define'
+import { type SliceFix, sliceGuard } from '../../feature/slice-guard'
 import type { FeatureTypes, RowModelContext } from '../../feature/types'
 import { CellFailures } from '../../intercept/cell-batch'
 import { errorName } from '../../intercept/classify'
@@ -54,11 +56,42 @@ export type SortingState<T> = { by: readonly SortEntry<T>[] }
 
 export type SortDirection = 'asc' | 'desc'
 
+/** An entry with an `id` (a `null` entry or one without an id is malformed, #89). */
+const isEntry = (e: unknown): e is SortEntry<unknown> => (e as { id?: unknown } | null)?.id != null
+
+const byOf = (s: unknown): unknown => (s as { by?: unknown } | null | undefined)?.by
+
+/**
+ * The entries of a slice; `[]` for a malformed one (a controlled slice not fed back yet, #89).
+ * The slice itself is replaced by the guard (`DK_INVALID_STATE`).
+ */
+const entriesOf = (s: unknown): readonly SortEntry<unknown>[] => {
+  const by = byOf(s)
+  return Array.isArray(by) ? by.filter(isEntry) : []
+}
+
+/** A malformed restored slice: the valid entries are kept (#89). */
+function fixSlice(s: unknown): SliceFix<SortingState<unknown>> | undefined {
+  const raw = byOf(s)
+  const by = entriesOf(s)
+  if (Array.isArray(raw) && raw.length === by.length) return undefined
+  const bad = Array.isArray(raw) ? raw.findIndex((e) => !isEntry(e)) : -1
+  return [
+    { by },
+    bad < 0 ? describeValue(raw ?? s) : `by[${bad}]: ${describeValue((raw as unknown[])[bad])}`,
+    `{ by: [${by.length} valid] }`,
+  ]
+}
+
 /** Replaces the sort; an equal one keeps the slice (same reference, no notification, #21). */
 const setSort = (
-  ctx: { setState(u: (s: SortingState<unknown>) => SortingState<unknown>): void },
+  ctx: { getState(): unknown; setState(s: SortingState<unknown>): void },
   by: readonly SortEntry<unknown>[],
-) => ctx.setState((s) => (JSON.stringify(s.by) === JSON.stringify(by) ? s : { by: by.slice() }))
+) => {
+  if (JSON.stringify(byOf(ctx.getState())) === JSON.stringify(by)) return
+  // A value that is not an array reaches the guard (dev: replaced, DK_INVALID_STATE).
+  ctx.setState({ by: Array.isArray(by) ? by.slice() : by })
+}
 
 export type SortingApi<T> = {
   /**
@@ -208,6 +241,8 @@ class SortFnFailed {
  * choice (`DK_SORT_STRATEGY`).
  */
 export const sorting = (opts: SortingOptions = {}) => {
+  // Dev only (§9.3): production reads a malformed slice as no sort and stays cheap.
+  const guard = DEV ? sliceGuard('sorting', fixSlice) : undefined
   let collator: Intl.Collator | undefined
   /** The collator; `DK_ENV_FALLBACK` when the runtime supports none of the requested locales. */
   const getCollator = (emit: Emit) => {
@@ -314,33 +349,37 @@ export const sorting = (opts: SortingOptions = {}) => {
       DEV ? sortingOptions : ({} as typeof sortingOptions),
       opts,
     ),
+    ...(guard ? { interceptors: [guard.interceptor] } : undefined),
     initialState: () => ({ by: [] }),
     // After destroy(): still a declared value (`aria-sort` reads it during teardown renders).
     destroyedResult: { getSortDirection: () => false },
-    createApi: (ctx) => ({
-      toggleSort: (id, options) =>
-        ctx.setState((s) => {
-          const by = s.by
+    createApi: (ctx) => {
+      guard?.install(ctx)
+      // Values, not updaters: a library step is never reported as a failing user `updater` (#89).
+      return {
+        toggleSort: (id, options) => {
+          const by = entriesOf(ctx.getState())
           const i = by.findIndex((e) => e.id === id)
           const cur = by[i]
           const next = !cur ? { id, desc: false } : cur.desc ? undefined : { id, desc: true }
-          if (!options?.multi) return { by: next ? [next] : [] }
-          if (!cur) return { by: [...by, next as SortEntry<unknown>] }
+          if (!options?.multi) return ctx.setState({ by: next ? [next] : [] })
+          if (!cur) return ctx.setState({ by: [...by, next as SortEntry<unknown>] })
           const out = by.slice()
-          if (next) out[i] = next
+          if (next) out[i] = next as SortEntry<unknown>
           else out.splice(i, 1)
-          return { by: out }
-        }),
-      setSorting: (by) => setSort(ctx, by),
-      clearSorting: () => setSort(ctx, []),
-      getSortDirection: (id) => {
-        const e = ctx.getState().by.find((x) => x.id === id)
-        return e ? (e.desc ? 'desc' : 'asc') : false
-      },
-    }),
+          ctx.setState({ by: out })
+        },
+        setSorting: (by) => setSort(ctx, by),
+        clearSorting: () => setSort(ctx, []),
+        getSortDirection: (id) => {
+          const e = entriesOf(ctx.getState()).find((x) => x.id === id)
+          return e ? (e.desc ? 'desc' : 'asc') : false
+        },
+      }
+    },
     rowModel: (indices, state, ctx) => {
-      const by = state?.by
-      if (!by || by.length === 0 || indices.length < 2) {
+      const by = entriesOf(state)
+      if (by.length === 0 || indices.length < 2) {
         shown = undefined
         return indices
       }
