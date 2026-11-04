@@ -27,6 +27,7 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
 } from 'react'
 import {
   cellSlot,
@@ -507,6 +508,15 @@ function pages(view: Api, page: Page, count: number, server: boolean) {
 const ariaSort = (dir: 'asc' | 'desc' | false) =>
   dir === 'asc' ? 'ascending' : dir === 'desc' ? 'descending' : 'none'
 
+/** Focus the table for a Retry (#56); a `tabindex` added for that goes on the next blur (#88). */
+function focusTable(t: HTMLTableElement) {
+  if (!t.hasAttribute('tabindex')) {
+    t.setAttribute('tabindex', '-1')
+    t.addEventListener('blur', () => t.removeAttribute('tabindex'), { once: true })
+  }
+  t.focus()
+}
+
 function DataTableView(props: {
   table: DataTableSource
   components: DataTableComponents | undefined
@@ -538,27 +548,53 @@ function DataTableView(props: {
   const paged = typeof view.getPageCount === 'function'
   // Loading (§6.6, §10): nothing to show yet and rows on their way — in flight, or deferred async
   // work that has not started (SSR, §7.2: 'pending').
+  // A Retry of a failed load / refresh in flight (#87). Core keeps `status: 'error'` during a
+  // `refetch()` (it outranks `'fetching'`), so the view tracks the retry itself: Loading (or
+  // "Updating…") instead of the error, `aria-busy`, and repeat retries ignored until it settles.
+  const [retrying, setRetrying] = useState(false)
+  const inFlight = useRef(false)
+  const reloading = retrying && status === 'error'
   const loading =
-    isInitialLoad && (LOADING.includes(status) || (status === 'pending' && hasAsyncSource(view)))
-  const failed = isInitialLoad && status === 'error'
+    isInitialLoad &&
+    (reloading || LOADING.includes(status) || (status === 'pending' && hasAsyncSource(view)))
+  const failed = isInitialLoad && status === 'error' && !reloading
   const span = Math.max(columns.length, 1)
   const tableEl = useRef<HTMLTableElement>(null)
+  /** The focused element in a state row or the refresh indicator, else `null`. */
+  const focusedState = () => {
+    const t = tableEl.current
+    const from = document.activeElement?.closest('[data-dk-state],[data-dk-refresh]')
+    return t && from && t.parentElement?.contains(from) ? document.activeElement : null
+  }
   /**
    * Retry unmounts the focused Retry button (Error → Loading → rows, or the refresh error): focus
-   * the table first, else it falls to `<body>` (#56). Only when focus is in a state row or the
-   * refresh indicator, so a retry called from elsewhere leaves focus alone.
+   * the table, else it falls to `<body>` (#56). Only when focus is in a state row or the refresh
+   * indicator, so a retry called from elsewhere leaves focus alone.
    */
   const keepFocus = () => {
     const t = tableEl.current
-    const from = document.activeElement?.closest('[data-dk-state],[data-dk-refresh]')
-    if (t && from && t.parentElement?.contains(from)) {
-      t.tabIndex = -1
-      t.focus()
-    }
+    if (t && focusedState()) focusTable(t)
   }
+  // The element focused when a load / refresh Retry was activated, until the next commit: focus
+  // moves to the table only if that commit really unmounted it.
+  const focusFrom = useRef<Element | null>(null)
+  useIsomorphicLayoutEffect(() => {
+    const from = focusFrom.current
+    const t = tableEl.current
+    focusFrom.current = null
+    if (!from || !t || from.isConnected) return
+    const now = document.activeElement
+    if (now === null || now === document.body) focusTable(t)
+  })
   const retryLoad = () => {
-    keepFocus()
-    void view.refetch()
+    if (inFlight.current) return
+    inFlight.current = true
+    focusFrom.current = focusedState()
+    setRetrying(true)
+    void view.refetch().finally(() => {
+      inFlight.current = false
+      setRetrying(false)
+    })
   }
   const server = paged && serverPaged(view)
   const pager = paged ? pages(view, state.pagination as Page, rowModel.filteredCount, server) : null
@@ -595,7 +631,7 @@ function DataTableView(props: {
 
   let body: ReactNode
   if (loading) {
-    body = stateRow(span, 'loading', <Loading status={status} />)
+    body = stateRow(span, 'loading', <Loading status={reloading ? 'fetching' : status} />)
   } else if (failed) {
     body = stateRow(span, 'error', <ErrorState status={status} reason="load" retry={retryLoad} />)
   } else if (rows.length === 0) {
@@ -637,7 +673,7 @@ function DataTableView(props: {
       data-datakable=""
       data-status={status}
       data-initial-load={isInitialLoad ? 'true' : 'false'}
-      aria-busy={BUSY.includes(status) ? 'true' : undefined}
+      aria-busy={reloading || BUSY.includes(status) ? 'true' : undefined}
     >
       {searchState && (
         <div data-dk-search="" data-status={searchState.status}>
@@ -652,7 +688,7 @@ function DataTableView(props: {
         </div>
       )}
       {!loading && !failed && status !== 'idle' && (
-        <RefreshIndicator status={status} retry={retryLoad} />
+        <RefreshIndicator status={reloading ? 'fetching' : status} retry={retryLoad} />
       )}
       <table ref={tableEl}>
         {props.caption != null && <caption>{props.caption}</caption>}
