@@ -247,6 +247,75 @@ describe('createDeferred / startTable (§7.2)', () => {
   })
 })
 
+describe('refetch() on a deferred table (#90)', () => {
+  const deferred = (fetcher: ReturnType<typeof manual>['fetcher'], extra = {}) =>
+    createDeferred(() =>
+      createTable({
+        fetcher: withFetcher(fetcher),
+        features: [pagination({ mode: 'server' })],
+        onDiagnostic: () => {},
+        ...extra,
+      }),
+    )
+  const settled = async (p: Promise<unknown>) => {
+    let out: unknown = 'unsettled'
+    void p.then((v) => {
+      out = v
+    })
+    await tick()
+    return out
+  }
+
+  it('settles with the outcome of the request that runs after startTable', async () => {
+    const m = manual()
+    const t = deferred(m.fetcher)
+    const p = t.refetch()
+    const q = t.refetch()
+    expect(await settled(p)).toBe('unsettled')
+    expect(m.fetcher).not.toHaveBeenCalled()
+    expect(t.getRowModel().status).toBe('pending')
+    startTable(t)
+    expect(m.fetcher).toHaveBeenCalledTimes(1)
+    m.calls[0]?.resolve({ rows: people(2), rowCount: 2 })
+    await expect(p).resolves.toEqual({ status: 'applied' })
+    await expect(q).resolves.toEqual({ status: 'applied' })
+    expect(ns(t)).toEqual([0, 1])
+    expect(m.fetcher).toHaveBeenCalledTimes(1)
+  })
+
+  it("reports 'error' when that request fails", async () => {
+    const m = manual()
+    const t = deferred(m.fetcher)
+    const p = t.refetch()
+    startTable(t)
+    m.calls[0]?.resolve({ rows: 'nope' } as never)
+    await expect(p).resolves.toEqual({ status: 'error' })
+  })
+
+  it("destroyed before startTable: 'superseded', and the fetcher never runs", async () => {
+    const m = manual()
+    const t = deferred(m.fetcher)
+    const p = t.refetch()
+    t.destroy()
+    await expect(p).resolves.toEqual({ status: 'superseded' })
+    startTable(t)
+    expect(m.fetcher).not.toHaveBeenCalled()
+  })
+
+  it('with initialData, a deferred refetch still fetches after startTable', async () => {
+    const m = manual()
+    const t = deferred(m.fetcher, { initialData: people(1), rowCount: 1 })
+    expect(t.getRowModel().status).toBe('idle')
+    const p = t.refetch()
+    expect(m.fetcher).not.toHaveBeenCalled()
+    startTable(t)
+    expect(m.fetcher).toHaveBeenCalledTimes(1)
+    m.calls[0]?.resolve({ rows: people(3), rowCount: 3 })
+    await expect(p).resolves.toEqual({ status: 'applied' })
+    expect(ns(t)).toEqual([0, 1, 2])
+  })
+})
+
 describe('DK_SSR_ASYNC_DEFERRED in the console (#38)', () => {
   const printed = () =>
     vi

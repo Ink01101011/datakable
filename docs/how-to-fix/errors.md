@@ -941,7 +941,7 @@ prints (development console):
 
 `warn` · fault test: [pagination.test.ts](../../packages/core/src/features/pagination/pagination.test.ts)
 
-**Problem.** `setPageIndex()` / `setPageSize()`, or the pagination state (from `initialState`, `setState` or a controlled `state`), got a value that is not an integer in range (`pageIndex` ≥ 0, `pageSize` > 0). A method call is ignored; a bad state slice is replaced with a valid one. In a production build, an invalid `pagination({ pageSize })` option is reported here too (`where: { kind: 'feature', name: 'pagination' }`) and replaced with the default of 10; development builds throw `DK_INVALID_OPTION` at creation instead.
+**Problem.** `setPageIndex()` / `setPageSize()`, or the pagination state (from `initialState`, `setState` or a controlled `state`), got a value that is not a safe integer in range (`pageIndex` ≥ 0, `pageSize` > 0; `1e308` is out of range). A method call is ignored; a bad state slice is replaced with a valid one. In a production build, an invalid `pagination({ pageSize })` option is reported here too (`where: { kind: 'feature', name: 'pagination' }`) and replaced with the default of 10; development builds throw `DK_INVALID_OPTION` at creation instead.
 
 **Common causes.**
 
@@ -2297,7 +2297,7 @@ prints (development console):
 
 `warn` · fault test: [column-filters.test.ts](../../packages/core/src/features/column-filters/column-filters.test.ts)
 
-**Problem.** A state slice (from `initialState`, `state` or `setState`) has an entry for a column that does not exist, e.g. a filter on a renamed column. The entry is ignored; the other entries still apply. A `"__proto__"` key (top-level, or as a column id in `columnFilters` / `setColumnFilter`) is reported here too: it is dropped, because writing it would replace the prototype of the state object.
+**Problem.** A state slice (from `initialState`, `state` or `setState`) has an entry for a column that does not exist, e.g. a filter on a renamed column. The entry is ignored; the other entries still apply. A `"__proto__"` key (top-level, or as a column id in `columnFilters` / `setColumnFilter`) is reported here too: it is dropped, because writing it would replace the prototype of the state object. With `sorting({ mode: 'server' })`, a fetcher and `columns`, a sort entry whose id names no column (or a column with `sortable: false`) is reported with `slice: 'sorting'` and left out of `FetchParams.sort`.
 
 **Common causes.**
 

@@ -932,7 +932,7 @@ export function createTable<T, S extends TableState>(
 
   /**
    * Runs the fetcher again with the current params (§7.1); never rejects. Without a fetcher:
-   * `{ status: 'applied' }` at once.
+   * `{ status: 'applied' }` at once. Deferred: settles after `startTable` (#90, `server.sync`).
    */
   function refetch(): Promise<FetchOutcome> {
     if (destroyed) {

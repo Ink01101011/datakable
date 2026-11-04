@@ -133,6 +133,19 @@ in server mode.
 | `pageSize` | `number` | `pagination({ mode: 'server' })` |
 | `signal` | `AbortSignal` | always: aborted when the request is superseded, timed out or the table is destroyed |
 
+`sort` holds only `{ id: string, desc: boolean }` entries. With `columns`, an entry whose id names no
+column, or a column with `sortable: false`, is left out and reported as
+[`DK_STATE_UNKNOWN_KEY`](../how-to-fix/errors.md#dk_state_unknown_key). `pageIndex` and `pageSize` are
+safe integers (`pageIndex ≥ 0`, `pageSize > 0`); any other restored value is replaced before the first
+request and reported as [`DK_INVALID_PAGINATION`](../how-to-fix/errors.md#dk_invalid_pagination).
+
+**`FetchParams` are untrusted input.** They come from table state, and state is often restored from
+the URL or storage, which anyone can edit. The table checks their shape, not what your backend
+allows. On the server, validate sort ids against an allow-list, cap `pageSize` (the table does not:
+`pageSize: 1000000000` is a valid page size), and treat filter values and the query like any other
+user input. When you build a request URL, encode every parameter (`URLSearchParams` or
+`encodeURIComponent`); never paste ids or values into the string.
+
 ### `FetchResult<T>`
 
 What the fetcher resolves with (or returns synchronously).
@@ -161,7 +174,10 @@ It never rejects; it resolves with a `FetchOutcome`:
 | `'superseded'` | a newer request (or `destroy()`) replaced this one |
 | `'error'` | it failed (`DK_FETCH_FAILED`, `DK_FETCH_BAD_RESPONSE`, `DK_ASYNC_TIMEOUT`); the previous rows are kept |
 
-Without a fetcher, `refetch()` resolves `{ status: 'applied' }` at once.
+Without a fetcher, `refetch()` resolves `{ status: 'applied' }` at once. On a table created inside
+[`createDeferred`](ssr.md), `refetch()` before `startTable` starts nothing: its promise settles with
+the outcome of the request that runs after `startTable`, or `'superseded'` when the table is destroyed
+before it starts.
 
 ```ts
 import { createTable, type FetchResult } from '@datakable/core'
@@ -386,6 +402,8 @@ the server matches the query. Details in [Search](search.md).
 - **Reading `filteredCount` as the server's total** — in server mode it is the length of the
   current page; keep the fetcher result's `rowCount`
   ([Counting rows in server mode](#counting-rows-in-server-mode)).
+- **Trusting `FetchParams` on the backend** — they come from restorable state: validate sort ids,
+  cap `pageSize` and encode every URL parameter ([`FetchParams`](#fetchparams)).
 - **Superseded requests** are reported as [`DK_FETCH_ABORTED`](../how-to-fix/errors.md#dk_fetch_aborted)
   (info): a newer request replaced them, which is expected while the user types or pages quickly.
 

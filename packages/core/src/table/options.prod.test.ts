@@ -7,6 +7,7 @@ import type { Diagnostic } from '../diagnostics/types'
 import { defineFeature } from '../feature/define'
 import { pagination } from '../features/pagination'
 import { search } from '../features/search'
+import { sorting } from '../features/sorting'
 import { makeSchema } from '../ingest/test-schemas'
 import { withFetcher } from '../source/with-fetcher'
 import { createTable } from './create-table'
@@ -190,5 +191,38 @@ describe('production: invalid timeout / data fall back cheaply (#94)', () => {
     t.setOptions({ data: [{ id: 1 }] })
     expect(t.getRowModel()).toMatchObject({ isInitialLoad: false })
     expect(t.getRowModel().rows).toHaveLength(1)
+  })
+
+  it('server mode: restored sort / page state is validated before the fetcher (#100)', () => {
+    const params: unknown[] = []
+    const seen: Diagnostic[] = []
+    const make = (initialState: object) =>
+      createTable({
+        columns: [{ key: 'n' }] as never,
+        fetcher: withFetcher((p) => {
+          params.push({ sort: p.sort, pageIndex: p.pageIndex, pageSize: p.pageSize })
+          return new Promise(() => {})
+        }),
+        features: [sorting({ mode: 'server' }), pagination({ mode: 'server' })],
+        initialState,
+        onDiagnostic: (d) => seen.push(d),
+      })
+    make({
+      sorting: {
+        by: [
+          { id: 'n&x=1', desc: false },
+          { id: 'n', desc: 1 },
+        ],
+      },
+      pagination: { pageIndex: 1e308, pageSize: 10 },
+    })
+    // A malformed slice (no dev guard in production) sends no sort at all.
+    make({ sorting: { by: 'n' } })
+    expect(params).toEqual([
+      { sort: [{ id: 'n', desc: false }], pageIndex: 0, pageSize: 10 },
+      { sort: [], pageIndex: 0, pageSize: 10 },
+    ])
+    // Dropped silently: the diagnostic is development only (production stays small).
+    expect(seen.map((d) => d.code)).not.toContain('DK_STATE_UNKNOWN_KEY')
   })
 })
