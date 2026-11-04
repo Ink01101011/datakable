@@ -54,7 +54,8 @@ export default [
     // RB: 14.5 → 15 KB (14,981 B; F4 14,765 B): the production DK_INVALID_OPTION guard for an
     // unwrapped schema / fetcher (never silent, §8.6; user decision 2026-10-13): +216 B.
     // #78 (2.0.3): 15 → 14.75 KB, re-measured with the version pinned: 14,841 B (+263 B headroom).
-    limit: 14.75 * KB,
+    // 2.0.3 bug fixes (#86-#104; trimmed first, then raised as the owner allows for fixes): 15,094 B -> 15.00 KB (+266 B headroom).
+    limit: 15 * KB,
   },
   {
     name: '@datakable/core: createTable + columnFilters + sorting + pagination',
@@ -69,7 +70,8 @@ export default [
     // #5 (user decision 2026-10-13): 21.5 → 24 KB (24,405 B). The earlier sizes were measured on a
     // bundle that threw (esbuild --minify dropped the feature runtime); this one runs (`smoke`).
     // #78 (2.0.3): 24 → 23.75 KB, re-measured with the version pinned: 24,248 B (+72 B headroom).
-    limit: 23.75 * KB,
+    // 2.0.3 bug fixes (#86-#104; trimmed first, then raised as the owner allows for fixes): 24,569 B -> 24.25 KB (+263 B headroom).
+    limit: 24.25 * KB,
   },
   {
     name: '@datakable/core: createTable + columnFilters + sorting + pagination + search',
@@ -88,7 +90,8 @@ export default [
     // Diagnostics privacy fix (user decision 2026-11-04): 26.5 → 26.75 KB (27,184 B):
     // getDiagnostics() returns copies without context.cause (+46 B); 2.0.1 was already +1 B over.
     // #78 (2.0.3): stays 26.75 KB, re-measured with the version pinned: 27,184 B (+208 B headroom).
-    limit: 26.75 * KB,
+    // 2.0.3 bug fixes (#86-#104; trimmed first, then raised as the owner allows for fixes): 27,504 B -> 27.00 KB (+144 B headroom).
+    limit: 27 * KB,
   },
   {
     name: 'datakable: createTable (default preset)',
@@ -105,7 +108,8 @@ export default [
     // #5 (user decision 2026-10-13): 24.5 → 27 KB (27,227 B). The earlier sizes were measured on a
     // bundle that threw (esbuild --minify dropped the feature runtime); this one runs (`smoke`).
     // #78 (2.0.3): stays 27 KB, re-measured with the version pinned: 27,476 B (+172 B headroom).
-    limit: 27 * KB,
+    // 2.0.3 bug fixes (#86-#104; trimmed first, then raised as the owner allows for fixes): 27,819 B -> 27.25 KB (+85 B headroom).
+    limit: 27.25 * KB,
   },
   {
     name: 'datakable/react: useDataTable (default preset + react hook)',
@@ -127,7 +131,8 @@ export default [
     // getDiagnostics() returns copies without context.cause. The §9.3 spec (28.5 KB) is unmet
     // by 24 B; the user accepted that gap. The smallest correct variant measured was 29,193 B.
     // #78 (2.0.3): stays 28.75 KB, re-measured with the version pinned: 29,207 B (+233 B headroom).
-    limit: 28.75 * KB,
+    // 2.0.3 bug fixes (#86-#104; trimmed first, then raised as the owner allows for fixes): 29,544 B -> 29.00 KB (+152 B headroom).
+    limit: 29 * KB,
   },
   {
     name: 'datakable/react: DataTable (default preset + <DataTable />)',
@@ -150,6 +155,7 @@ export default [
     // hydration and render-fault fixes (#16 #18 #23 #26 #54-#60); cutting every a11y fix would
     // still leave it ~180 B over.
     // #78 (2.0.3): 32.5 → 32.25 KB, re-measured with the version pinned: 32,908 B (+116 B headroom).
-    limit: 32.25 * KB,
+    // 2.0.3 bug fixes (#86-#104; trimmed first, then raised as the owner allows for fixes): 33,441 B -> 32.75 KB (+95 B headroom).
+    limit: 32.75 * KB,
   },
 ]
