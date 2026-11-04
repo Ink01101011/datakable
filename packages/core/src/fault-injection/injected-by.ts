@@ -46,6 +46,7 @@ export const injectedBy: Readonly<Record<string, string>> = {
   DK_INTERNAL: 'intercept/boundary.test.ts',
   DK_INVALID_OPTION: 'catalog/options.test.ts',
   DK_INVALID_PAGINATION: 'features/pagination/pagination.test.ts',
+  DK_INVALID_STATE: 'table/state-hardening.test.ts',
   DK_INVALID_VALIDITY: 'features/validity/validity.test.ts',
   DK_LISTENER_FAILED: HARNESS,
   DK_MISSING_ROW_KEY: 'ingest/row-key.test.ts',

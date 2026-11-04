@@ -39,6 +39,7 @@ import {
   type TableHost,
 } from './internals'
 import { keepReadOnce } from './read-once'
+import { PROTO_KEY, stateDiagnostics } from './state-codes'
 import { createStateFeedbackCheck, stateFeedbackDiagnostics } from './state-feedback'
 import {
   type ControlledState,
@@ -55,6 +56,7 @@ keepDiagnostics(
   dataMutationDiagnostics,
   stateFeedbackDiagnostics,
   optionDiagnostics,
+  stateDiagnostics,
 )
 
 const EMPTY: readonly never[] = []
@@ -76,20 +78,25 @@ const isThenable = (v: unknown): v is PromiseLike<unknown> =>
 const deepFrozen = DEV ? new WeakSet<object>() : undefined
 
 /**
- * Freezes plain objects and arrays reachable from `v` (dev). Class instances (Date, Map, typed
- * arrays, user classes) are left alone: freezing them would break their own methods.
+ * Freezes plain objects and arrays reachable from `root` (dev). Class instances (Date, Map, typed
+ * arrays, user classes) are left alone: freezing them would break their own methods. Iterative (an
+ * explicit stack): restored state can be nested deeper than the call stack allows (#103).
  */
-function deepFreeze(v: unknown): void {
-  if (v === null || typeof v !== 'object' || deepFrozen?.has(v)) return
-  const isArray = Array.isArray(v)
-  if (!isArray) {
-    const proto = Object.getPrototypeOf(v)
-    if (proto !== Object.prototype && proto !== null) return
+function deepFreeze(root: unknown): void {
+  const stack = [root]
+  while (stack.length > 0) {
+    const v = stack.pop()
+    if (v === null || typeof v !== 'object' || deepFrozen?.has(v)) continue
+    const isArray = Array.isArray(v)
+    if (!isArray) {
+      const proto = Object.getPrototypeOf(v)
+      if (proto !== Object.prototype && proto !== null) continue
+    }
+    deepFrozen?.add(v)
+    Object.freeze(v)
+    if (isArray) for (let i = 0; i < v.length; i++) stack.push(v[i])
+    else for (const k in v) stack.push((v as Record<string, unknown>)[k])
   }
-  deepFrozen?.add(v)
-  Object.freeze(v)
-  if (isArray) for (let i = 0; i < v.length; i++) deepFreeze(v[i])
-  else for (const k in v) deepFreeze((v as Record<string, unknown>)[k])
 }
 
 /** Snapshots and their slices are immutable in development (#20); production skips the walk. */
@@ -171,7 +178,7 @@ export function createTable<T, S extends TableState>(
    * SSR (§7.2): `options.initialData` until the creation ingest read it (`undefined` with `data`),
    * then its ingested rows while they are the table's data (`initialRows`).
    */
-  let initialInput = options.data === undefined ? options.initialData : undefined
+  let initialInput = options.data == null ? options.initialData : undefined
   let initialRows: readonly unknown[] | undefined
   /** Created inside `createDeferred` (§7.2): async work waits for `startTable`. */
   let deferring = deferral.depth > 0
@@ -334,9 +341,18 @@ export function createTable<T, S extends TableState>(
 
   // --- state -------------------------------------------------------------------------------------
 
+  /** A `__proto__` key (JSON.parse makes it own) is never written into state (#102). */
+  function protoKey(k: string): boolean {
+    if (k !== PROTO_KEY) return false
+    hub.emit('DK_STATE_UNKNOWN_KEY', { slice: '', key: k, known: EMPTY })
+    return true
+  }
+
   function controlledKeys(state: ControlledState<S> | undefined): Set<string> {
     const keys = new Set<string>()
-    if (state) for (const k of Object.keys(state)) if (state[k] !== undefined) keys.add(k)
+    if (state) {
+      for (const k of Object.keys(state)) if (state[k] !== undefined && !protoKey(k)) keys.add(k)
+    }
     return keys
   }
 
@@ -392,6 +408,7 @@ export function createTable<T, S extends TableState>(
     let changes: TableState | undefined
     let dropped: string[] | undefined
     for (const k of Object.keys(partial)) {
+      if (protoKey(k)) continue
       const v = (partial as TableState)[k]
       if (Object.is(snapshot[k], v)) continue
       if (controlled.has(k)) {
@@ -660,7 +677,8 @@ export function createTable<T, S extends TableState>(
     const initial = fetched === undefined && initialInput !== undefined
     const input = fetched ?? (initial ? initialInput : options.data)
     initialInput = undefined
-    const given = input !== undefined
+    // `data: null` counts as not given (production has no option validator, #94).
+    const given = input != null
     const source: Trigger = fetched ? 'fetch' : 'data-change'
     // A validation still in flight is superseded (its result is discarded): not 'validating' now,
     // unless this ingest's own schema step goes async.
@@ -715,6 +733,13 @@ export function createTable<T, S extends TableState>(
       // first; also when the ingest threw, so a later same-reference check compares this data.
       if (DEV && !fetched) dataCheck?.remember(options.data)
     }
+  }
+
+  /** `options.initialState` without a `__proto__` key (#102), for a table without features. */
+  function withoutProto(given: object | undefined): TableState {
+    const out: TableState = { ...given }
+    for (const k of Object.keys(out)) if (protoKey(k)) delete out[k]
+    return out
   }
 
   // --- API ---------------------------------------------------------------------------------------
@@ -961,7 +986,7 @@ export function createTable<T, S extends TableState>(
     freeze(
       (rt
         ? rt.initialSlices(features, options.initialState, hub.emit)
-        : { ...options.initialState }) as S,
+        : withoutProto(options.initialState)) as S,
     ),
   )
   notified = snapshot

@@ -192,6 +192,7 @@ To trace a production table, install it: `createTable({ interceptors: [tracer()]
 | [`DK_SEARCH_FAILED`](#dk_search_failed) | error | Features |
 | [`DK_SEARCH_COLUMN_SKIPPED`](#dk_search_column_skipped) | info | Features |
 | [`DK_INVALID_PAGINATION`](#dk_invalid_pagination) | warn | Features |
+| [`DK_INVALID_STATE`](#dk_invalid_state) | warn | Features |
 | [`DK_INVALID_VALIDITY`](#dk_invalid_validity) | warn | Features |
 | [`DK_FETCH_FAILED`](#dk_fetch_failed) | error | Async |
 | [`DK_FETCH_ABORTED`](#dk_fetch_aborted) | info | Async |
@@ -973,6 +974,51 @@ prints (development console):
   fix     1. pass an integer > 0 to setPageSize()
   docs    https://github.com/Ink01101011/datakable/blob/main/docs/errors.md#dk_invalid_pagination
   context trigger=api:setPageSize run=0 phase=client
+```
+
+### DK_INVALID_STATE
+
+`warn` · fault test: [state-hardening.test.ts](../../packages/core/src/table/state-hardening.test.ts)
+
+**Problem.** The `sorting` or `columnFilters` slice (from `initialState`, `setState` or a controlled `state`) does not have the shape the feature uses: `columnFilters` is not an object (e.g. `null`), or `sorting` has no `by` array, or `by` holds entries without an `id`. The slice is replaced (valid sort entries are kept), and `toggleSort` / `setColumnFilter` keep working.
+
+**Common causes.**
+
+- State restored from the URL or storage that was cleared to `null` or edited by hand.
+- A slice written in another shape, e.g. `sorting: [{ id: 'name' }]` instead of `sorting: { by: [...] }`.
+
+**Fix.**
+
+- Write the slice in the feature's shape: `sorting: { by: [{ id, desc }] }`, `columnFilters: { [columnId]: filter }`.
+- Validate restored state before passing it, or drop the slice when it does not parse.
+
+**Example.**
+
+```ts
+import { createTable, sorting } from '@datakable/core'
+
+const users = [
+  { id: 1, name: 'Ada' },
+  { id: 2, name: 'Grace' },
+]
+
+// Restored from the URL: a hand-edited link left a null entry in the sort.
+const saved = JSON.parse('{"sorting":{"by":[{"id":"name","desc":true},null]}}')
+
+const table = createTable({ data: users, features: [sorting()], initialState: saved })
+table.toggleSort('id') // works: the null entry was dropped
+```
+
+prints (development console):
+
+```text
+⚠ [DataKable table#1] DK_INVALID_STATE: state.sorting is malformed (by[1]: null)
+  where   options.state.sorting
+  impact  the slice was replaced with { by: [1 valid] }; the table keeps working
+  fix     1. write state.sorting in the shape the feature uses (check initialState, setState and the controlled options.state, e.g. a value restored from the URL or storage)
+          2. validate restored state before passing it, or drop sorting when it does not parse
+  docs    https://github.com/Ink01101011/datakable/blob/main/docs/errors.md#dk_invalid_state
+  context trigger=init run=0 phase=client
 ```
 
 ### DK_INVALID_VALIDITY
@@ -2251,12 +2297,13 @@ prints (development console):
 
 `warn` · fault test: [column-filters.test.ts](../../packages/core/src/features/column-filters/column-filters.test.ts)
 
-**Problem.** A state slice (from `initialState`, `state` or `setState`) has an entry for a column that does not exist, e.g. a filter on a renamed column. The entry is ignored; the other entries still apply.
+**Problem.** A state slice (from `initialState`, `state` or `setState`) has an entry for a column that does not exist, e.g. a filter on a renamed column. The entry is ignored; the other entries still apply. A `"__proto__"` key (top-level, or as a column id in `columnFilters` / `setColumnFilter`) is reported here too: it is dropped, because writing it would replace the prototype of the state object.
 
 **Common causes.**
 
 - State restored from the URL or storage that was saved before a column was renamed or removed.
 - A typo in a column id.
+- `JSON.parse` of untrusted input (a URL or storage value) with a `"__proto__"` key.
 
 **Fix.**
 

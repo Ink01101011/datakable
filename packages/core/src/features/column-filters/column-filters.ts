@@ -1,13 +1,16 @@
 import { defineOptions } from '../../catalog/options'
 import { keepDiagnostics } from '../../diagnostics/catalog'
 import { DEV } from '../../diagnostics/env'
+import { describeValue } from '../../diagnostics/redact'
 import { defineFeature } from '../../feature/define'
+import { type SliceFix, sliceGuard } from '../../feature/slice-guard'
 import type { RowModelContext } from '../../feature/types'
 import { CellFailures } from '../../intercept/cell-batch'
 import { errorName } from '../../intercept/classify'
 import { boundaryDiagnostics } from '../../intercept/codes'
 import type { ColumnValues } from '../../pipeline/types'
 import { type DataMode, modeOption } from '../../source/mode'
+import { PROTO_KEY } from '../../table/state-codes'
 import { columnFiltersDiagnostics } from './codes'
 import {
   BAD,
@@ -216,6 +219,13 @@ function filterRows(
   return out ? out.subarray(0, n) : indices
 }
 
+const isSlice = (s: unknown): s is Record<string, unknown> =>
+  s !== null && typeof s === 'object' && !Array.isArray(s)
+
+/** A restored slice that is not an object (e.g. `null`) is replaced with no filters (#89). */
+const fixSlice = (s: unknown): SliceFix<ColumnFiltersState<unknown>> | undefined =>
+  isSlice(s) ? undefined : [{}, describeValue(s), '{}']
+
 /**
  * Column filters (§6.1): `equals`, `contains` (case-insensitive, NFC), `in`, `range` (inclusive),
  * `custom`. Filters combine with AND; nullish cells match no active filter; array cells match if
@@ -227,8 +237,9 @@ function filterRows(
  * table.setColumnFilter('name', { type: 'contains', value: 'ada' })
  * ```
  */
-export const columnFilters = (opts: ColumnFiltersOptions = {}) =>
-  defineFeature<'columnFilters', ColumnFiltersTypes>({
+export const columnFilters = (opts: ColumnFiltersOptions = {}) => {
+  const guard = sliceGuard('columnFilters', fixSlice)
+  return defineFeature<'columnFilters', ColumnFiltersTypes>({
     name: 'columnFilters',
     stage: 'filter',
     mode: opts.mode ?? 'client',
@@ -237,18 +248,37 @@ export const columnFilters = (opts: ColumnFiltersOptions = {}) =>
       DEV ? columnFiltersOptions : ({} as typeof columnFiltersOptions),
       opts,
     ),
+    interceptors: [guard.interceptor],
     initialState: () => ({}),
-    createApi: (ctx) => ({
-      setColumnFilter: (id, filter) =>
-        ctx.setState((prev) => {
+    createApi: (ctx) => {
+      guard.install(ctx)
+      // Values, not updaters: a library step is never reported as a failing user `updater` (#89).
+      // A controlled slice not fed back yet may still be malformed: it reads as no filters.
+      const current = (): Record<string, unknown> => {
+        const s = ctx.getState()
+        return isSlice(s) ? s : {}
+      }
+      return {
+        setColumnFilter: (id, filter) => {
+          // `next[id] =` would swap the slice's prototype (#102); never a column id.
+          if (id === PROTO_KEY) {
+            ctx.emit('DK_STATE_UNKNOWN_KEY', { slice: 'columnFilters', key: id, known: [] })
+            return
+          }
+          const prev = current()
           // No change (the same filter, or clearing a column without one): keep the slice.
-          if ((prev as Record<string, unknown>)[id] === filter) return prev
+          if ((Object.hasOwn(prev, id) ? prev[id] : undefined) === filter) return
           const next: Record<string, unknown> = { ...prev }
           if (filter === undefined) delete next[id]
           else next[id] = filter
-          return next as ColumnFiltersState<unknown>
-        }),
-      resetColumnFilters: () => ctx.setState((prev) => (Object.keys(prev).length ? {} : prev)),
-    }),
+          ctx.setState(next as ColumnFiltersState<unknown>)
+        },
+        resetColumnFilters: () => {
+          const s = ctx.getState()
+          if (!isSlice(s) || Object.keys(s).length > 0) ctx.setState({})
+        },
+      }
+    },
     rowModel: filterRows,
   })
+}

@@ -8,6 +8,7 @@ import { defineFeature } from '../feature/define'
 import { pagination } from '../features/pagination'
 import { search } from '../features/search'
 import { makeSchema } from '../ingest/test-schemas'
+import { withFetcher } from '../source/with-fetcher'
 import { createTable } from './create-table'
 
 /**
@@ -140,5 +141,54 @@ describe('production: an unwrapped schema / fetcher / searchFn is never ignored 
       "search({ searchFn }) must be withSearchFn(searchFn) from '@datakable/core/search-async', got " +
         'function',
     )
+  })
+})
+
+describe('production: invalid timeout / data fall back cheaply (#94)', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it.each([-1, Number.NaN, 0])('timeout %s falls back to the 30 s default', async (timeout) => {
+    vi.useFakeTimers()
+    const seen: Diagnostic[] = []
+    const t = createTable({
+      fetcher: withFetcher(() => new Promise(() => {})),
+      timeout,
+      features: [pagination({ mode: 'server' })],
+      onDiagnostic: (d) => seen.push(d),
+    })
+    expect(t.getRowModel().status).toBe('fetching')
+    await vi.advanceTimersByTimeAsync(29_000)
+    expect(t.getRowModel().status).toBe('fetching')
+    await vi.advanceTimersByTimeAsync(1_100)
+    expect(seen.map((d) => d.code)).toContain('DK_ASYNC_TIMEOUT')
+    expect(t.getRowModel().status).toBe('error')
+  })
+
+  it('timeout Infinity still disables the timer', async () => {
+    vi.useFakeTimers()
+    const seen: Diagnostic[] = []
+    const t = createTable({
+      fetcher: withFetcher(() => new Promise(() => {})),
+      timeout: Number.POSITIVE_INFINITY,
+      features: [pagination({ mode: 'server' })],
+      onDiagnostic: (d) => seen.push(d),
+    })
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(seen.map((d) => d.code)).not.toContain('DK_ASYNC_TIMEOUT')
+    expect(t.getRowModel().status).toBe('fetching')
+  })
+
+  it('data: null counts as not given: isInitialLoad stays true until data arrives', () => {
+    const listener = vi.fn()
+    // biome-ignore lint/suspicious/noExplicitAny: an invalid value on purpose
+    const t = createTable({ data: null as any })
+    t.subscribe(listener)
+    expect(t.getRowModel()).toMatchObject({ isInitialLoad: true, status: 'idle' })
+    expect(t.getRowModel().rows).toHaveLength(0)
+    t.setOptions({ data: [{ id: 1 }] })
+    expect(t.getRowModel()).toMatchObject({ isInitialLoad: false })
+    expect(t.getRowModel().rows).toHaveLength(1)
   })
 })

@@ -3,6 +3,7 @@ import { keepDiagnostics } from '../diagnostics/catalog'
 import { DEV } from '../diagnostics/env'
 import type { Emit } from '../diagnostics/types'
 import { errorName } from '../intercept/classify'
+import { PROTO_KEY } from '../table/state-codes'
 import type { Table, TableState } from '../table/types'
 import { featureDiagnostics } from './codes'
 import type { AnyFeature, FeatureContext, SliceUpdater } from './types'
@@ -59,7 +60,13 @@ export function initialSlices(
       reportFailure(emit, f.name, 'initialState', 'slice-undefined', e)
     }
   }
-  return given ? Object.assign(out, given) : out
+  if (!given) return out
+  for (const k of Object.keys(given)) {
+    // JSON.parse makes `__proto__` an own key; assigning it would swap the prototype (#102).
+    if (k === PROTO_KEY) emit('DK_STATE_UNKNOWN_KEY', { slice: '', key: k, known: [] })
+    else out[k] = (given as TableState)[k]
+  }
+  return out
 }
 
 /**

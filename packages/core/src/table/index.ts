@@ -4,6 +4,7 @@ export { dataMutationDiagnostics } from './data-mutation'
 export { emitTableDiagnostic } from './internals'
 export { createDeferred, startTable } from './ssr'
 export { ssrDiagnostics } from './ssr-codes'
+export { stateDiagnostics } from './state-codes'
 export {
   type ControlledState,
   type Listener,

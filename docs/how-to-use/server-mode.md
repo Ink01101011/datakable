@@ -105,7 +105,8 @@ goes through one async control:
   result is never applied, even if the fetcher ignores the signal.
 - **Timeout.** A request still running after `timeout` ms (default 30 000) is aborted and reported
   as `DK_ASYNC_TIMEOUT`. `timeout: Infinity` disables the timer; `timeout` is read once, at
-  creation.
+  creation. Any other value that is not a positive number (`0`, a negative number, `NaN`) throws
+  `DK_INVALID_OPTION` in development; a production build uses the 30 000 ms default instead.
 - **Validated result.** The result must be `{ rows, rowCount? }`. A missing `rows`, a `rowCount`
   that is not an integer ≥ 0, a `rowCount` smaller than `rows.length`, or no `rowCount` with
   server-mode pagination is `DK_FETCH_BAD_RESPONSE`.
@@ -196,7 +197,8 @@ else if (status === 'error') console.log('still failing; the previous rows stay'
 - `status: 'error'` after a failed request, until a request applies. During a `refetch()` after an
   error the status stays `'error'` (it outranks `'fetching'`); follow the retry with the promise
   `refetch()` returns.
-- `isInitialLoad: true` until the first rows are applied (an empty result counts). With
+- `isInitialLoad: true` until the first rows are applied (an empty result counts; `data: null`
+  does not: development throws `DK_INVALID_OPTION`, production treats it as no data yet). With
   `isInitialLoad`, `'fetching'` is a full loading state and `'error'` an error with nothing behind
   it; without it, both show over the previous rows.
 
