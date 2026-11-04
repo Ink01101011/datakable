@@ -9,7 +9,9 @@ import { DEV } from './env'
  * built); production without the messages keeps the key, so the bundle carries no prose. A value
  * that is not a known key (a plugin's own `registerFallback` text) is kept as written.
  *
- * `{0}`, `{1}` are the arguments after the key, separated by `|`.
+ * `{0}`, `{1}` are the arguments after the key, separated by `|`. A value the library does not
+ * write itself (a user's option, a column id, a plugin's name) is packed with {@link proseArg}, so
+ * a `|` inside it does not split it (#92).
  */
 export const proseMessages: Readonly<Record<string, string>> = {
   // Cell slots (`DK_CALLBACK_FAILED` / `DK_CALLBACK_BAD_RETURN` fallback).
@@ -95,6 +97,14 @@ export const proseMessages: Readonly<Record<string, string>> = {
 }
 
 /**
+ * A user value as one prose argument (`` `unknown-op|${proseArg(op)}` ``): `%` and `|` are
+ * escaped (`%25`, `%7C`), so a value holding them is read back whole, not split or expanded.
+ */
+export function proseArg(v: string): string {
+  return v.replace(/[%|]/g, encodeURIComponent)
+}
+
+/**
  * The sentence of a prose key (`'page-size|10'` → `'pageSize was replaced by 10'`): from
  * {@link proseMessages} in development (`dev`), else from the installed messages; `v` itself when
  * neither has the key.
@@ -102,10 +112,14 @@ export const proseMessages: Readonly<Record<string, string>> = {
 export function expandProse(v: string, dev: boolean): string {
   const [key, ...args] = v.split('|') as [string, ...string[]]
   const text = (DEV && dev ? proseMessages[key] : undefined) ?? installedText(key)
-  // An argument may be a key itself (`'ranks|custom-threw'`); a missing one reads as ''. (`n` is
-  // the digit string: `args['0']` indexes like `args[0]`.)
+  // An argument may be a key itself (`'ranks|custom-threw'`); a missing one reads as ''. An
+  // escaped one ({@link proseArg}) is a value. (`n` is the digit string: `args['0']` indexes like
+  // `args[0]`.)
   return typeof text === 'string'
-    ? text.replace(/\{(\d)\}/g, (_, n: number) => expandProse(args[n] ?? '', dev))
+    ? text.replace(/\{(\d)\}/g, (_, n: number) => {
+        const a = args[n] ?? ''
+        return a.includes('%') ? decodeURIComponent(a) : expandProse(a, dev)
+      })
     : v
 }
 
