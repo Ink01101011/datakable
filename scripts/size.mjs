@@ -4,7 +4,7 @@
 //   pnpm check:size    the same, and exits 1 when an entry grew past its ratchet
 // Both also RUN every measured bundle (the entry's `smoke`) and exit 1 when one fails (#5).
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -17,9 +17,42 @@ const esbuild = createRequire(join(root, 'packages/core/package.json'))('esbuild
 const EXTERNAL = ['ex-search', 'exsorted', 'exsorted/*', 'kk-debounce', 'kk-debounce/*']
 const EXTERNAL_REACT = ['react', 'react/*', 'react-dom', 'react-dom/*']
 
+/**
+ * #78: each package inlines its package.json `version` into dist (`var version = "2.0.2";`), so a
+ * release bump alone changed the gzip size (2.0.0 → 2.0.1 failed a ratchet by 1 B, and
+ * `2.0.9` → `2.0.10` adds a byte). Every bundle is measured with that string replaced by this
+ * fixed placeholder: a version bump can never change a measurement.
+ */
+export const VERSION_PLACEHOLDER = '0.0.0'
+const INLINED_VERSION = /^(\/\/ package\.json\r?\nvar version = )"[^"]*";$/m
+
+/** `src` (a dist module) with its inlined package.json version replaced by the placeholder. */
+export function pinVersion(src) {
+  return src.replace(INLINED_VERSION, `$1${JSON.stringify(VERSION_PLACEHOLDER)};`)
+}
+
+/** esbuild plugin that loads every dist module through `pinVersion`; `pinned()` counts the hits. */
+function pinVersions() {
+  let pinned = 0
+  const plugin = {
+    name: 'pin-version',
+    setup(build) {
+      build.onLoad({ filter: /[\\/]dist[\\/].*\.js$/ }, (args) => {
+        const src = readFileSync(args.path, 'utf8')
+        const contents = pinVersion(src)
+        if (contents === src) return undefined
+        pinned++
+        return { contents, loader: 'js' }
+      })
+    },
+  }
+  return { plugin, pinned: () => pinned }
+}
+
 /** gzip -9 size (bytes) of `entry`'s production bundle. */
 export async function measure(entry) {
   const dir = join(root, 'packages', entry.pkg)
+  const pin = pinVersions()
   const result = await esbuild.build({
     stdin: {
       contents: `export { ${entry.import.join(', ')} } from './dist/${entry.entry ?? 'index'}.js'`,
@@ -34,7 +67,13 @@ export async function measure(entry) {
     external: [...EXTERNAL, ...EXTERNAL_REACT],
     write: false,
     logLevel: 'silent',
+    plugins: [pin.plugin],
   })
+  // Every entry bundles @datakable/core's VERSION: no hit means the dist format changed and the
+  // version would be measured again.
+  if (pin.pinned() === 0) {
+    throw new Error(`size: ${entry.name}: no inlined package.json version found to pin (#78)`)
+  }
   const code = result.outputFiles[0].contents
   return { min: code.length, gzip: gzipSync(code, { level: 9 }).length, run: run(entry, code) }
 }
