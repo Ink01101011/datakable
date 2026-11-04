@@ -107,6 +107,38 @@ export const z = createTable({ data: [{ id: 1 }], rowKey: 'id' })
 `,
 )
 
+// Looser consumers (#93): without `strictNullChecks`, `T` must still be inferred from `data`, so
+// that `rowKey: 'id'` is a path of the row, not a string checked against `(row: unknown) => …`.
+writeFileSync(
+  join(dir, 'index-loose.ts'),
+  `import { createTable as createCoreTable, type StandardSchemaV1 } from '@datakable/core'
+import { withSchema } from '@datakable/core/schema'
+import { sorting } from '@datakable/core/sorting'
+import { useDataTable } from '@datakable/react'
+import { createTable } from 'datakable'
+import { useDataTable as usePresetTable } from 'datakable/react'
+
+type User = { id: number; name: string }
+declare const users: User[]
+
+const t = createTable({ data: users, rowKey: 'id' })
+const c = createCoreTable({ data: users, rowKey: 'id', features: [sorting()] })
+const f = createTable({ data: users, rowKey: (u) => u.name })
+// @ts-expect-error not a path of User
+createTable({ data: users, rowKey: 'nope' })
+const row: User | undefined = t.getData()[0]
+c.toggleSort('name')
+// A schema is still told apart from no schema: the row type is its output, \`data\` is raw input.
+declare const userSchema: StandardSchemaV1<{ id: string }, User>
+declare const json: unknown[]
+const s = createTable({ schema: withSchema(userSchema), data: json, rowKey: 'name' })
+const parsed: User | undefined = s.getData()[0]
+const bare = () => useDataTable({ data: users, rowKey: 'id' })
+const preset = () => usePresetTable({ data: users, rowKey: 'id' }).setSearch('x')
+export { bare, c, f, parsed, preset, row, s, t }
+`,
+)
+
 const req = createRequire(join(root, 'package.json'))
 // The current TypeScript, and the minimum the docs promise (getting-started, READMEs: TS >= 5.4,
 // #32): the root devDependency `typescript-min` pins it, so a published .d.ts that needs a newer
@@ -117,9 +149,18 @@ const compilers = ['typescript', 'typescript-min'].map((pkg) => ({
 }))
 // node10 (`moduleResolution: node`, #33) ignores `exports`: the subpaths resolve through the
 // packages' `typesVersions`. TS 6 deprecates node10, hence `ignoreDeprecations` there.
+const bundler = { module: 'esnext', moduleResolution: 'bundler' }
 const configs = {
   node16: { module: 'node16', moduleResolution: 'node16', files: ['index.ts', 'index-cjs.cts'] },
-  bundler: { module: 'esnext', moduleResolution: 'bundler', files: ['index.ts'] },
+  bundler: { ...bundler, files: ['index.ts'] },
+  // #93: `strict: false`, with and without `strictNullChecks` (it decides how `T` is inferred).
+  'bundler-loose': { ...bundler, strict: false, files: ['index-loose.ts'] },
+  'bundler-loose-snc': {
+    ...bundler,
+    strict: false,
+    strictNullChecks: true,
+    files: ['index-loose.ts'],
+  },
   node10: {
     module: 'commonjs',
     moduleResolution: 'node10',
@@ -128,7 +169,7 @@ const configs = {
   },
 }
 let failed = false
-for (const [name, { files, ...resolution }] of Object.entries(configs)) {
+for (const [name, { files, strict = true, ...resolution }] of Object.entries(configs)) {
   for (const { tsc, version } of compilers) {
     const major = Number(version.split('.')[0])
     const config = `tsconfig.${name}.ts${major}.json`
@@ -140,8 +181,9 @@ for (const [name, { files, ...resolution }] of Object.entries(configs)) {
           ...(name === 'node10' && major >= 6 ? { ignoreDeprecations: '6.0' } : {}),
           target: 'es2022',
           lib: ['es2022', 'dom'],
-          strict: true,
-          exactOptionalPropertyTypes: true,
+          strict,
+          // Needs `strictNullChecks`; the loose configs leave it at their default.
+          ...(strict ? { exactOptionalPropertyTypes: true } : {}),
           skipLibCheck: false,
           noEmit: true,
           jsx: 'react-jsx',

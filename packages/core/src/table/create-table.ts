@@ -98,8 +98,27 @@ const freeze = <S extends object>(s: S): S => {
   return s
 }
 
+/** `undefined` exactly (not `any`, `never` or a union with it). */
+type IsUndefined<X> =
+  (<G>() => G extends X ? 1 : 2) extends <G>() => G extends undefined ? 1 : 2 ? true : false
+
+/**
+ * `true` when `Sch` (the inferred `schema` option) is a schema. Its default, `undefined` (no
+ * schema), is excluded explicitly: without `strictNullChecks` `undefined` is assignable to every
+ * type, `TableSchema` included, which typed `data` as `unknown[]` and `T` as `unknown` (#93).
+ */
+export type HasSchema<Sch> = [Sch] extends [TableSchema]
+  ? IsUndefined<Sch> extends true
+    ? false
+    : true
+  : false
+
 /** The row type: the schema output with a `schema` (§5.1), else `T`. */
-export type SchemaRow<T, Sch> = [Sch] extends [TableSchema] ? StandardSchemaV1.InferOutput<Sch> : T
+export type SchemaRow<T, Sch> = [Sch] extends [TableSchema]
+  ? IsUndefined<Sch> extends true
+    ? T
+    : StandardSchemaV1.InferOutput<Sch>
+  : T
 
 /**
  * `createTable` options: with a `schema`, the row type is its output and `data` is the raw input
@@ -109,15 +128,15 @@ export type CreateTableOptions<T, S extends TableState, Sch, M extends InvalidRo
   TableOptions<SchemaRow<T, Sch>, S>,
   'data' | 'schema' | 'invalidRows' | 'fetcher' | 'initialData'
 > & {
-  data?: readonly ([Sch] extends [TableSchema] ? unknown : T)[]
+  data?: readonly (HasSchema<Sch> extends true ? unknown : T)[]
   /** With a schema, the raw rows (validated like `data`). */
-  initialData?: readonly ([Sch] extends [TableSchema] ? unknown : T)[]
+  initialData?: readonly (HasSchema<Sch> extends true ? unknown : T)[]
   /** With a schema, the fetcher returns raw rows (validated like `data`). */
-  fetcher?: ServerFetcher<[Sch] extends [TableSchema] ? unknown : T>
+  fetcher?: ServerFetcher<HasSchema<Sch> extends true ? unknown : T>
   // Without an inferred schema (explicit type arguments, a `TableOptions<T>` object) these keep
   // their `TableOptions` types.
-  schema?: [Sch] extends [TableSchema] ? Sch : TableSchema<unknown, T>
-  invalidRows?: [Sch] extends [TableSchema] ? M : InvalidRowsMode
+  schema?: HasSchema<Sch> extends true ? Sch : TableSchema<unknown, T>
+  invalidRows?: HasSchema<Sch> extends true ? M : InvalidRowsMode
 }
 
 /** Column id: `key` for key columns, `id` for accessor columns. */
@@ -146,7 +165,7 @@ export function createTable<
   SchemaRow<T, Sch>,
   TableStateFor<S, Fs, SchemaRow<T, Sch>>,
   M,
-  [Sch] extends [TableSchema] ? unknown : T
+  HasSchema<Sch> extends true ? unknown : T
 > &
   ApiOf<Fs, SchemaRow<T, Sch>>
 export function createTable<T, S extends TableState>(

@@ -1,5 +1,10 @@
 export { tableDiagnostics } from './codes'
-export { type CreateTableOptions, createTable, type SchemaRow } from './create-table'
+export {
+  type CreateTableOptions,
+  createTable,
+  type HasSchema,
+  type SchemaRow,
+} from './create-table'
 export { dataMutationDiagnostics } from './data-mutation'
 export { emitTableDiagnostic } from './internals'
 export { createDeferred, startTable } from './ssr'
