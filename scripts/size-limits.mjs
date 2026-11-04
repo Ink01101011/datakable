@@ -79,7 +79,9 @@ export default [
     // searchFn (never silent, §8.6; user decision 2026-10-13): +162 B.
     // #5 (user decision 2026-10-13): 24 → 26.5 KB (26,785 B). The earlier sizes were measured on a
     // bundle that threw (esbuild --minify dropped the feature runtime); this one runs (`smoke`).
-    limit: 26.5 * KB,
+    // Diagnostics privacy fix (user decision 2026-11-04): 26.5 → 26.75 KB (27,184 B):
+    // getDiagnostics() returns copies without context.cause (+46 B); 2.0.1 was already +1 B over.
+    limit: 26.75 * KB,
   },
   {
     name: 'datakable: createTable (default preset)',
@@ -113,7 +115,10 @@ export default [
     // RB: 26,317 B with the production unwrapped-option guard (+176 B); stays 26 KB.
     // #5 (user decision 2026-10-13): 26 → 28.5 KB (28,938 B). The earlier sizes were measured on a
     // bundle that threw (esbuild --minify dropped the feature runtime); this one runs (`smoke`).
-    limit: 28.5 * KB,
+    // Diagnostics privacy fix (user decision 2026-11-04): 28.5 → 28.75 KB (29,208 B, +50 B):
+    // getDiagnostics() returns copies without context.cause. The §9.3 spec (28.5 KB) is unmet
+    // by 24 B; the user accepted that gap. The smallest correct variant measured was 29,193 B.
+    limit: 28.75 * KB,
   },
   {
     name: 'datakable/react: DataTable (default preset + <DataTable />)',

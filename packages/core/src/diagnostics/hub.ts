@@ -219,7 +219,16 @@ export function createDiagnostics(options: DiagnosticsOptions = {}): Diagnostics
   return {
     table,
     emit,
-    getDiagnostics: () => buffer.toArray(),
+    // The original error can quote row values (a sensitive column's accessor throwing
+    // `bad ssn 123-…`): it reaches onDiagnostic and strict's DatakableError only, so readers of the
+    // buffer get a copy without it. `occurrences` stays shared, so counts still aggregate live.
+    getDiagnostics: () =>
+      buffer.toArray().map((d) => {
+        const { cause, ...context } = d.context
+        return cause === undefined
+          ? d
+          : Object.setPrototypeOf({ ...d, context }, Object.getPrototypeOf(d))
+      }),
     attach(rt) {
       runtime = rt
     },

@@ -5,6 +5,7 @@ import { VERSION } from '../version'
 import { DatakableError } from './build'
 import { defineDiagnostic } from './catalog'
 import { createDiagnostics, type DiagnosticsOptions } from './hub'
+import type { Diagnostic } from './types'
 
 declare module './catalog' {
   interface DiagnosticCatalog {
@@ -83,6 +84,45 @@ describe('createDiagnostics: enrich', () => {
     expect(d?.context.run).toBe(9)
     expect(d?.context.cause).toBe(cause)
     expect(d?.context.causedBy).toBe('DK_X#run8')
+  })
+
+  // the original error can quote a sensitive value; it reaches onDiagnostic
+  // (and strict's DatakableError) only, never the buffer behind getDiagnostics().
+  it('getDiagnostics() leaves out context.cause; onDiagnostic still receives it', () => {
+    const got: Diagnostic[] = []
+    const hub = quiet({ onDiagnostic: (d) => got.push(d) })
+    const cause = new Error('bad ssn 123-45-6789')
+    hub.emit('DK_TEST_INFO', { name: 'x' }, { cause })
+    expect(got[0]?.context.cause).toBe(cause)
+    const [stored] = hub.getDiagnostics()
+    expect(stored?.context.cause).toBeUndefined()
+    expect('cause' in (stored?.context ?? {})).toBe(false)
+    // structuredClone / postMessage keep every own property, so the cause must not be one.
+    expect(structuredClone(stored)?.context.cause).toBeUndefined()
+    // Not reachable through the prototype chain either.
+    for (let o: unknown = stored; o; o = Object.getPrototypeOf(o)) {
+      expect((o as Diagnostic).context?.cause).toBeUndefined()
+    }
+    // Still the same diagnostic: toJSON, fingerprint, and live occurrence counts.
+    expect(typeof stored?.toJSON).toBe('function')
+    expect(stored?.fingerprint).toBe(got[0]?.fingerprint)
+    hub.emit('DK_TEST_INFO', { name: 'x' }, { cause })
+    expect(got[0]?.context.occurrences.count).toBe(2)
+    expect(hub.getDiagnostics()[0]?.context.occurrences.count).toBe(2)
+  })
+
+  it('strict keeps the original error as the DatakableError cause', () => {
+    const hub = quiet({ strict: true })
+    const cause = new RangeError('root')
+    let thrown: unknown
+    try {
+      hub.emit('DK_TEST_ROW', { index: 1, key: 1n }, { cause })
+    } catch (e) {
+      thrown = e
+    }
+    expect(thrown).toBeInstanceOf(DatakableError)
+    expect((thrown as Error).cause).toBe(cause)
+    expect(hub.getDiagnostics()[0]?.context.cause).toBeUndefined()
   })
 
   it('toJSON is bigint- and cycle-safe and leaves out cause', () => {
