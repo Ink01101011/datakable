@@ -1,5 +1,6 @@
 import { DatakableError, internalError } from '../diagnostics/build'
 import { DEV } from '../diagnostics/env'
+import { proseArg } from '../diagnostics/prose'
 import type { Emit } from '../diagnostics/types'
 import type { InterceptorContext } from './context'
 import type { Interceptor } from './define'
@@ -189,7 +190,7 @@ export function createInterceptorRuntime(
   function compile(op: string): Chain {
     const info = getOperation(op)
     if (!info) {
-      throw internalError(op, `unknown-op|${op}`)
+      throw internalError(op, `unknown-op|${proseArg(op)}`)
     }
     const mine = list.filter((i) => attaches(i, op))
     if (boundary && attaches(boundary, op)) mine.unshift(boundary)
@@ -222,7 +223,7 @@ export function createInterceptorRuntime(
     setInterceptors,
     installBoundary(b) {
       if (boundary) {
-        throw internalError('*', `boundary-twice|${boundary.name}|${b.name}`)
+        throw internalError('*', `boundary-twice|${proseArg(boundary.name)}|${proseArg(b.name)}`)
       }
       boundary = b
       compileAll()

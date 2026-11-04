@@ -6,6 +6,7 @@ import { compilePath, getValue } from '../../column/get-value'
 import type { Path } from '../../column/path'
 import { keepDiagnostics } from '../../diagnostics/catalog'
 import { DEV } from '../../diagnostics/env'
+import { proseArg } from '../../diagnostics/prose'
 import type { Emit } from '../../diagnostics/types'
 import { defineFeature } from '../../feature/define'
 import type { FeatureTypes, RowModelContext } from '../../feature/types'
@@ -386,7 +387,7 @@ export const sorting = (opts: SortingOptions = {}) => {
         typeof requested !== 'function' &&
         !(ALGORITHMS as readonly unknown[]).includes(requested)
       ) {
-        noEffect(`not-algorithm|${JSON.stringify(requested)}`)
+        noEffect(`not-algorithm|${proseArg(JSON.stringify(requested))}`)
         requested = 'auto'
       }
       if (requested !== 'native' && exsorted === undefined) {
