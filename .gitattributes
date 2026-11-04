@@ -1,0 +1,21 @@
+# LF everywhere, whatever core.autocrlf says (#81): the build, biome and the docs tests compare
+# text and expect LF. The repo has no binary files today; the patterns below keep any that get
+# added out of line-ending conversion.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.avif binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.tgz binary
+*.wasm binary

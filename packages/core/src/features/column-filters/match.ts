@@ -65,11 +65,14 @@ function foldedFor(values: ColumnValues): (string | undefined)[] {
   return f
 }
 
+const isNaNValue = (v: unknown) => typeof v === 'number' && Number.isNaN(v)
+
 const bad = (filter: string, expected: string, received: unknown): Compiled => ({
   kind: 'bad',
   filter,
   expected,
-  received: typeName(received),
+  // `number(NaN)`, as `describeValue` names it: "a number, expects a number" would read as a bug.
+  received: isNaNValue(received) ? 'number(NaN)' : typeName(received),
 })
 
 function equals(fv: unknown): Compiled {
@@ -82,6 +85,8 @@ function equals(fv: unknown): Compiled {
       test: (e) => (e instanceof Date ? (e.getTime() === t ? MATCH : NO) : BAD),
     }
   }
+  // NaN equals nothing (`NaN !== NaN`): reported, not a silent empty table (#91).
+  if (isNaNValue(fv)) return bad('equals', 'not-nan', fv)
   const type = typeof fv
   if (type === 'object' || type === 'function' || type === 'symbol') {
     return bad('equals', 'prim-or-date', fv)
@@ -145,10 +150,14 @@ function inList(fv: unknown): Compiled {
 
 type Family = 'number' | 'Date'
 
-/** A range bound: absent, its family + comparable value, or malformed. */
+/**
+ * A range bound: absent, its family + comparable value, or malformed. NaN is malformed: every
+ * comparison with it is false, so it would hide every row without a report (#91).
+ */
 function bound(v: unknown): { family: Family; at: number | bigint } | null | false {
   if (empty(v)) return null
-  if (typeof v === 'number' || typeof v === 'bigint') return { family: 'number', at: v }
+  if ((typeof v === 'number' && !Number.isNaN(v)) || typeof v === 'bigint')
+    return { family: 'number', at: v }
   if (v instanceof Date && !Number.isNaN(v.getTime())) return { family: 'Date', at: v.getTime() }
   return false
 }

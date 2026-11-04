@@ -10,7 +10,8 @@ keepDiagnostics(fetchDiagnostics)
 
 /**
  * What `options.fetcher` receives (§7.1): only the state of the server-mode steps, plus the
- * request's `signal` (aborted when superseded, timed out or the table is destroyed).
+ * request's `signal` (aborted when superseded, timed out or the table is destroyed). The state may
+ * be restored (URL, storage): treat these params as untrusted input on the backend (#100).
  */
 export interface FetchParams {
   /** The applied search query (`search({ mode: 'server' })`). */
@@ -38,6 +39,8 @@ export interface FetchResult<T> {
  * What `table.refetch()` resolves to; it never rejects. `'applied'`: the rows were loaded;
  * `'superseded'`: a newer request (or `destroy()`) replaced it; `'error'`: it failed
  * (`DK_FETCH_FAILED`, `DK_FETCH_BAD_RESPONSE`, `DK_ASYNC_TIMEOUT`) and the previous rows are kept.
+ * On a `createDeferred` table it is the outcome of the request that runs after `startTable`
+ * (`'superseded'` when the table is destroyed before it starts, #90).
  */
 export interface FetchOutcome {
   status: 'applied' | 'superseded' | 'error'

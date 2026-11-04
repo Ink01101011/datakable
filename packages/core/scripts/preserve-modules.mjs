@@ -2,8 +2,10 @@
 import { existsSync } from 'node:fs'
 import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const ENV_IMPORT = /^import \{ DEV \} from '((?:\.\.?\/)+(?:diagnostics\/)?)env'\n/m
+// `\r?\n`: a Windows checkout with `core.autocrlf=true` has CRLF sources (#81).
+const ENV_IMPORT = /^import \{ DEV \} from '((?:\.\.?\/)+(?:diagnostics\/)?)env'(\r?\n)/m
 const NODE_ENV = '(process.env.NODE_ENV !== "production")'
 
 /**
@@ -38,16 +40,41 @@ export const preserveModules = {
       return undefined // JSON (the package.json version): inlined
     })
     build.onLoad({ filter: /[\\/]src[\\/].*\.ts$/ }, async (args) => {
-      const src = await readFile(args.path, 'utf8')
-      if (!ENV_IMPORT.test(src)) return undefined
-      return {
-        contents: src
-          .replace(ENV_IMPORT, (_, dir) => `import '${dir}process-guard'\n`)
-          .replace(/\bDEV\b/g, NODE_ENV),
-        loader: 'ts',
-      }
+      const contents = inlineDev(await readFile(args.path, 'utf8'))
+      return contents === undefined ? undefined : { contents, loader: 'ts' }
     })
   },
+}
+
+/**
+ * `src` with its `DEV` import replaced by the `process-guard` import (same line ending) and every
+ * `DEV` written out as the `NODE_ENV` check; `undefined` when `src` does not import `DEV`.
+ */
+export function inlineDev(src) {
+  if (!ENV_IMPORT.test(src)) return undefined
+  return src
+    .replace(ENV_IMPORT, (_, dir, eol) => `import '${dir}process-guard'${eol}`)
+    .replace(/\bDEV\b/g, NODE_ENV)
+}
+
+/**
+ * A `node --input-type=module -e` script that loads the built module at the file URL `url` (`.cjs`
+ * with `require`, else `import()`) with no `process` global, and prints `loaded` or the error (#36).
+ * `require` takes a filesystem path and `import()` a URL; `URL.pathname` is neither in a path with
+ * a space or non-ASCII name (percent-encoded) or on Windows (`/C:/...`) (#82).
+ */
+export function loadWithoutProcess(url) {
+  const cjs = url.pathname.endsWith('.cjs')
+  const f = cjs ? fileURLToPath(url) : url.href
+  const load = cjs
+    ? "p.getBuiltinModule('node:module').createRequire(import.meta.url)(f)"
+    : 'await import(f)'
+  return (
+    `const f = ${JSON.stringify(f)}; ` +
+    'const p = globalThis.process; delete globalThis.process; let out = "loaded"; ' +
+    `try { ${load} } catch (e) { out = String(e) } ` +
+    'p.stdout.write(out)'
+  )
 }
 
 /** Fails the build when an emitted module still imports `diagnostics/env` (tsup `onSuccess`). */
