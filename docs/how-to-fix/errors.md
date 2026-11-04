@@ -191,6 +191,7 @@ To trace a production table, install it: `createTable({ interceptors: [tracer()]
 | [`DK_SORT_STRATEGY`](#dk_sort_strategy) | info | Features |
 | [`DK_SEARCH_FAILED`](#dk_search_failed) | error | Features |
 | [`DK_SEARCH_COLUMN_SKIPPED`](#dk_search_column_skipped) | info | Features |
+| [`DK_SEARCH_UNKNOWN_KEYS`](#dk_search_unknown_keys) | warn | Features |
 | [`DK_INVALID_PAGINATION`](#dk_invalid_pagination) | warn | Features |
 | [`DK_INVALID_VALIDITY`](#dk_invalid_validity) | warn | Features |
 | [`DK_FETCH_FAILED`](#dk_fetch_failed) | error | Async |
@@ -934,6 +935,60 @@ prints (development console):
           2. retry from the UI with flushSearch(); the next query change runs searchFn again
   docs    https://github.com/Ink01101011/datakable/blob/main/docs/errors.md#dk_search_failed
   context trigger=fetch run=1 phase=client
+```
+
+### DK_SEARCH_UNKNOWN_KEYS
+
+`warn` · fault test: [search-fn.test.ts](../../packages/core/src/features/search/search-fn.test.ts)
+
+**Problem.** `search({ searchFn: withSearchFn(fn) })`'s `fn` resolved with `{ keys }`, and some of those keys match no row's key. Keys are compared as strings, as everywhere else (`2` and `'2'` match the same row). The other keys' rows are shown; the unknown ones are ignored. `details` holds the `count` of unknown keys, how many were `returned`, and a sample of up to five `keys` (redacted like row keys: hashed under `'safe'`, `[sensitive]` when the `rowKey` column is sensitive). Development builds only, once per applied result.
+
+**Common causes.**
+
+- The search index is out of date, or covers more rows than the table's `data` (another page, deleted rows).
+- The service returns another id than the table's `rowKey` (e.g. a document id instead of the user id).
+- A repeated `rowKey` value: only the first row keeps the key; later rows carry `key#1`, `key#2`, … (`DK_DUPLICATE_ROW_KEY`), so `'a'` finds only the first of them.
+
+**Fix.**
+
+- Return the `rowKey` values of rows in `ctx.rows`.
+- Make `rowKey` unique, or return the suffixed keys (`row.key`) of the repeated rows.
+
+**Example.**
+
+```ts
+import { createTable, search } from '@datakable/core'
+import { withSearchFn } from '@datakable/core/search-async'
+
+type User = { id: number; name: string }
+const users: User[] = [
+  { id: 1, name: 'Ada' },
+  { id: 2, name: 'Grace' },
+]
+
+const table = createTable({
+  data: users,
+  rowKey: 'id',
+  features: [
+    search<User>({
+      // A search index that still holds user 7, which this page's data does not.
+      searchFn: withSearchFn(async () => ({ keys: ['2', '7'] })),
+    }),
+  ],
+})
+await table.setSearch('gr') // shows Grace ('2' matches the key 2); '7' matches no row
+```
+
+prints (development console):
+
+```text
+⚠ [DataKable table#1] DK_SEARCH_UNKNOWN_KEYS: 1 of the 2 keys searchFn returned match no row (first: "7")
+  where   options.searchFn
+  impact  those keys are ignored; the rows of the other keys are shown
+  fix     1. return the rowKey values of rows in ctx.rows (compared as strings: 2 and "2" match the same row); a key the data does not hold (another page, a stale index) matches nothing
+          2. a repeated rowKey value keeps its key on the first row only: later rows carry key#1, key#2, … (as row.key reports them, DK_DUPLICATE_ROW_KEY); make rowKey unique, or return those keys
+  docs    https://github.com/Ink01101011/datakable/blob/main/docs/errors.md#dk_search_unknown_keys
+  context trigger=fetch run=2 phase=client
 ```
 
 ### DK_INVALID_PAGINATION

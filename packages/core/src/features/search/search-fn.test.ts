@@ -234,6 +234,78 @@ describe('async searchFn (§6.3)', () => {
     expect(ids(t)).toEqual([3])
   })
 
+  it('#86: { keys } compare as strings: ["2"] matches the row with the numeric key 2', async () => {
+    const t = make(() => ({ keys: ['2', '1'] }))
+    await expect(t.setSearch('x')).resolves.toEqual({ status: 'applied' })
+    expect(ids(t)).toEqual([2, 1])
+    expect(codes()).not.toContain('DK_SEARCH_UNKNOWN_KEYS')
+  })
+
+  it('#86: { keys } compare as strings both ways: 2 matches the string key "2"', async () => {
+    type S = { id: string; name: string; age: number }
+    const rows: S[] = users.map((u) => ({ ...u, id: String(u.id) }))
+    const t = createTable({
+      data: rows,
+      onDiagnostic,
+      rowKey: 'id',
+      features: [search<S>({ searchFn: withSearchFn(() => ({ keys: [2, 0] })) })],
+    })
+    await t.setSearch('x')
+    expect(t.getRowModel().rows.map((r) => r.original.id)).toEqual(['2', '0'])
+  })
+
+  it('#86: returned keys that match no row are DK_SEARCH_UNKNOWN_KEYS (count + sample), once', async () => {
+    const t = make(() => ({ keys: ['1', 'zzz', 99, 'nope'] }))
+    await expect(t.setSearch('x')).resolves.toEqual({ status: 'applied' })
+    expect(ids(t)).toEqual([1])
+    const found = seen.filter((x) => x.code === 'DK_SEARCH_UNKNOWN_KEYS')
+    expect(found).toHaveLength(1)
+    const d = found[0] as Diagnostic
+    expect(d.level).toBe('warn')
+    expect(d.where).toEqual({ kind: 'option', path: 'searchFn' })
+    expect(d.details).toEqual({ count: 3, returned: 4, keys: ['zzz', 99, 'nope'] })
+    expect(d.fix.length).toBeGreaterThan(0)
+    // Another pipeline run over the same result does not report it again.
+    t.setState((s) => ({ ...s }))
+    t.getRowModel()
+    expect(seen.filter((x) => x.code === 'DK_SEARCH_UNKNOWN_KEYS')).toHaveLength(1)
+  })
+
+  it('#86: the DK_SEARCH_UNKNOWN_KEYS sample is capped and redacted for a sensitive rowKey', async () => {
+    const many = Array.from({ length: 12 }, (_, i) => `k${i}`)
+    const t = createTable({
+      data: users,
+      onDiagnostic,
+      rowKey: 'id',
+      columns: [{ key: 'id', sensitive: true }, { key: 'name' }],
+      features: [search<U>({ searchFn: withSearchFn(() => ({ keys: many })) })],
+    })
+    await t.setSearch('x')
+    const d = seen.find((x) => x.code === 'DK_SEARCH_UNKNOWN_KEYS') as Diagnostic
+    expect(d.details).toMatchObject({ count: 12, returned: 12 })
+    const keys = (d.details as { keys: unknown[] }).keys
+    expect(keys).toHaveLength(5)
+    expect(keys.every((k) => k === '[sensitive]')).toBe(true)
+  })
+
+  it('#86: repeated rowKey values: later rows carry key#1, key#2 (as row.key reports them)', async () => {
+    type D = { id: string; name: string }
+    const rows: D[] = [
+      { id: 'a', name: 'first' },
+      { id: 'a', name: 'second' },
+      { id: 'b', name: 'third' },
+    ]
+    const t = createTable({
+      data: rows,
+      onDiagnostic,
+      rowKey: 'id',
+      features: [search<D>({ searchFn: withSearchFn(() => ({ keys: ['a#1', 'b'] })) })],
+    })
+    await t.setSearch('x')
+    expect(t.getRowModel().rows.map((r) => r.original.name)).toEqual(['second', 'third'])
+    expect(codes()).not.toContain('DK_SEARCH_UNKNOWN_KEYS')
+  })
+
   it('the result is intersected with the filtered rows (search runs after filters)', async () => {
     const t = createTable({
       data: users,
