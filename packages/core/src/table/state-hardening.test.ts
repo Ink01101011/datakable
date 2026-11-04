@@ -226,4 +226,19 @@ describe('#103: dev deepFreeze of deeply nested restored state', () => {
     t.setState({ other: deep(10_000) } as Loose)
     expect(Object.isFrozen((t.getState() as Loose).other.a)).toBe(true)
   })
+
+  it('a 10k-deep field on a restored sort entry: setSorting / clearSorting still work', () => {
+    const entry = { id: 'name', desc: false, extra: deep(10_000) }
+    const t = createTable({
+      data,
+      features: [sorting()],
+      initialState: { sorting: { by: [entry] } } as Loose,
+      onDiagnostic,
+    })
+    t.setSorting([{ id: 'name', desc: true }])
+    expect(t.getState().sorting.by).toEqual([{ id: 'name', desc: true }])
+    t.setState({ sorting: { by: [entry] } } as Loose)
+    t.clearSorting()
+    expect(t.getState().sorting.by).toEqual([])
+  })
 })

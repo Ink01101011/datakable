@@ -134,8 +134,8 @@ in server mode.
 | `signal` | `AbortSignal` | always: aborted when the request is superseded, timed out or the table is destroyed |
 
 `sort` holds only `{ id: string, desc: boolean }` entries. With `columns`, an entry whose id names no
-column, or a column with `sortable: false`, is left out and reported as
-[`DK_STATE_UNKNOWN_KEY`](../how-to-fix/errors.md#dk_state_unknown_key). `pageIndex` and `pageSize` are
+column, or a column with `sortable: false`, is left out (in development it is also reported as
+[`DK_STATE_UNKNOWN_KEY`](../how-to-fix/errors.md#dk_state_unknown_key)). `pageIndex` and `pageSize` are
 safe integers (`pageIndex ≥ 0`, `pageSize > 0`); any other restored value is replaced before the first
 request and reported as [`DK_INVALID_PAGINATION`](../how-to-fix/errors.md#dk_invalid_pagination).
 

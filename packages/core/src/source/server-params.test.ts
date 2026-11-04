@@ -120,3 +120,19 @@ describe('server-mode pagination from restored state (#100)', () => {
     expect(d.map((x) => x.details.field)).toEqual(['pageIndex', 'pageSize'])
   })
 })
+
+describe('server-mode sort entries with a deep restored field (#103 via #100)', () => {
+  it('createTable does not overflow the stack, and the fetcher gets { id, desc } only', () => {
+    let v: unknown = {}
+    for (let i = 0; i < 10_000; i++) v = { a: v }
+    const m = manual()
+    const t = createTable({
+      columns: columns as never,
+      fetcher: withFetcher(m.fetcher),
+      features: [sorting({ mode: 'server' }), pagination({ mode: 'server' })],
+      initialState: { sorting: { by: [{ id: 'name', desc: true, extra: v }] } } as never,
+    })
+    expect(m.calls[0]?.params.sort).toEqual([{ id: 'name', desc: true }])
+    t.destroy()
+  })
+})

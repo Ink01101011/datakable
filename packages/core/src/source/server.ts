@@ -138,7 +138,15 @@ export const serverSource: ExtensionFactory<ServerSource> = (host: TableHost) =>
         return [{ id, desc: e.desc === true }]
       })
       // Unchanged: the slice itself, so the same state never refetches.
-      sortOut = JSON.stringify(out) === JSON.stringify(by) ? (by as Sort) : out
+      // Field by field, never JSON.stringify (a deep restored entry would overflow it, #103).
+      const same =
+        Array.isArray(by) &&
+        by.length === out.length &&
+        out.every((e, i) => {
+          const b = by[i]
+          return b.id === e.id && b.desc === e.desc && Object.keys(b).length === 2
+        })
+      sortOut = same ? (by as Sort) : out
     }
     return sortOut
   }

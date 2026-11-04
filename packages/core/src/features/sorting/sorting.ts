@@ -88,7 +88,11 @@ const setSort = (
   ctx: { getState(): unknown; setState(s: SortingState<unknown>): void },
   by: readonly SortEntry<unknown>[],
 ) => {
-  if (JSON.stringify(byOf(ctx.getState())) === JSON.stringify(by)) return
+  // JSON equality (key order included, #21); a restored entry nested deep enough to overflow
+  // JSON.stringify counts as a change instead of throwing (#103).
+  try {
+    if (JSON.stringify(byOf(ctx.getState())) === JSON.stringify(by)) return
+  } catch {}
   // A value that is not an array reaches the guard (dev: replaced, DK_INVALID_STATE).
   ctx.setState({ by: Array.isArray(by) ? by.slice() : by })
 }
