@@ -49,7 +49,8 @@ export default defineConfig({
         test: {
           name: 'core',
           environment: 'node',
-          include: ['packages/core/**/*.test.ts'],
+          // `scripts/`: the build and size scripts' own tests (#78, #81, #82).
+          include: ['packages/core/**/*.test.ts', 'scripts/**/*.test.ts'],
           exclude: ['packages/core/**/*.gc.test.ts', '**/node_modules/**'],
           typecheck: { include: ['packages/core/**/*.test-d.ts'] },
         },

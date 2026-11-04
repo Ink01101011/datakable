@@ -25,8 +25,9 @@ export default defineConfig({
     '!src/**/*.test.ts',
     '!src/**/*.test-d.ts',
     '!src/**/*.bench.ts',
-    '!src/column/test-utils.ts',
-    '!src/pipeline/test-features.ts',
+    // Test-only helpers and fixtures (`column/test-utils`, `pipeline/test-features`,
+    // `ingest/test-schemas`, #83); check:dist fails when a `test-*` file ships.
+    '!src/**/test-*.ts',
     // Fault-injection helpers and the code → test map are test-only.
     '!src/fault-injection/**',
   ],
