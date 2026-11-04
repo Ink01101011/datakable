@@ -1,5 +1,37 @@
 # datakable
 
+## 2.0.3
+
+### Patch Changes
+
+- 25413aa: - Bundle-size checks measure every bundle with the inlined package version replaced by a fixed placeholder, so a release version bump can no longer fail them; every size ratchet now keeps at least 64 B of headroom. (#78)
+  - Release workflow: npm is pinned to an exact version instead of `npm@latest`, and every GitHub Action in the CI and Release workflows is pinned to a full commit SHA. (#79)
+  - A Windows checkout with `core.autocrlf=true` builds, lints and tests again: the repository forces LF line endings (`.gitattributes`), and the core build accepts CRLF sources. (#81)
+  - The core build no longer fails when the repository path contains a space or non-ASCII characters, or on Windows paths. (#82)
+  - `@datakable/core` no longer ships the test-only `dist/ingest/test-schemas.*` files, and all three packages now include the MIT `LICENSE` file. (#83)
+- 543c65c: - A `null` or malformed `columnFilters` / `sorting` slice (e.g. restored from the URL or storage) no longer breaks `setColumnFilter` / `toggleSort` or puts the row model in `'error'`: the features read a malformed slice as empty (valid sort entries are kept); in development the slice is also replaced and reported as the new `DK_INVALID_STATE` (production leaves it in `getState()` unchanged, so app code that reads it should check its shape). DataKable's own state updates are no longer reported as a failing user `updater`. (#89)
+  - A `"__proto__"` key (which `JSON.parse` creates as an own key) in `initialState`, `setState`, a controlled `state` or `setColumnFilter` no longer replaces the prototype of the state snapshot or slice: it is dropped and reported as `DK_STATE_UNKNOWN_KEY`. (#102)
+  - In development, a deeply nested restored state (for example 10 000 levels) no longer makes `createTable` throw `RangeError`: the snapshot freeze walks it iteratively, and a deeply nested restored sort entry no longer overflows the stack in `setSorting` / `clearSorting` or, in server mode, in `createTable`. (#103)
+  - In production builds, a `timeout` of `0`, a negative number or `NaN` now falls back to the 30 s default instead of disabling the timer, and `data: null` counts as no data yet (`isInitialLoad` stays `true`) instead of a loaded empty table. Development still throws `DK_INVALID_OPTION` for both. (#94)
+- a567e37: - `table.refetch()` on a `createDeferred` table before `startTable` no longer resolves `{ status: 'applied' }` without fetching: the promise settles with the outcome of the request that runs after `startTable`, or `'superseded'` when the table is destroyed before it starts. (#90)
+  - Server mode: restored state is checked before it reaches the fetcher. `FetchParams.sort` holds only `{ id: string, desc: boolean }` entries, and with `columns` an id that names no sortable column is left out (and reported as `DK_STATE_UNKNOWN_KEY` in development). A `pageIndex` / `pageSize` that is not a safe integer (e.g. `1e308`) is replaced before the first request (`DK_INVALID_PAGINATION`). The server-mode docs now say that `FetchParams` are untrusted input for the backend (validate sort ids, cap the page size, encode URL parameters). (#100)
+- 67691a8: - Diagnostics: a user value with a `|` in a diagnostic sentence is no longer truncated. A column `sortAlgorithm: 'fast|stable'` now reads `"fast|stable" is not a sort algorithm …`; the same applies to operation, boundary, diagnostic-code and feature method names. (#92)
+  - Development console: control characters (C0, C1, DEL) and line breaks in printed diagnostic text are escaped (`\u001b`, `\n`), so a state key or column id from a URL or data can no longer forge a `✖ [DataKable …]` line or send terminal escape sequences. `onDiagnostic` and `getDiagnostics()` still receive the raw values. (#104)
+- 0d93802: - `searchFn` results as `{ keys }` now compare as strings, like row keys everywhere else: `['2']` (an id from a JSON API) matches the row whose key is `2`, instead of emptying the table. Keys that match no row are reported in development as the new `DK_SEARCH_UNKNOWN_KEYS` warning (count and a sample, redacted like row keys, `[sensitive]` for a sensitive `rowKey`). (#86)
+  - A `NaN` `range` bound, or an `equals` filter with value `NaN`, is now reported as a malformed filter value (`DK_FILTER_TYPE_MISMATCH`, `source: 'filter'`, `received: 'number(NaN)'`) instead of silently filtering out every row. (#91)
+- 54bb700: - `<DataTable />`: a Retry after a failed load or refresh now shows Loading (or "Updating…" over the previous rows) with `aria-busy` until the `refetch()` settles, instead of keeping the Error and its Retry button up. Repeat retries while one is in flight are ignored, so one click starts one request, and focus moves to the `<table>` only when the focused Retry button actually unmounts (#87)
+  - `<DataTable />`: the `tabindex="-1"` that Retry puts on the `<table>` to hold focus is removed when the table loses focus. A `tabindex` set by the app is left alone (#88)
+- b3ac722: - Types: with `strict: false` (precisely `strictNullChecks: false`), `createTable({ data: users, rowKey: 'id' })` and `useDataTable({ data: users, rowKey: 'id' })` no longer fail with TS2322. Without `strictNullChecks`, `undefined` (the "no schema" default) was assignable to `TableSchema`, so every table looked like it had a schema: `data` was typed `unknown[]` and the row type collapsed to `unknown`. The schema check now excludes `undefined` explicitly; `strict: true` inference is unchanged. `check:consumer` now also compiles a `strict: false` consumer, with and without `strictNullChecks`. (#93)
+- Updated dependencies [25413aa]
+- Updated dependencies [543c65c]
+- Updated dependencies [a567e37]
+- Updated dependencies [67691a8]
+- Updated dependencies [0d93802]
+- Updated dependencies [54bb700]
+- Updated dependencies [b3ac722]
+  - @datakable/core@2.0.3
+  - @datakable/react@2.0.3
+
 ## 2.0.2
 
 ### Patch Changes
