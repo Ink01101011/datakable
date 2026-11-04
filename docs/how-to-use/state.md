@@ -273,7 +273,16 @@ console.log(filters, validity, search.query, sorting.by, pagination.pageSize)
 - **Invalid slice values** written with `setState` are not trusted: an invalid pagination or
   validity value is replaced or ignored and reported
   ([`DK_INVALID_PAGINATION`](../how-to-fix/errors.md#dk_invalid_pagination),
-  [`DK_INVALID_VALIDITY`](../how-to-fix/errors.md#dk_invalid_validity)).
+  [`DK_INVALID_VALIDITY`](../how-to-fix/errors.md#dk_invalid_validity)). A malformed `sorting` or
+  `columnFilters` slice (e.g. `null` restored from the URL) reads as empty (only the valid sort
+  entries are kept), so `toggleSort` and `setColumnFilter` keep working; in development it is
+  also replaced and reported as [`DK_INVALID_STATE`](../how-to-fix/errors.md#dk_invalid_state).
+  In production the malformed slice is not replaced: `getState()` still returns it, so app code
+  that reads the slice itself (e.g. `state.sorting.by.map(...)`) should check its shape.
+- **A `"__proto__"` key** (which `JSON.parse` creates as an own key) is never written into the
+  state, in `initialState`, `setState`, a controlled `state` or `setColumnFilter`: it would replace
+  the prototype of the state object. It is dropped and reported as
+  [`DK_STATE_UNKNOWN_KEY`](../how-to-fix/errors.md#dk_state_unknown_key).
 
 ## See also
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { slotDiagnostics } from '../catalog/slots'
 import { buildDiagnostic } from '../diagnostics/build'
 import { hasMessages, listDiagnosticCodes } from '../diagnostics/catalog'
+import { unknownKeysDiagnostics } from '../features/search/codes'
 import { skippedColumnDiagnostics } from '../features/search/skipped-codes'
 import { comparatorDiagnostics } from '../features/sorting/codes'
 import { stepDiagnostics } from '../pipeline/dev-checks'
@@ -32,6 +33,7 @@ describe('@datakable/core/messages (§8.2)', () => {
         ...slotDiagnostics,
         ...comparatorDiagnostics,
         ...skippedColumnDiagnostics,
+        ...unknownKeysDiagnostics,
         ...stepDiagnostics,
         ...dataMutationDiagnostics,
         ...stateFeedbackDiagnostics,

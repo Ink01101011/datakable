@@ -231,6 +231,12 @@ console.log(outcome.status, table.getState().search.status)
 - It returns the matching rows (references from `rows`) or `{ keys }` (`rowKey` values; row
   indices without a `rowKey`), in relevance order. The result is intersected with the rows the
   filters kept.
+- `{ keys }` compare as strings, like row keys everywhere else: `'2'` (an id from a JSON API)
+  matches the row whose key is `2`. A repeated `rowKey` value stays the key of its first row only;
+  later rows carry `key#1`, `key#2`, … (`row.key`, `DK_DUPLICATE_ROW_KEY`), so return those to
+  match them. Keys that match no row are ignored and reported in development as
+  [`DK_SEARCH_UNKNOWN_KEYS`](../how-to-fix/errors.md#dk_search_unknown_keys) (the count and a
+  sample, redacted like row keys).
 - While it runs, `status` is `'searching'` (in the slice and the row model) and the previous
   results stay on screen. New data runs it again for the applied query.
 - Requests go through one async control: the latest query wins, a superseded request's `signal`

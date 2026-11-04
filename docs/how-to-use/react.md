@@ -226,14 +226,21 @@ The body shows one state at a time, from `status` and `isInitialLoad`:
 | State | When | Component |
 | --- | --- | --- |
 | Loading | `isInitialLoad` and `status` is `'fetching'`, `'searching'` or `'validating'`; or `'pending'` while the table has a `fetcher` or `searchFn` with nothing applied yet (deferred until the client, see [SSR](ssr.md)) | `Loading` |
-| Error | `isInitialLoad` and `status === 'error'`: the first load failed | `Error` with `reason: 'load'`; `retry` calls `refetch()` |
+| Error | `isInitialLoad` and `status === 'error'`: the first load failed | `Error` with `reason: 'load'`; `retry` calls `refetch()`, and Loading shows until it settles |
 | Empty | loaded, zero rows to show | `Empty`; `filtered` is `true` when there is data but filters or search removed every row |
 | Rows | otherwise | — |
 
 Over loaded rows, any `status` other than `'idle'` shows a refresh indicator above the table:
 "Updating…" while busy, or "Could not refresh; showing the previous rows." with a retry on
-`'error'`. Activating a Retry button (the load error, the refresh error or the render error) moves
-keyboard focus to the `<table>` before the button goes away, so focus does not fall to `<body>`.
+`'error'`.
+
+A load or refresh Retry shows Loading (or "Updating…" over the previous rows) with `aria-busy`
+until its `refetch()` settles, although `status` stays `'error'` meanwhile (see
+[server mode](server-mode.md)); `Loading` then gets `status: 'fetching'`. Further `retry()` calls
+while it is in flight are ignored, so one click starts one request. When the focused Retry button
+goes away (the load error, the refresh error or the render error), keyboard focus moves to the
+`<table>`, so it does not fall to `<body>`. The table gets `tabindex="-1"` for that, removed when it
+loses focus again; a `tabindex` your app set on it stays.
 
 Status messages go to one visually hidden `aria-live="polite"` region at the end of the root, in
 the markup from the first render: "Searching rows…" while a search is `pending` / `searching`, and

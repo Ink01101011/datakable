@@ -10,7 +10,7 @@ import {
 } from './catalog'
 import { coreDiagnostics } from './codes'
 import { DEV } from './env'
-import { expandDetails } from './prose'
+import { expandDetails, proseArg } from './prose'
 import {
   type RedactField,
   type Redactor,
@@ -131,7 +131,7 @@ export function buildDiagnostic<C extends DiagnosticCode>(
     def = INTERNAL
     d = {
       op: 'diagnostic:emit',
-      problem: `unknown-code|${code}`,
+      problem: `unknown-code|${proseArg(code)}`,
     }
   }
   const b = def as unknown as DiagnosticDefinition<'DK_INTERNAL'>

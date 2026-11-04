@@ -1,7 +1,9 @@
 import { defineOptions } from '../../catalog/options'
 import { keepDiagnostics } from '../../diagnostics/catalog'
 import { DEV } from '../../diagnostics/env'
+import { describeValue } from '../../diagnostics/redact'
 import { defineFeature } from '../../feature/define'
+import { type SliceFix, sliceGuard } from '../../feature/slice-guard'
 import type { RowModelContext } from '../../feature/types'
 import { CellFailures } from '../../intercept/cell-batch'
 import { errorName } from '../../intercept/classify'
@@ -216,6 +218,13 @@ function filterRows(
   return out ? out.subarray(0, n) : indices
 }
 
+const isSlice = (s: unknown): s is Record<string, unknown> =>
+  s !== null && typeof s === 'object' && !Array.isArray(s)
+
+/** A restored slice that is not an object (e.g. `null`) is replaced with no filters (#89). */
+const fixSlice = (s: unknown): SliceFix<ColumnFiltersState<unknown>> | undefined =>
+  isSlice(s) ? undefined : [{}, describeValue(s), '{}']
+
 /**
  * Column filters (§6.1): `equals`, `contains` (case-insensitive, NFC), `in`, `range` (inclusive),
  * `custom`. Filters combine with AND; nullish cells match no active filter; array cells match if
@@ -227,8 +236,10 @@ function filterRows(
  * table.setColumnFilter('name', { type: 'contains', value: 'ada' })
  * ```
  */
-export const columnFilters = (opts: ColumnFiltersOptions = {}) =>
-  defineFeature<'columnFilters', ColumnFiltersTypes>({
+export const columnFilters = (opts: ColumnFiltersOptions = {}) => {
+  // Dev only (§9.3): production reads a malformed slice as no filters and stays cheap.
+  const guard = DEV ? sliceGuard('columnFilters', fixSlice) : undefined
+  return defineFeature<'columnFilters', ColumnFiltersTypes>({
     name: 'columnFilters',
     stage: 'filter',
     mode: opts.mode ?? 'client',
@@ -237,18 +248,30 @@ export const columnFilters = (opts: ColumnFiltersOptions = {}) =>
       DEV ? columnFiltersOptions : ({} as typeof columnFiltersOptions),
       opts,
     ),
+    ...(guard ? { interceptors: [guard.interceptor] } : undefined),
     initialState: () => ({}),
-    createApi: (ctx) => ({
-      setColumnFilter: (id, filter) =>
-        ctx.setState((prev) => {
+    createApi: (ctx) => {
+      guard?.install(ctx)
+      // Values, not updaters: a library step is never reported as a failing user `updater` (#89).
+      return {
+        setColumnFilter: (id, filter) => {
+          // A controlled slice not fed back yet may still be malformed: it reads as no filters.
+          const s = ctx.getState()
+          const prev: Record<string, unknown> = s && typeof s === 'object' ? s : {}
           // No change (the same filter, or clearing a column without one): keep the slice.
-          if ((prev as Record<string, unknown>)[id] === filter) return prev
-          const next: Record<string, unknown> = { ...prev }
+          if (prev[id] === filter) return
+          // A computed key defines an own property: `"__proto__"` never swaps the prototype
+          // (#102); the row model reports it as DK_STATE_UNKNOWN_KEY like any unknown column.
+          const next: Record<string, unknown> = { ...prev, [id]: filter }
           if (filter === undefined) delete next[id]
-          else next[id] = filter
-          return next as ColumnFiltersState<unknown>
-        }),
-      resetColumnFilters: () => ctx.setState((prev) => (Object.keys(prev).length ? {} : prev)),
-    }),
+          ctx.setState(next as ColumnFiltersState<unknown>)
+        },
+        resetColumnFilters: () => {
+          const s = ctx.getState()
+          if (!s || Object.keys(s).length > 0) ctx.setState({})
+        },
+      }
+    },
     rowModel: filterRows,
   })
+}

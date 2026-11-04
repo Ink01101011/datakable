@@ -1,4 +1,5 @@
 import { keepDiagnostics } from '../../diagnostics/catalog'
+import { DEV } from '../../diagnostics/env'
 import { describeValue } from '../../diagnostics/redact'
 import type { RowModelContext } from '../../feature/types'
 import { resolveRowKeys } from '../../ingest/row-key'
@@ -7,7 +8,7 @@ import type { RowKey } from '../../pipeline/row'
 import type { AsyncStatus } from '../../source/async-control'
 import { requestsOf } from '../../source/requests'
 import { getTableInternals } from '../../table/internals'
-import { searchDiagnostics } from './codes'
+import { searchDiagnostics, unknownKeysDiagnostics } from './codes'
 import {
   APPLIED,
   type SearchEngine,
@@ -21,10 +22,13 @@ import {
 } from './search-fn-brand'
 
 keepDiagnostics(searchDiagnostics)
+keepDiagnostics(unknownKeysDiagnostics)
 
 const EMPTY: readonly never[] = []
 const ERROR: SearchOutcome = Object.freeze({ status: 'error' })
 const NO_KEYS = () => {}
+/** Unmatched `{ keys }` listed in a `DK_SEARCH_UNKNOWN_KEYS` sample. */
+const SAMPLE = 5
 
 /** A `searchFn` that rejected or threw: resolved as a value so asyncControl reports 'applied'. */
 class SearchFailure {
@@ -59,6 +63,8 @@ interface Applied {
   data: readonly unknown[]
   hits: Hits
   cache?: { data: readonly unknown[]; rowKey: unknown; indices: Uint32Array }
+  /** Development: returned `{ keys }` that match no row, until reported (`DK_SEARCH_UNKNOWN_KEYS`). */
+  unknown?: { count: number; returned: number; keys: unknown[] } | undefined
 }
 
 /**
@@ -76,7 +82,8 @@ export function createSearchEngine(fn: SearchFn<unknown>): SearchEngine {
   let active: object | undefined
   /** Data → row index, to map result rows back (rows are compared by identity). */
   const positions = new WeakMap<readonly unknown[], Map<unknown, number>>()
-  let keyIndex: { data: readonly unknown[]; rowKey: unknown; map: Map<unknown, number> } | undefined
+  /** Row key, as a string → data index: keys compare as strings (`2` matches `'2'`), as in row-key.ts. */
+  let keyIndex: { data: readonly unknown[]; rowKey: unknown; map: Map<string, number> } | undefined
   /** The last step: same input and hits → same output (no per-run allocation). */
   let last: { input: Uint32Array; hits: Uint32Array; output: Uint32Array } | undefined
 
@@ -84,35 +91,45 @@ export function createSearchEngine(fn: SearchFn<unknown>): SearchEngine {
   function indicesOf(a: Applied, data: readonly unknown[], rowKey: unknown): Uint32Array {
     const c = a.cache
     if (c && c.data === data && c.rowKey === rowKey) return c.indices
-    let map: Map<unknown, number>
+    let find: (v: unknown) => number | undefined
     let list: readonly unknown[]
     if ('rows' in a.hits) {
       list = a.hits.rows
-      map = positions.get(data) ?? new Map()
+      const map = positions.get(data) ?? new Map<unknown, number>()
       if (!positions.has(data)) {
         for (let i = 0; i < data.length; i++) if (!map.has(data[i])) map.set(data[i], i)
         positions.set(data, map)
       }
+      find = (v) => map.get(v)
     } else {
       list = a.hits.keys
       if (!keyIndex || keyIndex.data !== data || keyIndex.rowKey !== rowKey) {
         // Diagnostics about the keys are the pipeline's (it resolves the same keys).
         const keyOf = resolveRowKeys(data, rowKey, NO_KEYS, NO_KEYS)
-        const m = new Map<unknown, number>()
+        const m = new Map<string, number>()
         for (let i = 0; i < data.length; i++) {
-          const k = keyOf(data[i], i)
+          // Repeated keys are already unique here: later rows carry `key#1`, `key#2`, … (row.key).
+          const k = String(keyOf(data[i], i))
           if (!m.has(k)) m.set(k, i)
         }
         keyIndex = { data, rowKey, map: m }
       }
-      map = keyIndex.map
+      const map = keyIndex.map
+      find = (v) => map.get(String(v))
     }
     const out = new Uint32Array(list.length)
     let n = 0
+    let unknown: Applied['unknown']
     for (const v of list) {
-      const i = map.get(v)
+      const i = find(v)
       if (i !== undefined) out[n++] = i
+      else if (DEV && 'keys' in a.hits) {
+        unknown ??= { count: 0, returned: list.length, keys: [] }
+        unknown.count++
+        if (unknown.keys.length < SAMPLE) unknown.keys.push(v)
+      }
     }
+    if (DEV) a.unknown = unknown
     const indices = out.subarray(0, n)
     a.cache = { data, rowKey, indices }
     return indices
@@ -259,6 +276,13 @@ export function createSearchEngine(fn: SearchFn<unknown>): SearchEngine {
 
     /** After a pipeline run: new data or an outside query without a result → search again. */
     checks.set(table, () => {
+      if (DEV) {
+        const u = results.get(table)
+        if (u?.unknown && !dead) {
+          ctx.emit('DK_SEARCH_UNKNOWN_KEYS', u.unknown)
+          u.unknown = undefined
+        }
+      }
       if (scheduled || dead) return
       const query = applied()
       if (query.trim() === '') return

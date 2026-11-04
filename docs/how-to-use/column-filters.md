@@ -167,6 +167,10 @@ Runtime data does not always match its type. The table never throws on it:
 - **A malformed filter value** (a string bound in a `range`, an object in `equals`, an unknown
   kind) matches no row, and the table reports `DK_FILTER_TYPE_MISMATCH` naming the expected value.
   Convert input values before setting them (`Number(input)`).
+- **`NaN`** as a `range` bound or an `equals` value is malformed too (`received: 'number(NaN)'`):
+  every comparison with `NaN` is false, so it would hide every row. `Number(input.value)` on a
+  non-numeric or empty input gives `NaN` (or `0` for `''`): pass `undefined` for an empty input to
+  leave the filter or bound inactive.
 - **A `custom` filter that throws** treats that row as non-matching and reports
   `DK_CALLBACK_FAILED`.
 - **A filter on an id that is not a column** (for example from an old URL) is ignored, and the

@@ -1,6 +1,7 @@
 import { throwConfigError } from '../diagnostics/build'
 import { keepDiagnostics } from '../diagnostics/catalog'
 import { DEV } from '../diagnostics/env'
+import { proseArg } from '../diagnostics/prose'
 import type { Emit } from '../diagnostics/types'
 import { errorName } from '../intercept/classify'
 import type { Table, TableState } from '../table/types'
@@ -155,7 +156,7 @@ function missingApi(failed: readonly string[], host: FeatureHost): object {
               feature,
               hook: 'createApi',
               method: key,
-              fallback: `${failed.length === 1 ? 'api' : 'apis'}-missing|${key}`,
+              fallback: `${failed.length === 1 ? 'api' : 'apis'}-missing|${proseArg(key)}`,
             }),
           )
           return undefined

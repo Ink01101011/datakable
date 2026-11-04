@@ -48,8 +48,9 @@ export interface PaginationOptions {
 const DEFAULT_PAGE_SIZE = 10
 const NAME = 'pagination'
 
-const isIndex = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0
-const isSize = (v: unknown): v is number => Number.isInteger(v) && (v as number) > 0
+// Safe integers (#100): restored state is untrusted, and 1e308 is an "integer".
+const isIndex = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0
+const isSize = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) > 0
 const received = (v: unknown) => (typeof v === 'number' ? String(v) : describeValue(v))
 
 const paginationOptions = {

@@ -27,6 +27,7 @@ import { asyncMessages } from '../source/codes'
 import { fetchMessages } from '../source/fetch-codes'
 import { tableMessages } from '../table/codes'
 import { ssrMessages } from '../table/ssr-codes'
+import { stateMessages } from '../table/state-codes'
 import { versioningMessages } from '../versioning/codes'
 
 /** Every message object core ships, one per module that owns codes. */
@@ -39,6 +40,7 @@ export const allMessages: ReadonlyArray<Readonly<Record<string, unknown>>> = [
   pipelineMessages,
   tableMessages,
   ssrMessages,
+  stateMessages,
   asyncMessages,
   fetchMessages,
   rowKeyMessages,

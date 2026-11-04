@@ -2,15 +2,19 @@
 // (R10): esbuild 0.27.7 `--bundle --minify --format=esm`, `process.env.NODE_ENV = "production"`,
 // externals `ex-search`, `exsorted*`, `kk-debounce*`, `react`, `react-dom`; the entry is a one-line
 // re-export of the named symbols from the BUILT dist entry a consumer imports (`dist/index.js`, or
-// `dist/react.js` for `datakable/react`, #63); size = gzip -9 of the output. 1 KB = 1024 B.
+// `dist/react.js` for `datakable/react`, #63); each inlined package.json `version` is replaced by
+// a fixed placeholder (`VERSION_PLACEHOLDER`, #78), so a release bump never changes a size;
+// size = gzip -9 of the output. 1 KB = 1024 B.
 //
 // Each entry carries two numbers:
 // - `budget`: the §9.3 spec budget of that entry. An entry over it is printed as UNMET and raised
 //   with the user — it is never raised here silently (§9.3 has per-entry budgets since 2026-10-13,
 //   user decision after the F2–F4 measured reductions; spec §14).
-// - `limit`: the RATCHET that CI enforces = the size measured when it was set, rounded up to the
-//   next 0.5 KB. Any growth past it fails `pnpm check:size`. Lower it when the bundle shrinks;
-//   raising it needs a reason in the commit message.
+// - `limit`: the RATCHET that CI enforces = the size measured when it was set plus at least 64 B
+//   of headroom, rounded up to the next 0.25 KB: `ceil((measured + 64) / 256) * 256` (#78; until
+//   2.0.2 it was the measured size rounded up to 0.5 KB, which could leave 0 B). Any growth past it
+//   fails `pnpm check:size`. Lower it when the bundle shrinks; raising it needs a reason in the
+//   commit message.
 //
 // Ratchets set at develop ca610e9 + T37 (Node 25.2.1, esbuild 0.27.7). gzip is Node's zlib at level
 // 9 (as size-limit's file plugin): deterministic across OSes, unlike the `gzip` CLI (macOS `gzip -9`
@@ -49,6 +53,8 @@ export default [
     // RA (F1+F2+F3 merged): 14,759 B, F2's lazy `RowModel.rows`; stays 14.5 KB.
     // RB: 14.5 → 15 KB (14,981 B; F4 14,765 B): the production DK_INVALID_OPTION guard for an
     // unwrapped schema / fetcher (never silent, §8.6; user decision 2026-10-13): +216 B.
+    // #78 (2.0.3): 15 → 14.75 KB, re-measured with the version pinned: 14,841 B (+263 B headroom).
+    // 2.0.3 bug fixes (#86-#104; trimmed first, then raised as the owner allows for fixes): 15,094 B -> 15.00 KB (+266 B headroom).
     limit: 15 * KB,
   },
   {
@@ -63,7 +69,9 @@ export default [
     // RB: 21,790 B with the production unwrapped-option guard; stays 21.5 KB.
     // #5 (user decision 2026-10-13): 21.5 → 24 KB (24,405 B). The earlier sizes were measured on a
     // bundle that threw (esbuild --minify dropped the feature runtime); this one runs (`smoke`).
-    limit: 24 * KB,
+    // #78 (2.0.3): 24 → 23.75 KB, re-measured with the version pinned: 24,248 B (+72 B headroom).
+    // 2.0.3 bug fixes (#86-#104; trimmed first, then raised as the owner allows for fixes): 24,569 B -> 24.25 KB (+263 B headroom).
+    limit: 24.25 * KB,
   },
   {
     name: '@datakable/core: createTable + columnFilters + sorting + pagination + search',
@@ -81,7 +89,9 @@ export default [
     // bundle that threw (esbuild --minify dropped the feature runtime); this one runs (`smoke`).
     // Diagnostics privacy fix (user decision 2026-11-04): 26.5 → 26.75 KB (27,184 B):
     // getDiagnostics() returns copies without context.cause (+46 B); 2.0.1 was already +1 B over.
-    limit: 26.75 * KB,
+    // #78 (2.0.3): stays 26.75 KB, re-measured with the version pinned: 27,184 B (+208 B headroom).
+    // 2.0.3 bug fixes (#86-#104; trimmed first, then raised as the owner allows for fixes): 27,504 B -> 27.00 KB (+144 B headroom).
+    limit: 27 * KB,
   },
   {
     name: 'datakable: createTable (default preset)',
@@ -97,7 +107,9 @@ export default [
     // searchFn (never silent, §8.6; user decision 2026-10-13): +180 B.
     // #5 (user decision 2026-10-13): 24.5 → 27 KB (27,227 B). The earlier sizes were measured on a
     // bundle that threw (esbuild --minify dropped the feature runtime); this one runs (`smoke`).
-    limit: 27 * KB,
+    // #78 (2.0.3): stays 27 KB, re-measured with the version pinned: 27,476 B (+172 B headroom).
+    // 2.0.3 bug fixes (#86-#104; trimmed first, then raised as the owner allows for fixes): 27,819 B -> 27.25 KB (+85 B headroom).
+    limit: 27.25 * KB,
   },
   {
     name: 'datakable/react: useDataTable (default preset + react hook)',
@@ -118,7 +130,9 @@ export default [
     // Diagnostics privacy fix (user decision 2026-11-04): 28.5 → 28.75 KB (29,208 B, +50 B):
     // getDiagnostics() returns copies without context.cause. The §9.3 spec (28.5 KB) is unmet
     // by 24 B; the user accepted that gap. The smallest correct variant measured was 29,193 B.
-    limit: 28.75 * KB,
+    // #78 (2.0.3): stays 28.75 KB, re-measured with the version pinned: 29,207 B (+233 B headroom).
+    // 2.0.3 bug fixes (#86-#104; trimmed first, then raised as the owner allows for fixes): 29,544 B -> 29.00 KB (+152 B headroom).
+    limit: 29 * KB,
   },
   {
     name: 'datakable/react: DataTable (default preset + <DataTable />)',
@@ -140,6 +154,8 @@ export default [
     // and moving production diagnostic prose to the messages, the remaining growth is the a11y,
     // hydration and render-fault fixes (#16 #18 #23 #26 #54-#60); cutting every a11y fix would
     // still leave it ~180 B over.
-    limit: 32.5 * KB,
+    // #78 (2.0.3): 32.5 → 32.25 KB, re-measured with the version pinned: 32,908 B (+116 B headroom).
+    // 2.0.3 bug fixes (#86-#104; trimmed first, then raised as the owner allows for fixes): 33,441 B -> 32.75 KB (+95 B headroom).
+    limit: 32.75 * KB,
   },
 ]
