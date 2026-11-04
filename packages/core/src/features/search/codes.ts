@@ -13,6 +13,14 @@ declare module '../../diagnostics/catalog' {
       /** Whether a previous `searchFn` result is shown (`false`: none applied yet). */
       hadResults: boolean
     }
+    DK_SEARCH_UNKNOWN_KEYS: {
+      /** Returned `{ keys }` that match no row's key (compared as strings). */
+      count: number
+      /** How many keys `searchFn` returned. */
+      returned: number
+      /** A sample of the unmatched keys (first few; redacted as row keys). */
+      keys: readonly unknown[]
+    }
     DK_SEARCH_COLUMN_SKIPPED: {
       /** Column id (`key` or `id`). */
       column: string
@@ -56,3 +64,29 @@ export const searchDiagnostics = [
     DEV && searchMessages.DK_SEARCH_FAILED,
   ),
 ]
+
+/**
+ * `DK_SEARCH_UNKNOWN_KEYS` (#86) is a development hint: some `{ keys }` of a `searchFn` result match
+ * no row. Its definition is behind `DEV`, so a production bundle has none of it.
+ */
+export const unknownKeysDiagnostics = DEV
+  ? [
+      defineDiagnostic({
+        code: 'DK_SEARCH_UNKNOWN_KEYS',
+        level: 'warn',
+        where: () => ({ kind: 'option', path: 'searchFn' }),
+        redact: { keys: 'rowKeys' },
+        problem: (d) =>
+          `${d.count} of the ${d.returned} keys searchFn returned match no row ` +
+          `(first: ${d.keys.map((k) => JSON.stringify(k)).join(', ')}${d.count > d.keys.length ? ', …' : ''})`,
+        impact: () => 'those keys are ignored; the rows of the other keys are shown',
+        fix: () => [
+          'return the rowKey values of rows in ctx.rows (compared as strings: 2 and "2" match the ' +
+            'same row); a key the data does not hold (another page, a stale index) matches nothing',
+          'a repeated rowKey value keeps its key on the first row only: later rows carry key#1, ' +
+            'key#2, … (as row.key reports them, DK_DUPLICATE_ROW_KEY); make rowKey unique, or ' +
+            'return those keys',
+        ],
+      }),
+    ]
+  : []

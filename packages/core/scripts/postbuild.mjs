@@ -1,6 +1,6 @@
 // Runs after tsup (`pnpm build`): checks and fixes that need every output file, .d.ts included.
 import { execFileSync } from 'node:child_process'
-import { checkDevInlined, fixDtsAugmentations } from './preserve-modules.mjs'
+import { checkDevInlined, fixDtsAugmentations, loadWithoutProcess } from './preserve-modules.mjs'
 
 await checkDevInlined('dist')
 const n = await fixDtsAugmentations('dist')
@@ -8,15 +8,8 @@ console.log(`postbuild: DEV inlined; ${n} DiagnosticCatalog augmentations point 
 
 // #36: loaded without a bundler (no `process`), dist throws the DataKable error naming the fix,
 // not the engine's bare "process is not defined" from whichever module reads it first.
-for (const [file, load] of [
-  ['dist/index.js', 'await import(f)'],
-  ['dist/index.cjs', "require('node:module').createRequire(import.meta.url)(f)"],
-]) {
-  const script =
-    `const f = ${JSON.stringify(new URL(`../${file}`, import.meta.url).pathname)}; ` +
-    'const p = globalThis.process; delete globalThis.process; let out = "loaded"; ' +
-    `try { ${load.replace('require(', 'p.getBuiltinModule(')} } catch (e) { out = String(e) } ` +
-    'p.stdout.write(out)'
+for (const file of ['dist/index.js', 'dist/index.cjs']) {
+  const script = loadWithoutProcess(new URL(`../${file}`, import.meta.url))
   const out = execFileSync(process.execPath, ['--input-type=module', '-e', script], {
     encoding: 'utf8',
   })

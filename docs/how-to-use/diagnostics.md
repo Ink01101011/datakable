@@ -115,6 +115,10 @@ for (const d of table.getDiagnostics()) {
 - **Rate-limited console.** At most 20 console reports per second per table; when some were held
   back, one warning says how many. They are still in `getDiagnostics()` and were given to
   `onDiagnostic`.
+- **Escaped console text.** Control characters (C0, C1, DEL) and line breaks in printed text are
+  escaped (`\u001b`, `\n`): a key or column id that came from a URL or from data cannot forge a
+  console line or send terminal escape sequences. `onDiagnostic` and `getDiagnostics()` keep the
+  raw values.
 - **The logger never kills the table.** If `onDiagnostic` (or a `diagnostic:emit` interceptor)
   throws, DataKable prints one `console.error` and stays quiet afterwards.
 - **`name`** names the table in every diagnostic and console line; give each table one.

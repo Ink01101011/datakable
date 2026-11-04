@@ -196,6 +196,171 @@ describe('Retry moves focus to the table before its button goes away (#56)', () 
   })
 })
 
+describe('Retry shows Loading while the retry is in flight, once (#87)', () => {
+  function deferredFetcher() {
+    const calls: { resolve: (r: FetchResult<User>) => void; reject: (e: unknown) => void }[] = []
+    const fetcher = () =>
+      new Promise<FetchResult<User>>((resolve, reject) => calls.push({ resolve, reject }))
+    return { calls, fetcher: withFetcher(fetcher) }
+  }
+  const root = () => document.querySelector('[data-datakable]') as HTMLElement
+
+  it('load error: Loading (aria-busy) replaces Error, focus moves to the table, one request', async () => {
+    const { calls, fetcher } = deferredFetcher()
+    render(<Hooked options={{ fetcher, features: [sorting({ mode: 'server' })] }} />)
+    await act(async () => calls[0]?.reject(new Error('boom')))
+    const retry = within(screen.getByRole('alert')).getByRole('button', { name: 'Retry' })
+    retry.focus()
+    await act(async () => fireEvent.click(retry))
+    // In flight: the Error row and its button are gone, Loading is up and the root is busy.
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+    expect(screen.getByText('Loading…')).toBeTruthy()
+    expect(root().getAttribute('aria-busy')).toBe('true')
+    expect(retry.isConnected).toBe(false)
+    expect(document.activeElement).toBe(screen.getByRole('table'))
+    expect(calls).toHaveLength(2)
+    await act(async () => calls[1]?.resolve({ rows: users.slice(0, 3), rowCount: 3 }))
+    expect(screen.queryByText('Loading…')).toBeNull()
+    expect(screen.getAllByRole('row')).toHaveLength(4)
+    expect(root().getAttribute('aria-busy')).toBeNull()
+    expect(calls).toHaveLength(2)
+  })
+
+  it('a retry that fails again shows the Error again, and Retry works again', async () => {
+    const { calls, fetcher } = deferredFetcher()
+    render(<Hooked options={{ fetcher, features: [sorting({ mode: 'server' })] }} />)
+    await act(async () => calls[0]?.reject(new Error('boom')))
+    let retry = within(screen.getByRole('alert')).getByRole('button', { name: 'Retry' })
+    retry.focus()
+    await act(async () => fireEvent.click(retry))
+    await act(async () => calls[1]?.reject(new Error('again')))
+    retry = within(screen.getByRole('alert')).getByRole('button', { name: 'Retry' })
+    expect(root().getAttribute('aria-busy')).toBeNull()
+    expect(document.activeElement).toBe(screen.getByRole('table'))
+    retry.focus()
+    await act(async () => fireEvent.click(retry))
+    expect(screen.getByText('Loading…')).toBeTruthy()
+    expect(calls).toHaveLength(3)
+  })
+
+  it('repeat retry() calls while one is in flight are ignored (a custom Error part)', async () => {
+    const { calls, fetcher } = deferredFetcher()
+    let retryFn: (() => void) | undefined
+    const Failed = ({ retry }: { retry(): void }) => {
+      retryFn = retry
+      return (
+        <button type="button" onClick={retry}>
+          Try again
+        </button>
+      )
+    }
+    function Table() {
+      const t = useDataTable({ fetcher, features: [sorting({ mode: 'server' })] } as never)
+      return <DataTable table={t as never} components={{ Error: Failed }} />
+    }
+    render(<Table />)
+    await act(async () => calls[0]?.reject(new Error('boom')))
+    const again = screen.getByRole('button', { name: 'Try again' })
+    again.focus()
+    await act(async () => {
+      fireEvent.click(again)
+      retryFn?.()
+      retryFn?.()
+    })
+    expect(calls).toHaveLength(2)
+    expect(document.activeElement).toBe(screen.getByRole('table'))
+    await act(async () => calls[1]?.resolve({ rows: users.slice(0, 2), rowCount: 2 }))
+    expect(calls).toHaveLength(2)
+    expect(screen.getAllByRole('row')).toHaveLength(3)
+  })
+
+  it('refresh error: "Updating…" (aria-busy) replaces the error, focus moves to the table, one request', async () => {
+    const { calls, fetcher } = deferredFetcher()
+    render(<Hooked options={{ fetcher, features: [sorting({ mode: 'server' })] }} />)
+    await act(async () => calls[0]?.resolve({ rows: users.slice(0, 3), rowCount: 3 }))
+    fireEvent.click(within(screen.getByRole('columnheader', { name: /name/ })).getByRole('button'))
+    await act(async () => calls[1]?.reject(new Error('boom')))
+    const retry = within(screen.getByRole('alert')).getByRole('button', { name: 'Retry' })
+    retry.focus()
+    await act(async () => fireEvent.click(retry))
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByText('Updating…')).toBeTruthy()
+    expect(root().getAttribute('aria-busy')).toBe('true')
+    expect(document.activeElement).toBe(screen.getByRole('table'))
+    expect(calls).toHaveLength(3)
+    // The stale rows stay meanwhile.
+    expect(screen.getAllByRole('row')).toHaveLength(4)
+    await act(async () => calls[2]?.resolve({ rows: users.slice(0, 1), rowCount: 1 }))
+    expect(screen.queryByText('Updating…')).toBeNull()
+    expect(root().getAttribute('aria-busy')).toBeNull()
+    expect(calls).toHaveLength(3)
+  })
+})
+
+describe('keepFocus removes the tabindex it added on the next blur (#88)', () => {
+  function deferredFetcher() {
+    const calls: { resolve: (r: FetchResult<User>) => void; reject: (e: unknown) => void }[] = []
+    const fetcher = () =>
+      new Promise<FetchResult<User>>((resolve, reject) => calls.push({ resolve, reject }))
+    return { calls, fetcher: withFetcher(fetcher) }
+  }
+
+  it('load error: tabindex="-1" while the table holds focus, removed when focus leaves', async () => {
+    const { calls, fetcher } = deferredFetcher()
+    render(
+      <>
+        <Hooked options={{ fetcher, features: [sorting({ mode: 'server' })] }} />
+        <button type="button">after</button>
+      </>,
+    )
+    await act(async () => calls[0]?.reject(new Error('boom')))
+    const table = screen.getByRole('table')
+    expect(table.hasAttribute('tabindex')).toBe(false)
+    const retry = within(screen.getByRole('alert')).getByRole('button', { name: 'Retry' })
+    retry.focus()
+    await act(async () => fireEvent.click(retry))
+    await act(async () => calls[1]?.resolve({ rows: users.slice(0, 3), rowCount: 3 }))
+    expect(document.activeElement).toBe(table)
+    expect(table.getAttribute('tabindex')).toBe('-1')
+    screen.getByRole('button', { name: 'after' }).focus()
+    expect(document.activeElement).not.toBe(table)
+    expect(table.hasAttribute('tabindex')).toBe(false)
+  })
+
+  it('render error: the same', () => {
+    let fail = true
+    const Empty = () => {
+      if (fail) throw new Error('boom')
+      return 'none'
+    }
+    render(<DataTable data={[] as User[]} components={{ Empty }} />)
+    const retry = within(screen.getByRole('alert')).getByRole('button', { name: 'Retry' })
+    retry.focus()
+    fail = false
+    fireEvent.click(retry)
+    const table = screen.getByRole('table')
+    expect(document.activeElement).toBe(table)
+    expect(table.getAttribute('tabindex')).toBe('-1')
+    table.blur()
+    expect(table.hasAttribute('tabindex')).toBe(false)
+  })
+
+  it('a tabindex the app put on the table is left alone', async () => {
+    const { calls, fetcher } = deferredFetcher()
+    render(<Hooked options={{ fetcher, features: [sorting({ mode: 'server' })] }} />)
+    await act(async () => calls[0]?.reject(new Error('boom')))
+    const table = screen.getByRole('table')
+    table.setAttribute('tabindex', '0')
+    const retry = within(screen.getByRole('alert')).getByRole('button', { name: 'Retry' })
+    retry.focus()
+    await act(async () => fireEvent.click(retry))
+    expect(document.activeElement).toBe(table)
+    table.blur()
+    expect(table.getAttribute('tabindex')).toBe('0')
+  })
+})
+
 describe('status messages: one persistent polite live region (#54)', () => {
   const live = (c: HTMLElement) => c.querySelector('[data-datakable] > [aria-live="polite"]')
 

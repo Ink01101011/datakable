@@ -4,9 +4,25 @@ import type { Diagnostic } from './types'
 
 const ICON = { error: '✖', warn: '⚠', info: 'ℹ' } as const
 
-/** The §8.1 console text: header + aligned body. Also usable by explain() and tests. */
+/**
+ * Console text is printed with its C0 / C1 control characters, DEL and line breaks escaped
+ * (`\u001b`, `\n`, ...): ids, keys and table names can come from URLs or data, and must not
+ * forge a line or send terminal escapes (#104). The diagnostic object keeps the raw values.
+ */
+const printable = (s: string): string =>
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: the characters to escape
+  s.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, (c) =>
+    c === '\n' ? '\\n' : `\\u${(c.charCodeAt(0) + 0x10000).toString(16).slice(1)}`,
+  )
+
+/**
+ * The §8.1 console text: header + aligned body, each line {@link printable}. Also usable by
+ * explain() and tests.
+ */
 export function formatDiagnostic(d: Diagnostic): { header: string; body: string } {
-  const header = `${ICON[d.level]} [DataKable ${d.context.table}] ${d.code}: ${d.problem}`
+  const header = printable(
+    `${ICON[d.level]} [DataKable ${d.context.table}] ${d.code}: ${d.problem}`,
+  )
   const lines = [`  where   ${formatWhere(d.where)}`]
   if (d.impact) lines.push(`  impact  ${d.impact}`)
   d.fix.forEach((f, i) => {
@@ -15,7 +31,7 @@ export function formatDiagnostic(d: Diagnostic): { header: string; body: string 
   lines.push(`  docs    ${d.docs}`)
   const c = d.context
   lines.push(`  context trigger=${c.trigger} run=${c.run} phase=${c.phase}`)
-  return { header, body: lines.join('\n') }
+  return { header, body: lines.map(printable).join('\n') }
 }
 
 export interface ConsoleSinkOptions {
@@ -42,7 +58,7 @@ export function createConsoleSink(o: ConsoleSinkOptions): (d: Diagnostic) => voi
     if (t - windowStart >= o.rateLimit.windowMs) {
       if (suppressed > 0) {
         console.warn(
-          `[DataKable ${o.table}] ${suppressed} diagnostics were not printed (rate limit); ` +
+          `[DataKable ${printable(o.table)}] ${suppressed} diagnostics were not printed (rate limit); ` +
             'read them with getDiagnostics() or onDiagnostic',
         )
       }
@@ -72,6 +88,8 @@ export function createConsoleSink(o: ConsoleSinkOptions): (d: Diagnostic) => voi
       console.groupEnd()
       return
     }
-    console.error(`[DataKable ${o.table}] ${d.code} at ${formatWhere(d.where)} — ${d.docs}`)
+    console.error(
+      printable(`[DataKable ${o.table}] ${d.code} at ${formatWhere(d.where)} — ${d.docs}`),
+    )
   }
 }

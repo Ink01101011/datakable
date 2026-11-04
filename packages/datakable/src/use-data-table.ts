@@ -5,6 +5,7 @@ import {
   type ApiOf,
   createDefaultFeatures,
   type DefaultFeatures,
+  type HasSchema,
   type InvalidRowsMode,
   type SchemaRow,
   type TableSchema,
@@ -38,7 +39,7 @@ export function useDataTable<
   SchemaRow<T, Sch>,
   TableStateFor<S, Fs, SchemaRow<T, Sch>>,
   M,
-  [Sch] extends [TableSchema] ? unknown : T,
+  HasSchema<Sch> extends true ? unknown : T,
   ApiOf<Fs, SchemaRow<T, Sch>>
 >
 export function useDataTable(options: { features?: readonly AnyFeature[] | undefined }): unknown {
