@@ -5,6 +5,7 @@ import {
   createTable as createCoreTable,
   createDefaultFeatures,
   type DefaultFeatures,
+  type HasSchema,
   type InvalidRowsMode,
   type SchemaRow,
   type Table,
@@ -36,7 +37,7 @@ export function createTable<
   SchemaRow<T, Sch>,
   TableStateFor<S, Fs, SchemaRow<T, Sch>>,
   M,
-  [Sch] extends [TableSchema] ? unknown : T
+  HasSchema<Sch> extends true ? unknown : T
 > &
   ApiOf<Fs, SchemaRow<T, Sch>>
 export function createTable(options: { features?: readonly AnyFeature[] | undefined }): unknown {
