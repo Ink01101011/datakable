@@ -90,7 +90,7 @@ describe('sorting — incremental ranks across data versions (#95)', () => {
     expect(order(t)).toEqual(cold(cur))
     t.toggleSort('name')
     expect(order(t)).toEqual(cold(cur, true))
-    expect(probe(f).history.get('name')?.ids.size).toBeGreaterThan(10_000)
+    expect(probe(f).history.get('name')?.reps.length).toBeGreaterThan(10_000)
   })
 })
 

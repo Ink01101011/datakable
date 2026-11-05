@@ -282,7 +282,6 @@ export const sorting = (opts: SortingOptions = {}) => {
   let history = new Map<string, RankState>()
   /** Drops the rank history of the columns that are not in `by` (the §9.3 memory budget). */
   function keepHistory(by: readonly { id: unknown }[]) {
-    if (history.size === 0) return
     for (const id of history.keys()) {
       if (!by.some((e) => String(e.id) === id)) history.delete(id)
     }

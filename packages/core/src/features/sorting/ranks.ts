@@ -76,13 +76,15 @@ function* sortPositions(
 }
 
 /**
- * What the next {@link collationRanks} of the same column starts from (#95): the strings present
- * (`ids`: string → id, `rank`: id → rank) and one string per rank. Never mutated (a job builds a
- * new one), so a cancelled job leaves it usable.
+ * What the next {@link collationRanks} of the same column starts from (#95): the values it ranked,
+ * their ranks (the `ranks` it returned, shared) and the distinct strings in rank order (one per
+ * rank, shared with the data). No string → id map: a row whose string is unchanged at its position
+ * (or at a shifted one) keeps its rank, any other string is found by binary search over `reps`.
+ * Never mutated (a job builds a new one), so a cancelled job leaves it usable.
  */
 export interface RankState {
-  readonly ids: ReadonlyMap<string, number>
-  readonly rank: ArrayLike<number>
+  readonly values: readonly unknown[]
+  readonly ranks: ArrayLike<number>
   readonly reps: readonly string[]
 }
 
@@ -99,40 +101,48 @@ export interface Ranked {
  * comparison. A time-sliced job; `null` when a present value is not a string.
  *
  * Incremental across data versions (#95): a string ranked in `prev` (the state of an earlier array
- * of the same column) keeps that rank as its sort key, a new one is placed among them by binary
- * search (equal to a rank, or in the gap below it). Only two new strings in the same gap call the
- * collator while sorting: a one-row edit costs O(log d) collator calls (and a sort of numbers), not
- * a cold sort. The new state holds only the strings present now.
+ * of the same column) keeps that rank as its sort key. It is read from the same row of `prev` when
+ * the string is the same there (or at the row offset of the last match, for inserted / removed
+ * rows), else found by binary search over the ranked strings; a new string is placed in the gap
+ * below the first greater one. Only new strings are sorted (two in the same gap call the
+ * collator): a one-row edit costs O(log d) collator calls (and a sort of numbers), not a cold
+ * sort. The new state holds only the strings present now.
  */
 export function* collationRanks(
   values: readonly unknown[],
   collator: Intl.Collator,
-  prev: RankState = { ids: new Map(), rank: [], reps: [] },
+  prev: RankState = { values: [], ranks: [], reps: [] },
 ): Generator<undefined, Ranked | null, undefined> {
   const n = values.length
-  const { ids: known, rank: knownRank, reps } = prev
-  const ids = new Map<string, number>()
-  const distinct: string[] = []
-  /** Per distinct string: its rank in `prev`, or `g - 0.5` when new and between ranks g-1 and g. */
-  const key: number[] = []
-  /** Per row: its string's position in `distinct`, -1 when missing. */
-  const slot = new Int32Array(n)
+  const { values: was, ranks: wasRank, reps } = prev
+  const m = reps.length
+  /** Per row: its rank in `prev`, `m + id` for the new string `fresh[id]`, NaN when missing. */
+  const out = new Float64Array(n)
+  /** Ranks of `prev` still present (the rest are dropped from the new state). */
+  const used = new Uint8Array(m)
+  // New strings only (a cold job: every distinct string), dropped with the job.
+  const freshIds = new Map<string, number>()
+  const fresh: string[] = []
+  /** Per new string: `g - 0.5`, between ranks g-1 and g of `prev`. */
+  const gap: number[] = []
+  /** Per rank of `prev`: one row holding it, built on the first lookup that finds one. */
+  let rowOf: Int32Array | undefined
+  /** Offset to `prev`'s row of the last match: rows inserted / removed above shift it. */
+  let shift = 0
   let ops = 0
-  let fresh = 0
   for (let r = 0; r < n; r++) {
     const v = values[r]
     if (typeof v === 'string') {
-      let id = ids.get(v)
-      if (id === undefined) {
-        id = distinct.length
-        ids.set(v, id)
-        distinct.push(v)
-        const p = known.get(v)
-        let k = p === undefined ? p : knownRank[p]
-        if (k === undefined) {
-          fresh++
+      let k: number | undefined
+      const q = r + shift
+      // Out of range: `undefined`, never a string.
+      if (was[q] === v) k = wasRank[q] as number
+      else {
+        const id = freshIds.get(v)
+        if (id !== undefined) k = m + id
+        else {
           let lo = 0
-          let hi = reps.length
+          let hi = m
           while (lo < hi) {
             const mid = (lo + hi) >>> 1
             const c = collator.compare(v, reps[mid] as string)
@@ -144,12 +154,26 @@ export function* collationRanks(
             if (c < 0) hi = mid
             else lo = mid + 1
           }
-          k ??= lo - 0.5
+          if (k === undefined) {
+            k = m + fresh.length
+            freshIds.set(v, fresh.length)
+            fresh.push(v)
+            gap.push(lo - 0.5)
+          } else {
+            if (!rowOf) {
+              rowOf = new Int32Array(m)
+              for (let p = 0; p < was.length; p++) {
+                const x = wasRank[p] as number
+                if (!Number.isNaN(x)) rowOf[x] = p
+              }
+            }
+            shift = (rowOf[k] as number) - r
+          }
         }
-        key.push(k)
       }
-      slot[r] = id
-    } else if (typeRank(v) === RANK.missing) slot[r] = -1
+      if (k < m) used[k] = 1
+      out[r] = k
+    } else if (typeRank(v) === RANK.missing) out[r] = Number.NaN
     else return null
     if (++ops >= CHUNK) {
       ops = 0
@@ -157,39 +181,39 @@ export function* collationRanks(
     }
   }
   // The same strings as `prev` (a new array of equal content, rows moved): the same ranks.
-  let rankOf: ArrayLike<number> = key
-  let next = reps
-  if (fresh > 0 || ids.size !== known.size) {
-    const byCollator = (a: number, b: number) =>
-      collator.compare(distinct[a] as string, distinct[b] as string)
-    const { order, eq } = yield* sortPositions(
-      distinct.length,
-      // Cold: every string is new. Else two new strings in the same gap go to the collator.
-      reps.length === 0
-        ? byCollator
-        : (a, b) => {
-            const x = key[a] as number
-            return x - (key[b] as number) || (x % 1 ? byCollator(a, b) : 0)
-          },
-      // Comparing numbers is far cheaper: longer native runs, fewer merge passes.
-      reps.length === 0 ? RUN : 8 * RUN,
-    )
-    const dense = new Float64Array(distinct.length)
-    const kept: string[] = []
-    let rank = -1
-    for (let k = 0; k < order.length; k++) {
-      const id = order[k] as number
-      if (!eq[k]) kept[++rank] = distinct[id] as string
-      dense[id] = rank
-      if (k % CHUNK === CHUNK - 1) yield
+  if (!fresh.length && !used.includes(0)) return { ranks: out, state: { values, ranks: out, reps } }
+
+  const f = fresh.length
+  const { order, eq } = yield* sortPositions(
+    f,
+    // By gap; two new strings in the same gap (cold: all of them) go to the collator.
+    (a, b) =>
+      (gap[a] as number) - (gap[b] as number) ||
+      collator.compare(fresh[a] as string, fresh[b] as string),
+    // Comparing numbers is far cheaper: longer native runs, fewer merge passes.
+    m ? 8 * RUN : RUN,
+  )
+  // Merge the kept ranks of `prev` and the new strings (each before the rank above its gap). No
+  // collator call: one pass, like the rank lookup below.
+  const remap = new Float64Array(m + f)
+  const kept: string[] = []
+  let rank = -1
+  let j = 0
+  for (let g = 0; g <= m; g++) {
+    while (j < f && (gap[order[j] as number] as number) < g) {
+      const id = order[j] as number
+      if (!eq[j]) kept[++rank] = fresh[id] as string
+      remap[m + id] = rank
+      j++
     }
-    rankOf = dense
-    next = kept
+    if (g < m && used[g]) {
+      kept[++rank] = reps[g] as string
+      remap[g] = rank
+    }
   }
-  const out = new Float64Array(n)
   for (let r = 0; r < n; r++) {
-    const id = slot[r] as number
-    out[r] = id < 0 ? Number.NaN : (rankOf[id] as number)
+    const k = out[r] as number
+    if (!Number.isNaN(k)) out[r] = remap[k] as number
   }
-  return { ranks: out, state: { ids, rank: rankOf, reps: next } }
+  return { ranks: out, state: { values, ranks: out, reps: kept } }
 }

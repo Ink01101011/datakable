@@ -125,7 +125,7 @@ describe('collationRanks (#95, #97)', () => {
   it('never mutates the previous state (a cancelled job leaves it usable)', () => {
     const a = ranks(['b', 'a', 'c']) as Ranked
     const json = (r: Ranked) =>
-      JSON.stringify([[...r.state.ids], Array.from(r.state.rank), r.state.reps])
+      JSON.stringify([r.state.values, Array.from(r.state.ranks), r.state.reps])
     const snapshot = json(a)
     const b = ranks(['x', 'a', 'c', 'b0'], a) as Ranked
     expect(json(a)).toBe(snapshot)
@@ -151,6 +151,12 @@ describe('collationRanks (#95, #97)', () => {
     const shifted = counting()
     ranks(['name top', ...edited], warm, shifted as unknown as Intl.Collator)
     expect(shifted.calls).toBeLessThanOrEqual(2 * Math.ceil(Math.log2(d)) + 2)
+    // A block of rows removed: one lookup finds the new row offset, the rest reuse their ranks.
+    const removed = counting()
+    const cut = [...edited.slice(0, 5000), ...edited.slice(5100)]
+    const r = ranks(cut, warm, removed as unknown as Intl.Collator) as Ranked
+    expect(removed.calls).toBeLessThanOrEqual(Math.ceil(Math.log2(d)) + 1)
+    expect(Array.from(r.ranks)).toEqual(Array.from((ranks(cut) as Ranked).ranks))
   })
 
   it('a cold sort without ties makes no extra equality pass (#97)', () => {
