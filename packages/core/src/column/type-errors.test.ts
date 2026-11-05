@@ -13,7 +13,8 @@ import { beforeAll, describe, expect, test } from 'vitest'
 const { fileURLToPath } = (await import('node:url' as string)) as {
   fileURLToPath(url: URL): string
 }
-const here = fileURLToPath(new URL('.', import.meta.url))
+// TypeScript hands file names back with `/` separators, so compare in that form (`\` on Windows).
+const here = fileURLToPath(new URL('.', import.meta.url)).replaceAll('\\', '/')
 const fixture = `${here}type-errors.test-d.ts`
 const tsconfig = `${here}../../tsconfig.json`
 

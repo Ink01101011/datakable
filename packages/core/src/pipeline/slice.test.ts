@@ -573,5 +573,5 @@ describe('sorting: collation ranks for string columns at n ≥ 10k (§6.4, §9.1
     ;(t as unknown as { toggleSort(id: string): void }).toggleSort('s')
     expect(t.getRowModel().status).toBe('idle')
     expect(t.getRowModel().rows.map((r) => r.index)).toEqual(reference(true))
-  })
+  }, 20_000) // slow CI runners (Windows) take more than the 5 s default; the clock is faked, so this bounds wall time only
 })
