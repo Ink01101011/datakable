@@ -23,6 +23,7 @@ import type { Interceptor } from '../intercept/define'
 import { FAILED, FALLBACK } from '../intercept/fallbacks'
 import type { OpInput, OpName, OpResult } from '../intercept/operations'
 import { type Core, createInterceptorRuntime } from '../intercept/runtime'
+import { PROBE, RELEASE, type Releasable } from '../pipeline/release'
 import { createPipeline } from '../pipeline/runner'
 import type { RowModel, RowModelStatus } from '../pipeline/types'
 import { checkModeOrder, type FetchOutcome } from '../source/fetcher'
@@ -575,6 +576,9 @@ export function createTable<T, S extends TableState>(
     },
   })
 
+  // Development only, for tests (#98): what the runner still holds.
+  if (DEV) (table as Releasable)[PROBE] = () => runner.probe?.() ?? {}
+
   const explainHost: ExplainHost = {
     table,
     features: pipeline,
@@ -862,6 +866,8 @@ export function createTable<T, S extends TableState>(
         ingestSeq++
         listeners.clear()
         runner.dispose()
+        // Features drop their per-instance caches (#98).
+        for (const f of pipeline) (f as Releasable)[RELEASE]?.()
         if (DEV) feedback?.dispose()
       }
     })

@@ -202,6 +202,9 @@ one scan of the keys:
 - Strings, floats, several sort keys or a `sortFn`: `native` (`Array.prototype.sort`, stable).
 - From 10,000 rows, a string column is first turned into collation ranks (integer keys) by a
   time-sliced job; meanwhile the row model shows the previous order with `status: 'pending'`.
+  A new `data` array re-ranks only what changed: the strings the column already had keep their
+  ranks, and only new strings are compared with the collator, so a one-row edit (or the same rows
+  in a new array) costs far less than the first sort.
 
 A named algorithm forces it: `radix` and `counting` need a single column of safe-integer keys and
 fall back to `auto` otherwise (`DK_OPTION_NO_EFFECT`). A function receives a copy of the row
