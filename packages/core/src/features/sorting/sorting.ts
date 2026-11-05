@@ -276,9 +276,17 @@ export const sorting = (opts: SortingOptions = {}) => {
   let rankKeys = new WeakMap<object, object>()
   /**
    * Per column id: the state of its last collation ranks, across data versions (#95). A new data
-   * array re-ranks only what changed; it holds the column's current distinct strings.
+   * array re-ranks only what changed; it holds the column's current distinct strings, so only the
+   * columns of the current sort keep one (`keepHistory`).
    */
   let history = new Map<string, RankState>()
+  /** Drops the rank history of the columns that are not in `by` (the §9.3 memory budget). */
+  function keepHistory(by: readonly { id: unknown }[]) {
+    if (history.size === 0) return
+    for (const id of history.keys()) {
+      if (!by.some((e) => String(e.id) === id)) history.delete(id)
+    }
+  }
   function ranksFor(ctx: RowModelContext, id: string, values: readonly unknown[]) {
     let key = rankKeys.get(values)
     if (!key) {
@@ -395,6 +403,7 @@ export const sorting = (opts: SortingOptions = {}) => {
     },
     rowModel: (indices, state, ctx) => {
       const by = entriesOf(state)
+      keepHistory(by)
       if (by.length === 0 || indices.length < 2) {
         shown = undefined
         return indices

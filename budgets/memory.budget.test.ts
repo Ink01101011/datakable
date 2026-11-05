@@ -85,6 +85,31 @@ describe('§9.3 pipeline memory, real default preset, 100k rows (dist, productio
     expect(t.getData()).toBe(data)
   })
 
+  // A string sort keeps the column's collation-rank state across data versions (#95); a column
+  // that leaves the sort drops it (review finding F2: name then city stayed over 5 MB).
+  it(`string sort by name, then by city, paginated: ≤ ${BUDGET_MB} MB`, () => {
+    const data = makeData().map((r, i) => ({ ...r, city: `city ${i % 997}` }))
+    const { mb, value: t } = measureHeap(() => {
+      const t = createTable({
+        data,
+        rowKey: 'id',
+        features: createDefaultFeatures(),
+        onDiagnostic() {},
+      })
+      t.toggleSort('name')
+      t.getRowModel()
+      t.toggleSort('city')
+      t.getRowModel()
+      return t
+    })
+    const m = t.getRowModel()
+    console.info(`[§9.3 memory] sort name then city: ${mb.toFixed(2)} MB (budget ${BUDGET_MB})`)
+    expect(t.getState().sorting.by).toEqual([{ id: 'city', desc: false }])
+    expect(m.rows).toHaveLength(10)
+    expect(mb).toBeLessThanOrEqual(BUDGET_MB)
+    expect(t.getData()).toBe(data)
+  })
+
   it(`filter + sort, unpaginated (90k visible rows): ≤ ${BUDGET_MB} MB`, () => {
     const data = makeData()
     const { mb, value: t } = measureHeap(() => {

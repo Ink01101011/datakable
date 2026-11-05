@@ -132,3 +132,39 @@ describe('destroy() releases the sort caches (#98)', () => {
     expect(t.getRowModel().rows).toBe(rows)
   })
 })
+
+// Review finding F2: the rank history holds every distinct string of a column; a column that left
+// the sort must not keep it (100k rows sorted by name then by another column stayed over 5 MB).
+describe('sorting — rank history only for the sorted columns (#95)', () => {
+  type C = { id: number; name: string; city: string }
+  const data: C[] = Array.from({ length: N }, (_, i) => ({
+    id: i,
+    name: `name ${i}`,
+    city: `city ${i % 997}`,
+  }))
+
+  it('drops a column that leaves the sort, keeps the ones still in it', () => {
+    const f = sorting()
+    const t = createTable({ data, rowKey: 'id', features: [f] })
+    t.toggleSort('name')
+    t.getRowModel()
+    expect([...probe(f).history.keys()]).toEqual(['name'])
+    t.toggleSort('city', { multi: true })
+    t.getRowModel()
+    expect([...probe(f).history.keys()].sort()).toEqual(['city', 'name'])
+    t.setSorting([{ id: 'city', desc: false }])
+    t.getRowModel()
+    expect([...probe(f).history.keys()]).toEqual(['city'])
+  })
+
+  it('drops all of it when the sort is cleared', () => {
+    const f = sorting()
+    const t = createTable({ data, rowKey: 'id', features: [f] })
+    t.toggleSort('name')
+    t.getRowModel()
+    expect(probe(f).history.size).toBe(1)
+    t.clearSorting()
+    t.getRowModel()
+    expect(probe(f).history.size).toBe(0)
+  })
+})
