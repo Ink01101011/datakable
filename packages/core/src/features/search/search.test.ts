@@ -1,4 +1,4 @@
-import { ExSearch } from 'ex-search'
+import { ExSearch, Scorer } from 'ex-search'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Diagnostic } from '../../diagnostics/types'
 import { minFilter, numSort } from '../../pipeline/test-features'
@@ -407,6 +407,57 @@ describe('search(): client matching (§6.3)', () => {
     })
     await one.setSearch('somchia')
     expect(ids(one)).toEqual([])
+  })
+
+  it('a one-typo query longer than 32 characters matches (A2-8, #106)', async () => {
+    const data = [
+      { id: 1, name: 'International Business Machines Corporation' }, // 43 characters
+      { id: 2, name: 'Siam Commercial Bank Public Company Limited' },
+    ]
+    const t = createTable({ data, rowKey: 'id', columns: [{ key: 'name' }], features: [search()] })
+    await t.setSearch('international business machines corporatoin')
+    expect(ids(t)).toEqual([1])
+    await t.setSearch('siam commercial bank public company limitd')
+    expect(ids(t)).toEqual([2])
+  })
+
+  it('a multi-word query is measured against whole values, not single words (#10, #106)', async () => {
+    // 'ab c' is one edit from the word 'abc' but far from the whole value: no fuzzy match.
+    const data = [
+      { id: 1, name: 'xxxx yyyy abc' },
+      { id: 2, name: 'ab cd' },
+    ]
+    const t = createTable({
+      data,
+      rowKey: 'id',
+      columns: [{ key: 'name' }],
+      features: [search({ fuzzyMaxDistance: 1 })],
+    })
+    await t.setSearch('ab c')
+    expect(ids(t)).toEqual([2])
+  })
+
+  it('ranks a one-word typo by its best word, ties by row index (#10, #106 parity)', async () => {
+    const data = [
+      { id: 0, name: 'Somchay Jaidee' }, // 1 edit from 'somchai' (7): 0.55 × 6/7
+      { id: 1, name: 'Somchai' }, // exact
+      { id: 2, name: 'Mr Somchai' }, // contains
+      { id: 3, name: 'Jaidee Somchya' }, // 2 edits: 0.55 × 5/7
+      { id: 4, name: 'Somchai Jaidee' }, // startsWith
+      { id: 5, name: 'Jaidee Somchay' }, // 1 edit, tie with row 0
+    ]
+    const t = createTable({ data, rowKey: 'id', columns: [{ key: 'name' }], features: [search()] })
+    await t.setSearch('somchai')
+    expect(ids(t)).toEqual([1, 4, 2, 0, 5, 3])
+  })
+
+  it('a keystroke tokenises and scores no value in DataKable: ex-search does (#96, #106)', async () => {
+    const fuzzy = vi.spyOn(Scorer, 'fuzzy')
+    const data = Array.from({ length: 50 }, (_, i) => ({ id: i, name: `Somchai Jaidee ${i}` }))
+    const t = createTable({ data, rowKey: 'id', columns: [{ key: 'name' }], features: [search()] })
+    await t.setSearch('jaidei')
+    expect(ids(t)).toHaveLength(50)
+    expect(fuzzy).not.toHaveBeenCalled()
   })
 
   it('the query is trimmed before matching', async () => {
