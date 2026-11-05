@@ -9,7 +9,11 @@ import { beforeAll, describe, expect, test } from 'vitest'
 // whole `Path<User>` union, whose member order is a TypeScript implementation detail.
 // If a TypeScript upgrade breaks this, update docs/how-to-fix/reading-type-errors.md with the new wording.
 
-const here = decodeURIComponent(new URL('.', import.meta.url).pathname)
+// A file path on every OS (`URL.pathname` is `/D:/…` on Windows).
+const { fileURLToPath } = (await import('node:url' as string)) as {
+  fileURLToPath(url: URL): string
+}
+const here = fileURLToPath(new URL('.', import.meta.url))
 const fixture = `${here}type-errors.test-d.ts`
 const tsconfig = `${here}../../tsconfig.json`
 

@@ -6,7 +6,11 @@ const vm = (await import('node:vm' as string)) as {
   runInNewContext(code: string, context: Record<string, unknown>): unknown
 }
 
-const core = decodeURIComponent(new URL('../..', import.meta.url).pathname)
+// A file path on every OS (`URL.pathname` is `/D:/…` on Windows).
+const { fileURLToPath } = (await import('node:url' as string)) as {
+  fileURLToPath(url: URL): string
+}
+const core = fileURLToPath(new URL('../..', import.meta.url))
 
 /**
  * Core's source as one script, every module kept as a page without a bundler (CDN, import map)

@@ -19,7 +19,11 @@ const { execPath } = (globalThis as unknown as { process: { execPath: string } }
  * package's `sideEffects` — with the module-level side effect that installed the feature runtime.
  * Every table with features threw. This bundles the source exactly that way and RUNS it.
  */
-const core = decodeURIComponent(new URL('../..', import.meta.url).pathname)
+// A file path on every OS (`URL.pathname` is `/D:/…` on Windows).
+const { fileURLToPath } = (await import('node:url' as string)) as {
+  fileURLToPath(url: URL): string
+}
+const core = fileURLToPath(new URL('../..', import.meta.url))
 const dir = fs.mkdtempSync(`${tmpdir()}/dk-minified-`)
 afterAll(() => fs.rmSync(dir, { recursive: true, force: true }))
 
