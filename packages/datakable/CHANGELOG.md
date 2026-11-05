@@ -1,5 +1,33 @@
 # datakable
 
+## 2.1.0
+
+### Minor Changes
+
+- 91c29a0: - Search: a one-word query is matched against each word of a cell by `ex-search`'s `fuzzyMode: 'word'` instead of DataKable's own per-row word split, with the same results and order. A one-typo query longer than 32 characters now matches. (#106)
+  - Search keystrokes are cheaper: DataKable no longer splits and scores every cell itself on top of `ex-search` (the per-row word split moved into `ex-search`'s bounded matcher, which still splits each cell into words on each keystroke), and checks the query for spaces once per query instead of once per row. A one-word typo query at 100k rows takes about 30 % less time. (#96)
+- 5ff92a2: - A new `data` array on a table sorted by a string column (10,000+ rows) no longer recomputes every collation rank: the strings the column already had keep their ranks and only new strings are placed with the collator, so a one-row `setData` costs a few collator calls and a sort of numbers instead of a cold sort, and the same rows in a new array (e.g. `data={rows.slice()}`) reuse the ranks as they are. (#95)
+  - The first sort of a string column makes no second collator pass over the distinct strings to find collator-equal neighbours: equality is recorded from the comparisons the sort already makes, and natively sorted runs are twice as long. (#97)
+  - `destroy()` releases the sort caches (collation ranks, the previous order, `sortBy` and key-path values) and the pipeline's column cache, step memo and row keys, so a destroyed table that is still referenced no longer keeps them; its last row model stays readable. (#98)
+- 5cc44a5: - `<DataTable />`: body rows are memoised on their row data (`row.original`), index, issues, the `data` array and the `columns` array. Typing in the search box no longer renders every visible cell while the rows have not changed yet (each keystroke rendered all visible cells twice; now only rows that the search result changes render, once), and a parent re-render with the same props renders no cell. A new `data` array or a new `columns` array (e.g. a `cell` renderer memoised on parent state) still renders every visible row again, so a row object changed in place and passed in a new array shows its new values. The server HTML is unchanged. (#99)
+  - `onDiagnostic` calls raised while rendering on the server (e.g. `DK_INVALID_PAGINATION`, `DK_DUPLICATE_ROW_KEY`, `DK_SSR_ASYNC_DEFERRED`) are now delivered before `renderToString` returns, instead of in a microtask afterwards, so a server that reads its collected diagnostics right after the render sees all of them. On the client they are still delivered after the commit. (#105)
+
+### Patch Changes
+
+- 0c613a6: - Release workflow: the publish job now runs only after a separate read-only `check` job passes lint, build, typecheck, tests, `check:pkg` and `check:budgets`, and only the publish job holds the write and npm OIDC permissions; the CI workflow runs with a read-only token (`permissions: contents: read`). (#80)
+  - CI now runs on Windows as well as Linux, and installs the packed tarballs on Node 18.18 (the `engines.node` floor) to load them as ESM and CJS and server-render `<DataTable />`. The package check scripts work on a stock Windows account (directory junctions instead of symlinks, copied files instead of file symlinks), and `check:rsc` uses `module.registerHooks()` where available instead of the deprecated `module.register()`. (#84)
+  - Dev dependencies: `happy-dom` 21.0.4 and `esbuild` 0.28.2 (also for tsup), so `pnpm audit` reports no known vulnerabilities. Consumers were not affected. (#85)
+  - `@datakable/core` depends on `ex-search` 1.2.0 (was 1.1.1), which fixes fuzzy search for queries and values longer than 32 characters and bounds the fuzzy tier. (#106)
+- e74ebc1: - Docs: every fetcher example (docs pages, error reference and the `datakable` README) builds its request URL with `URLSearchParams` instead of pasting `sort`, `filters` or page params into the string, and the column filters page says that filter values are user input to encode. A docs test now fails on any unencoded `?param=${…}` in the docs, READMEs or their compiled examples. (#101)
+  - Docs: the SSR and diagnostics pages say that `onDiagnostic` has every diagnostic raised during a server render by the time `renderToString` returns; the SSR page no longer says they only reach the console. (#105)
+- Updated dependencies [0c613a6]
+- Updated dependencies [91c29a0]
+- Updated dependencies [5ff92a2]
+- Updated dependencies [5cc44a5]
+- Updated dependencies [e74ebc1]
+  - @datakable/core@2.1.0
+  - @datakable/react@2.1.0
+
 ## 2.0.3
 
 ### Patch Changes
