@@ -241,8 +241,10 @@ when nothing is wrong but the result still surprises you.
 
 ## Destroying a table
 
-`destroy()` releases the table's listeners, timers and in-flight requests. `useDataTable` and
-`<DataTable />` call it when the component unmounts; with `createTable`, call it yourself.
+`destroy()` releases the table's listeners, timers and in-flight requests, and the caches the
+pipeline and its features built (column values, sort ranks), so a destroyed table you still hold a
+reference to keeps little more than its last row model. `useDataTable` and `<DataTable />` call it
+when the component unmounts; with `createTable`, call it yourself.
 
 ```ts
 import { createTable } from 'datakable'
