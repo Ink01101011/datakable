@@ -143,6 +143,11 @@ try {
 `onDiagnostic` is synced by `setOptions` (and by `useDataTable` on every render, as an inline
 function); `name` and `strict` are read once, at creation.
 
+**When `useDataTable` calls `onDiagnostic`.** Diagnostics raised while a component renders are
+held and delivered after the commit in the browser. In a server render there is no commit: they
+are delivered before `renderToString` returns, so what `onDiagnostic` collected is complete right
+after the call (see [SSR](ssr.md)).
+
 ### `strict`
 
 `strict: true` rethrows every error-level diagnostic as a `DatakableError` from the call that

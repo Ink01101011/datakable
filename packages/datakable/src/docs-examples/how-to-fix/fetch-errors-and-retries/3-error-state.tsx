@@ -12,7 +12,8 @@ type User = { id: number; name: string }
 const features = [pagination({ mode: 'server', pageSize: 20 })]
 
 const fetcher = withFetcher(async ({ pageIndex, signal }) => {
-  const res = await fetch(`/api/users?page=${pageIndex}`, { signal })
+  const params = new URLSearchParams({ page: String(pageIndex) })
+  const res = await fetch(`/api/users?${params}`, { signal })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   return (await res.json()) as FetchResult<User>
 })

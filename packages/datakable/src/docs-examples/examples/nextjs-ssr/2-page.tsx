@@ -19,7 +19,8 @@ export default function UsersPage(props: Props) {
 async function Users(props: Props) {
   const { page } = await props.searchParams
   const pageIndex = Math.max(Number(page ?? 1) - 1, 0) || 0
-  const res = await fetch(`https://api.example.com/users?page=${pageIndex}&size=${PAGE_SIZE}`, {
+  const params = new URLSearchParams({ page: String(pageIndex), size: String(PAGE_SIZE) })
+  const res = await fetch(`https://api.example.com/users?${params}`, {
     cache: 'no-store',
   })
   const { rows, rowCount = rows.length } = (await res.json()) as FetchResult<User>
