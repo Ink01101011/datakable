@@ -143,6 +143,18 @@ try {
 `onDiagnostic` is synced by `setOptions` (and by `useDataTable` on every render, as an inline
 function); `name` and `strict` are read once, at creation.
 
+**When `useDataTable` calls `onDiagnostic`.** Diagnostics raised while a component renders are
+held and delivered after the commit in the browser. In a server render there is no commit: they
+are delivered before `renderToString` returns, so what `onDiagnostic` collected is complete right
+after the call (see [SSR](ssr.md)).
+
+"Server" here means no `window` global (`typeof window === 'undefined'`), the same test the React
+package uses to pick its layout effects. A client render without a DOM (for example
+`react-test-renderer` in a Node test, or a worker) counts as a server render, so `onDiagnostic`
+runs during the render: a sink that sets React state there gets React's warning about updating a
+component while rendering. Collect into a plain array or ref instead, or give
+the test environment a DOM (`jsdom`, `happy-dom`).
+
 ### `strict`
 
 `strict: true` rethrows every error-level diagnostic as a `DatakableError` from the call that

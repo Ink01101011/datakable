@@ -26,7 +26,7 @@ function trapDate(): string[] {
   return reads
 }
 
-// onDiagnostic is delivered after the commit (never on the server): the console sink shows the emit.
+// No onDiagnostic here: the console sink (the default without one) shows the emit.
 let printed: string[] = []
 beforeEach(() => {
   printed = []

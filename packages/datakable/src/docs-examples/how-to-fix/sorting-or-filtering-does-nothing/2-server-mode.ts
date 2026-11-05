@@ -3,8 +3,10 @@ import { createTable, type FetchParams, type FetchResult, sorting, withFetcher }
 type User = { id: number; name: string; age: number }
 
 async function fetchUsers({ sort, signal }: FetchParams): Promise<FetchResult<User>> {
-  const order = (sort ?? []).map((s) => `${s.desc ? '-' : ''}${s.id}`).join(',')
-  const res = await fetch(`/api/users?sort=${order}`, { signal })
+  const params = new URLSearchParams({
+    sort: (sort ?? []).map((s) => `${s.desc ? '-' : ''}${s.id}`).join(','),
+  })
+  const res = await fetch(`/api/users?${params}`, { signal })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   return (await res.json()) as FetchResult<User> // { rows, rowCount }
 }

@@ -16,10 +16,9 @@ server render, starting state from the URL with `initialState`, server-fetched r
 - **No async work starts.** The fetcher's first request and a `searchFn` for an initial query do
   not run during the render, and no timer is left behind. Until they start, the row model has
   `status: 'pending'` (`data-status="pending"` on `<DataTable />`'s root), and on the server each
-  deferred source reports `DK_SSR_ASYNC_DEFERRED` (info; printed to the console, since
-  `useDataTable` delivers `onDiagnostic` calls after the commit, which a server render never
-  reaches). After hydration, the work starts in a layout effect. What the HTML shows depends on
-  whether the table has rows yet:
+  deferred source reports `DK_SSR_ASYNC_DEFERRED` (info; delivered to `onDiagnostic`, and printed
+  to the console in development). After hydration, the work starts in a layout effect. What the
+  HTML shows depends on whether the table has rows yet:
   - **A fetcher without `initialData`:** no rows, so `<DataTable />` renders its Loading state and
     the HTML is not an empty table.
   - **With `data` and a `searchFn` for an initial query:** the table has rows, so it shows them,
@@ -31,6 +30,11 @@ server render, starting state from the URL with `initialState`, server-fetched r
     hide the unsearched rows instead, style the body of `[data-status="pending"]`.
 - **Time-sliced work never runs** on the server or for the first row model (building a search
   index, ranking strings for a large sort), so it cannot make the two renders differ.
+- **Diagnostics are complete when the render returns.** On the server, `useDataTable` (and so
+  `<DataTable />`) delivers every diagnostic raised during the render to `onDiagnostic` before
+  `renderToString` returns, so the server can read what it collected right after the render, e.g.
+  to log it or attach it to the response. In the browser, `onDiagnostic` calls made while
+  rendering are delivered after the commit.
 
 The server's build mode comes from `process.env.NODE_ENV` when the server runs, unless the server
 code is bundled with it replaced. Start a production server that is not bundled (Node, a Nuxt /
@@ -116,8 +120,12 @@ import {
 export type User = { id: number; name: string }
 
 async function fetchUsers({ sort, pageIndex, pageSize, signal }: FetchParams) {
-  const order = (sort ?? []).map((s) => `${s.desc ? '-' : ''}${s.id}`).join(',')
-  const res = await fetch(`/api/users?sort=${order}&page=${pageIndex}&size=${pageSize}`, { signal })
+  const params = new URLSearchParams({
+    sort: (sort ?? []).map((s) => `${s.desc ? '-' : ''}${s.id}`).join(','),
+    page: String(pageIndex),
+    size: String(pageSize),
+  })
+  const res = await fetch(`/api/users?${params}`, { signal })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   return (await res.json()) as FetchResult<User>
 }

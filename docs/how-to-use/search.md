@@ -65,6 +65,9 @@ table.clearSearch() // empties input and query: every row again
 - **The search index** is built on the first non-blank query, once per data and `columns`
   reference, not per keystroke. On large data it is built in time slices: meanwhile the row model
   shows the previous rows with `status: 'pending'`.
+- **New data re-runs the search.** With a query applied, `setData` with a new array (even a
+  one-row edit) builds the index again and re-matches the query over every row: it costs about as
+  much as a fresh search.
 
 ## State
 
