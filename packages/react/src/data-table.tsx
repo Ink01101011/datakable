@@ -644,7 +644,14 @@ function DataTableView(props: {
       typeof window === 'undefined' ? (
         renderRow({ row, columns, failures, table })
       ) : (
-        <BodyRow key={row.key} row={row} columns={columns} failures={failures} table={table} />
+        <BodyRow
+          key={row.key}
+          row={row}
+          columns={columns}
+          data={data}
+          failures={failures}
+          table={table}
+        />
       ),
     )
   }
@@ -748,6 +755,8 @@ function DataTableView(props: {
 interface RowProps {
   row: DataTableRow
   columns: readonly Column[]
+  /** The data array: only compared (a new one may hold a row object changed in place). */
+  data?: readonly unknown[]
   /** This render's failures (not compared: a row that renders gets the latest array). */
   failures: Failure[]
   table: object
@@ -781,15 +790,17 @@ function renderRow({ row, columns, failures, table }: RowProps) {
 }
 
 /**
- * A body row, memoised (#99): it renders again only for another row (`original`, index or issues)
- * or another column set, so typing in the search box (the rows have not changed yet) and a parent
- * re-render with the same props render no cell. Cell renderers that read parent state update
- * through a new `columns` reference.
+ * A body row, memoised (#99): it renders again only for another row (`original`, index or issues),
+ * another column set or another data array, so typing in the search box (the rows have not changed
+ * yet) and a parent re-render with the same props render no cell. A new data array renders every
+ * visible row: a row object may have been changed in place, so its identity says nothing about its
+ * cells. Cell renderers that read parent state update through a new `columns` reference.
  */
 const BodyRow = memo(
   renderRow,
   (a, b) =>
     a.columns === b.columns &&
+    a.data === b.data &&
     a.table === b.table &&
     // `issues`: one array per row and ingest (the same empty one for every valid row).
     a.row.original === b.row.original &&

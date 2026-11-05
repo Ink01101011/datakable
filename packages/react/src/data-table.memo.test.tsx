@@ -1,5 +1,5 @@
-// Render counts of <DataTable /> body cells (#99): rows are memoised on their data and the column
-// set, so typing in the search box and identical-props parent renders leave the cells alone.
+// Render counts of <DataTable /> body cells (#99): rows are memoised on their data, the data array
+// and the column set, so typing in the search box and identical-props parent renders leave the cells alone.
 import { type ColumnDef, pagination, search } from '@datakable/core'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { type ReactNode, useMemo, useState } from 'react'
@@ -115,7 +115,11 @@ describe('<DataTable /> memoised rows (#99)', () => {
     expect(screen.getByText('name0-b')).toBeTruthy()
   })
 
-  it('new data with the same rows re-renders the changed rows only', () => {
+  // A new data array renders every visible row again: a row object may have been changed in place
+  // (the docs only ask for a new array), so its identity says nothing about its cells (2.0.x
+  // behaviour). Was `calls.n === 1` (unchanged rows skipped), which showed stale cells for rows
+  // mutated in place (review finding F1).
+  it('new data re-renders the visible rows, with the changed row', () => {
     const { calls, columns } = counted()
     let swap = () => {}
     function Parent() {
@@ -127,6 +131,27 @@ describe('<DataTable /> memoised rows (#99)', () => {
     calls.n = 0
     act(() => swap())
     expect(screen.getByText('changed')).toBeTruthy()
-    expect(calls.n).toBe(1)
+    expect(calls.n).toBe(3)
+  })
+
+  it('a row object changed in place and passed in a new array renders its new values', () => {
+    const columns: ColumnDef<User, ReactNode>[] = [
+      { key: 'id' },
+      { key: 'name', cell: ({ value }) => `${value}!` },
+    ]
+    let edit = () => {}
+    function Parent() {
+      const [rows, setRows] = useState(() => users.slice(0, 2).map((u) => ({ ...u })))
+      edit = () => {
+        ;(rows[0] as User).name = 'edited'
+        setRows([...rows])
+      }
+      return <DataTable data={rows} columns={columns} />
+    }
+    render(<Parent />)
+    expect(screen.getByText('name0!')).toBeTruthy()
+    act(() => edit())
+    expect(screen.getByText('edited!')).toBeTruthy()
+    expect(screen.queryByText('name0!')).toBeNull()
   })
 })
