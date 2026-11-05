@@ -17,7 +17,11 @@ import { readRepo } from './docs-files'
  */
 
 const PAGE = 'docs/how-to-fix/reading-type-errors.md'
-const pkg = decodeURIComponent(new URL('../', import.meta.url).pathname)
+// A file path on every OS (`URL.pathname` is `/D:/…` on Windows).
+const { fileURLToPath } = (await import('node:url' as string)) as {
+  fileURLToPath(url: URL): string
+}
+const pkg = fileURLToPath(new URL('../', import.meta.url))
 const dir = `${pkg}src/docs-examples/how-to-fix/reading-type-errors/`
 const DIRECTIVE = '@ts-expect-error'
 

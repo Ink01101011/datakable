@@ -18,7 +18,7 @@
 // Run after `pnpm build`.
 import assert from 'node:assert/strict'
 import { mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
-import { createRequire, register } from 'node:module'
+import * as nodeModule from 'node:module'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { isMainThread } from 'node:worker_threads'
@@ -27,14 +27,28 @@ const USE_CLIENT = /^(?:\s*(?:\/\/[^\n]*\n|\/\*[\s\S]*?\*\/))*\s*(['"])use clien
 const EXPORT_ALL = /^export \*(?: as \w+)? from /m
 const CLIENT_REF = Symbol.for('react.client.reference')
 
-/** Module customization hooks (registered below): the bundler's server layer. */
-export async function resolve(specifier, context, next) {
+// Directory links: a junction on Windows, which needs no Developer Mode or symlink privilege (#84).
+const DIR_LINK = process.platform === 'win32' ? 'junction' : 'dir'
+
+/**
+ * Module customization hooks: the bundler's server layer. In-thread `module.registerHooks()`
+ * (Node >= 22.15) takes `resolve` and `loadSync`. Older Node 22 loads this file as an off-thread
+ * hooks module through `module.register()` (deprecated, DEP0205), which uses the async `load`.
+ */
+export function resolve(specifier, context, next) {
   const conditions = [...new Set([...context.conditions, 'react-server'])]
   return next(specifier, { ...context, conditions })
 }
 
 export async function load(url, context, next) {
-  const out = await next(url, context)
+  return serverLayer(url, await next(url, context))
+}
+
+function loadSync(url, context, next) {
+  return serverLayer(url, next(url, context))
+}
+
+function serverLayer(url, out) {
   if (out.format !== 'module' || !url.startsWith('file:')) return out
   const src = String(out.source)
   if (!USE_CLIENT.test(src)) return out
@@ -100,7 +114,7 @@ async function main() {
   const dir = join(root, 'node_modules/.cache/rsc-check')
   rmSync(dir, { recursive: true, force: true })
   mkdirSync(join(dir, 'node_modules/@datakable'), { recursive: true })
-  const link = (target, name) => symlinkSync(target, join(dir, 'node_modules', name), 'dir')
+  const link = (target, name) => symlinkSync(target, join(dir, 'node_modules', name), DIR_LINK)
   link(join(root, 'packages/core'), '@datakable/core')
   link(join(root, 'packages/react'), '@datakable/react')
   link(join(root, 'packages/datakable'), 'datakable')
@@ -113,7 +127,9 @@ export * as dkr from 'datakable/react'
 import 'datakable/messages'
 `,
   )
-  register(import.meta.url)
+  if (typeof nodeModule.registerHooks === 'function')
+    nodeModule.registerHooks({ resolve, load: loadSync })
+  else nodeModule.register(import.meta.url)
   try {
     const { dkReact, dk, dkr } = await import(pathToFileURL(join(dir, 'server.mjs')).href)
     assert.equal(
@@ -159,8 +175,8 @@ import 'datakable/messages'
   }
 
   // 3. A createTable-only bundle of `datakable` (and of `datakable/messages`) has no React (#9).
-  // esbuild 0.27.7 is pinned in @datakable/core's devDependencies (the size method's version).
-  const esbuild = createRequire(join(root, 'packages/core/package.json'))('esbuild')
+  // esbuild 0.28.2 is pinned in @datakable/core's devDependencies (the size method's version).
+  const esbuild = nodeModule.createRequire(join(root, 'packages/core/package.json'))('esbuild')
   for (const [name, contents] of [
     ['datakable createTable', "export { createTable } from 'datakable'"],
     ['datakable/react createTable', "export { createTable } from 'datakable/react'"],

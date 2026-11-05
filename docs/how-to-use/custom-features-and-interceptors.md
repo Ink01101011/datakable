@@ -344,10 +344,10 @@ const requestTiming = defineInterceptor({
 createTable({
   rowKey: 'id',
   features: [pagination({ mode: 'server' })],
-  fetcher: withFetcher(
-    async ({ pageIndex, signal }) =>
-      (await (await fetch(`/api/users?page=${pageIndex}`, { signal })).json()) as FetchResult<User>,
-  ),
+  fetcher: withFetcher(async ({ pageIndex, signal }) => {
+    const params = new URLSearchParams({ page: String(pageIndex) })
+    return (await (await fetch(`/api/users?${params}`, { signal })).json()) as FetchResult<User>
+  }),
   interceptors: [pipelineTiming, requestTiming],
 })
 ```

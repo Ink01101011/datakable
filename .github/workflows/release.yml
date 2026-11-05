@@ -8,14 +8,42 @@ on:
 
 concurrency: release-${{ github.ref }}
 
+# Read-only by default; only the publish job holds write and OIDC permissions (#80).
 permissions:
-  contents: write       # version commits + tags
-  pull-requests: write  # "Version Packages" PR
-  id-token: write       # npm Trusted Publishing (OIDC) + provenance
+  contents: read
 
 jobs:
-  release:
+  # The same gate as CI, read-only: the devDependency toolchain (lint, tests, budgets) never runs
+  # with write or OIDC permissions, and nothing is published unless it passes (#80).
+  check:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm build
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm check:pkg
+      - run: pnpm check:budgets
+
+  # Runs only after the gate passed: install, build, then version or publish.
+  publish:
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write       # version commits + tags
+      pull-requests: write  # "Version Packages" PR
+      id-token: write       # npm Trusted Publishing (OIDC) + provenance
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
@@ -28,6 +56,7 @@ jobs:
       # this job holds id-token: write and contents: write (#79).
       - run: npm install -g npm@11.21.1
       - run: pnpm install --frozen-lockfile
+      - run: pnpm build
       - uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
         with:
           version: pnpm version-packages

@@ -65,6 +65,10 @@ export interface ColumnCache {
     rows: Uint32Array,
     body: () => void,
   ): void
+  /** Drops every entry (`destroy()`, #98). */
+  release(): void
+  /** Development only, for tests (#98): an entry of `data` is cached. */
+  holds?(data: readonly unknown[]): boolean
 }
 
 interface Entry {
@@ -128,7 +132,7 @@ function share(cells: string[]) {
  * releases them.
  */
 export function createColumnCache(host: ColumnCacheHost): ColumnCache {
-  const byData = new WeakMap<readonly unknown[], WeakMap<ColumnLike, Entry>>()
+  let byData = new WeakMap<readonly unknown[], WeakMap<ColumnLike, Entry>>()
   const pool = createContextPool()
   const failures = new CellFailures()
 
@@ -353,5 +357,9 @@ export function createColumnCache(host: ColumnCacheHost): ColumnCache {
     formatted,
     formattedSliced: (data, column) => formatting(data, column, true),
     batch,
+    release: () => {
+      byData = new WeakMap()
+    },
+    ...(DEV ? { holds: (data: readonly unknown[]) => byData.has(data) } : {}),
   }
 }

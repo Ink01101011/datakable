@@ -10,10 +10,12 @@ import {
 type Order = { id: string; customer: string; total: number }
 
 async function fetchOrders({ sort, pageIndex, pageSize, signal }: FetchParams) {
-  const order = (sort ?? []).map((s) => `${s.desc ? '-' : ''}${s.id}`).join(',')
-  const res = await fetch(`/api/orders?sort=${order}&page=${pageIndex}&size=${pageSize}`, {
-    signal,
+  const params = new URLSearchParams({
+    sort: (sort ?? []).map((s) => `${s.desc ? '-' : ''}${s.id}`).join(','),
+    page: String(pageIndex),
+    size: String(pageSize),
   })
+  const res = await fetch(`/api/orders?${params}`, { signal })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   return (await res.json()) as FetchResult<Order>
 }

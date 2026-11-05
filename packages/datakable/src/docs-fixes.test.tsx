@@ -187,8 +187,8 @@ describe('#51: SSR with data and an async searchFn for an initial query', () => 
       expect(html).toContain(name)
     }
     expect(calls).toBe(0)
-    // Printed to the console; useDataTable delivers onDiagnostic after the commit (never on the server).
-    expect(codes).toEqual([])
+    // On the server, useDataTable delivers onDiagnostic before renderToString returns (#105).
+    expect(codes).toEqual(['DK_SSR_ASYNC_DEFERRED'])
 
     const ssr = prose('docs/how-to-use/ssr.md')
     expect(ssr).toContain('With `data` and a `searchFn` for an initial query:** the table has rows')

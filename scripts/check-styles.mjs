@@ -16,7 +16,9 @@ const esbuild = createRequire(createRequire(join(root, 'package.json')).resolve(
 const dir = join(root, 'node_modules/.cache/consumer-styles')
 rmSync(dir, { recursive: true, force: true })
 mkdirSync(join(dir, 'node_modules/@datakable'), { recursive: true })
-const link = (target, name) => symlinkSync(target, join(dir, 'node_modules', name), 'dir')
+// A junction on Windows: it needs no Developer Mode or symlink privilege (#84).
+const DIR_LINK = process.platform === 'win32' ? 'junction' : 'dir'
+const link = (target, name) => symlinkSync(target, join(dir, 'node_modules', name), DIR_LINK)
 link(join(root, 'packages/react'), '@datakable/react')
 link(join(root, 'packages/datakable'), 'datakable')
 link(join(root, 'node_modules/react'), 'react')

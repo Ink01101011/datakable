@@ -116,7 +116,7 @@ interface Instance {
   /** The option values the table has (user values; callbacks count by presence). */
   synced: Options
   readonly wrappers: Record<CallbackKey, Callback>
-  /** `onDiagnostic` calls made while rendering, delivered after the commit. */
+  /** `onDiagnostic` calls made while rendering, delivered after the commit (on the server: now). */
   queue: Diagnostic[] | undefined
   rendering: number
   /** Inside the hook's own `setOptions` call. */
@@ -292,6 +292,8 @@ function createInstance(options: Options): Instance {
           queueMicrotask(() => deliver(inst))
         }
         inst.queue.push(d)
+        // The server commits nothing: delivered now, before `renderToString` returns (#105).
+        if (typeof window === 'undefined') deliver(inst)
       },
       fetcher: (params) => (inst.latest.fetcher as Callback)(params),
     },
