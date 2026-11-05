@@ -9,7 +9,8 @@ const table = createTable({
   // Server mode: core skips the filter step; the slice goes to the fetcher as `filters`.
   features: [columnFilters({ mode: 'server' })],
   fetcher: withFetcher(async ({ filters, signal }) => {
-    const res = await fetch(`/api/users?filters=${JSON.stringify(filters ?? {})}`, { signal })
+    const params = new URLSearchParams({ filters: JSON.stringify(filters ?? {}) })
+    const res = await fetch(`/api/users?${params}`, { signal })
     return (await res.json()) as FetchResult<User>
   }),
 })

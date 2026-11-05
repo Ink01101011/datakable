@@ -32,10 +32,12 @@ export const PAGE_SIZE = 20
 
 // Later pages (after a sort or page change) are fetched by the browser, from your route handler.
 async function fetchUsers({ sort, pageIndex, pageSize, signal }: FetchParams) {
-  const order = (sort ?? []).map((s) => `${s.desc ? '-' : ''}${s.id}`).join(',')
-  const res = await fetch(`/api/users?sort=${order}&page=${pageIndex}&size=${pageSize}`, {
-    signal,
+  const params = new URLSearchParams({
+    sort: (sort ?? []).map((s) => `${s.desc ? '-' : ''}${s.id}`).join(','),
+    page: String(pageIndex),
+    size: String(pageSize),
   })
+  const res = await fetch(`/api/users?${params}`, { signal })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   return (await res.json()) as FetchResult<User>
 }
@@ -86,7 +88,8 @@ export default function UsersPage(props: Props) {
 async function Users(props: Props) {
   const { page } = await props.searchParams
   const pageIndex = Math.max(Number(page ?? 1) - 1, 0) || 0
-  const res = await fetch(`https://api.example.com/users?page=${pageIndex}&size=${PAGE_SIZE}`, {
+  const params = new URLSearchParams({ page: String(pageIndex), size: String(PAGE_SIZE) })
+  const res = await fetch(`https://api.example.com/users?${params}`, {
     cache: 'no-store',
   })
   const { rows, rowCount = rows.length } = (await res.json()) as FetchResult<User>

@@ -185,7 +185,9 @@ current.
 With `columnFilters({ mode: 'server' })`, core holds the slice but does not filter: the
 `fetcher` receives it as `filters` (the slice as is, inactive entries included) and runs again
 whenever it changes. Without a fetcher, read `getState().columnFilters` and pass the filtered page
-as `data` yourself. See [Server mode](server-mode.md).
+as `data` yourself. See [Server mode](server-mode.md). Filter values come from user input: encode
+them when you build the request URL (`URLSearchParams`, as below), and validate them on the server
+([`FetchParams`](server-mode.md#fetchparams)).
 
 ```ts
 import { createTable, type FetchResult } from '@datakable/core'
@@ -199,7 +201,8 @@ const table = createTable({
   // Server mode: core skips the filter step; the slice goes to the fetcher as `filters`.
   features: [columnFilters({ mode: 'server' })],
   fetcher: withFetcher(async ({ filters, signal }) => {
-    const res = await fetch(`/api/users?filters=${JSON.stringify(filters ?? {})}`, { signal })
+    const params = new URLSearchParams({ filters: JSON.stringify(filters ?? {}) })
+    const res = await fetch(`/api/users?${params}`, { signal })
     return (await res.json()) as FetchResult<User>
   }),
 })
