@@ -28,6 +28,13 @@ jobs:
       # this job holds id-token: write and contents: write (#79).
       - run: npm install -g npm@11.21.1
       - run: pnpm install --frozen-lockfile
+      # The same gate as CI, in this job: nothing below runs (or publishes) unless it passes (#80).
+      - run: pnpm lint
+      - run: pnpm build
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm check:pkg
+      - run: pnpm check:budgets
       - uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
         with:
           version: pnpm version-packages

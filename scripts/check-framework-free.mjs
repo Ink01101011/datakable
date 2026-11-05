@@ -12,6 +12,7 @@
 // the workspace's `node_modules/react` by walking up). Run after `pnpm build`.
 import { execFileSync } from 'node:child_process'
 import {
+  copyFileSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -25,6 +26,9 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
+// Directory links are junctions on Windows (no Developer Mode or symlink privilege needed), and
+// files are copied: a file symlink needs that privilege on Windows (#84).
+const DIR_LINK = process.platform === 'win32' ? 'junction' : 'dir'
 const failures = []
 const temp = []
 
@@ -49,13 +53,17 @@ function project(name, withReact) {
     ['datakable', 'datakable'],
   ]) {
     mkdirSync(join(nm, as))
-    for (const f of ['package.json', 'dist'])
-      symlinkSync(join(root, 'packages', pkg, f), join(nm, as, f))
+    copyFileSync(join(root, 'packages', pkg, 'package.json'), join(nm, as, 'package.json'))
+    symlinkSync(join(root, 'packages', pkg, 'dist'), join(nm, as, 'dist'), DIR_LINK)
   }
   // @datakable/core's dependencies (their React peers are optional).
   for (const dep of ['ex-search', 'exsorted', 'kk-debounce'])
-    symlinkSync(realpathSync(join(root, 'packages/core/node_modules', dep)), join(nm, dep), 'dir')
-  if (withReact) symlinkSync(join(root, 'node_modules/react'), join(nm, 'react'), 'dir')
+    symlinkSync(
+      realpathSync(join(root, 'packages/core/node_modules', dep)),
+      join(nm, dep),
+      DIR_LINK,
+    )
+  if (withReact) symlinkSync(join(root, 'node_modules/react'), join(nm, 'react'), DIR_LINK)
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ name, private: true }))
   return dir
 }
