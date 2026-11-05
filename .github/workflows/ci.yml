@@ -9,9 +9,19 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Read-only token, whatever the repository default is (#80).
+permissions:
+  contents: read
+
 jobs:
   check:
-    runs-on: ubuntu-latest
+    name: check (${{ matrix.os }}, Node 22)
+    # Windows catches contributor breakages (line endings, paths, symlinks) that Linux does not (#84).
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
@@ -26,4 +36,26 @@ jobs:
       - run: pnpm test
       - run: pnpm check:pkg
       # §9.3 budgets (T37): size ratchets, memory, batch overhead, 4x-throttled interaction.
-      - run: pnpm check:budgets
+      # Measured on one OS: the ratchets are not per-platform numbers.
+      - if: runner.os == 'Linux'
+        run: pnpm check:budgets
+
+  node-floor:
+    name: packed tarballs on Node 18.18 (engines floor)
+    # The packages declare engines.node >=18.18.0: build and pack on Node 22, then install the
+    # tarballs into a scratch npm project and load them on 18.18 (ESM, CJS, renderToString) (#84).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm -r --filter "./packages/*" pack --pack-destination "$RUNNER_TEMP/tarballs"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '18.18'
+      - run: node scripts/smoke-packed.mjs "$RUNNER_TEMP/tarballs"

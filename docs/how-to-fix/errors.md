@@ -2536,7 +2536,8 @@ import { renderToString } from 'react-dom/server'
 type User = { id: number; name: string }
 
 async function fetchUsers({ pageIndex, signal }: FetchParams): Promise<FetchResult<User>> {
-  const res = await fetch(`/api/users?page=${pageIndex}`, { signal })
+  const params = new URLSearchParams({ page: String(pageIndex) })
+  const res = await fetch(`/api/users?${params}`, { signal })
   return res.json()
 }
 const features = [pagination({ mode: 'server' })]

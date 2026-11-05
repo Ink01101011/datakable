@@ -9,7 +9,8 @@ async function fetchUsers({
   pageSize,
   signal,
 }: FetchParams): Promise<FetchResult<User>> {
-  const res = await fetch(`/api/users?page=${pageIndex}&size=${pageSize}`, { signal })
+  const params = new URLSearchParams({ page: String(pageIndex), size: String(pageSize) })
+  const res = await fetch(`/api/users?${params}`, { signal })
   // fetch() resolves on HTTP errors: throw, or the error body is taken for the rows.
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   const page = (await res.json()) as UsersPage

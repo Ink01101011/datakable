@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
 import { driftProblems, fences, type RepoFile } from './docs-check'
-import { docsExamples, docsPages } from './docs-files'
+import { docsExamples, docsPages, READMES, readRepo } from './docs-files'
 
 /**
  * Docs examples compile (V1, job datakable-docs-v1): every ```ts / ```tsx block of a page under
@@ -43,6 +43,22 @@ describe('docs examples (drift)', () => {
 
   it('docs-examples/ holds only TypeScript files', () => {
     expect(examples.filter((e) => !/\.tsx?$/.test(e.path)).map((e) => e.path)).toEqual([])
+  })
+
+  // #101: fetcher params come from user input; a copied example must not put them in a URL raw.
+  it('no request URL interpolates a query param without encoding it', () => {
+    const raw = /[?&][\w-]+=\$\{(?!encodeURIComponent\()/
+    const files = [
+      ...pages,
+      ...READMES.map((path) => ({ path, text: readRepo(path) })),
+      ...examples.map((e) => ({ path: `docs-examples/${e.path}`, text: e.text })),
+    ]
+    const hits = files.flatMap((f) =>
+      f.text
+        .split('\n')
+        .flatMap((line, i) => (raw.test(line) ? [`${f.path}:${i + 1}: ${line.trim()}`] : [])),
+    )
+    expect(hits).toEqual([])
   })
 })
 

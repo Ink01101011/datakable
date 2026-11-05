@@ -4,7 +4,8 @@ type User = { id: number; name: string }
 
 async function fetchUsers({ pageIndex, pageSize, signal }: FetchParams) {
   // Pass the signal: a superseded or timed-out request is aborted, not left running.
-  const res = await fetch(`/api/users?page=${pageIndex}&size=${pageSize}`, { signal })
+  const params = new URLSearchParams({ page: String(pageIndex), size: String(pageSize) })
+  const res = await fetch(`/api/users?${params}`, { signal })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   return (await res.json()) as FetchResult<User>
 }

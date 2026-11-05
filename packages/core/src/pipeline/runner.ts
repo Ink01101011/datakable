@@ -79,8 +79,13 @@ export interface Pipeline<T> {
    * interceptors), so a replay reports nothing and changes nothing.
    */
   replayContext(name: string): RowModelContext
-  /** Cancels time-sliced work in progress (`destroy()`). */
+  /**
+   * `destroy()`: cancels time-sliced work in progress and releases the column cache, the step memo
+   * and the row keys (#98). {@link current} stays readable.
+   */
   dispose(): void
+  /** Development only, for tests (#98): what the runner still holds. */
+  probe?(): { memo: number; keys: boolean; last: boolean; cached: boolean }
 }
 
 /**
@@ -468,6 +473,22 @@ export function createPipeline<T>(host: PipelineHost): Pipeline<T> {
     current: () => model,
     lastRun: () => lastRun,
     replayContext,
-    dispose: () => slicer?.cancel(),
+    dispose: () => {
+      slicer?.cancel()
+      cache?.release()
+      memo.clear()
+      keys = undefined
+      last = undefined
+    },
+    ...(DEV
+      ? {
+          probe: () => ({
+            memo: memo.size,
+            keys: keys !== undefined,
+            last: last !== undefined,
+            cached: cache?.holds?.(host.getData()) === true,
+          }),
+        }
+      : {}),
   }
 }

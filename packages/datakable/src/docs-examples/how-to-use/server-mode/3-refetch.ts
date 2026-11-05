@@ -8,7 +8,8 @@ const table = createTable({
   rowKey: 'id',
   features: [pagination({ mode: 'server' })],
   fetcher: withFetcher(async ({ pageIndex, pageSize, signal }) => {
-    const res = await fetch(`/api/orders?page=${pageIndex}&size=${pageSize}`, { signal })
+    const params = new URLSearchParams({ page: String(pageIndex), size: String(pageSize) })
+    const res = await fetch(`/api/orders?${params}`, { signal })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     return (await res.json()) as FetchResult<Order>
   }),

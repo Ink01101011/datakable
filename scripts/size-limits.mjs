@@ -71,7 +71,8 @@ export default [
     // bundle that threw (esbuild --minify dropped the feature runtime); this one runs (`smoke`).
     // #78 (2.0.3): 24 → 23.75 KB, re-measured with the version pinned: 24,248 B (+72 B headroom).
     // 2.0.3 bug fixes (#86-#104; trimmed first, then raised as the owner allows for fixes): 24,569 B -> 24.25 KB (+263 B headroom).
-    limit: 24.25 * KB,
+    // 2.1.0 perf work (#95 incremental ranks, #97, #98 cache release, #99 memo rows; user decision 2026-11-05): 25,054 B -> 24.75 KB.
+    limit: 24.75 * KB,
   },
   {
     name: '@datakable/core: createTable + columnFilters + sorting + pagination + search',
@@ -91,7 +92,8 @@ export default [
     // getDiagnostics() returns copies without context.cause (+46 B); 2.0.1 was already +1 B over.
     // #78 (2.0.3): stays 26.75 KB, re-measured with the version pinned: 27,184 B (+208 B headroom).
     // 2.0.3 bug fixes (#86-#104; trimmed first, then raised as the owner allows for fixes): 27,504 B -> 27.00 KB (+144 B headroom).
-    limit: 27 * KB,
+    // 2.1.0 perf work (#95 incremental ranks, #97, #98 cache release, #99 memo rows; user decision 2026-11-05): 27,881 B -> 27.5 KB.
+    limit: 27.5 * KB,
   },
   {
     name: 'datakable: createTable (default preset)',
@@ -109,7 +111,8 @@ export default [
     // bundle that threw (esbuild --minify dropped the feature runtime); this one runs (`smoke`).
     // #78 (2.0.3): stays 27 KB, re-measured with the version pinned: 27,476 B (+172 B headroom).
     // 2.0.3 bug fixes (#86-#104; trimmed first, then raised as the owner allows for fixes): 27,819 B -> 27.25 KB (+85 B headroom).
-    limit: 27.25 * KB,
+    // 2.1.0 perf work (#95 incremental ranks, #97, #98 cache release, #99 memo rows; user decision 2026-11-05): 28,177 B -> 27.75 KB.
+    limit: 27.75 * KB,
   },
   {
     name: 'datakable/react: useDataTable (default preset + react hook)',
@@ -132,7 +135,8 @@ export default [
     // by 24 B; the user accepted that gap. The smallest correct variant measured was 29,193 B.
     // #78 (2.0.3): stays 28.75 KB, re-measured with the version pinned: 29,207 B (+233 B headroom).
     // 2.0.3 bug fixes (#86-#104; trimmed first, then raised as the owner allows for fixes): 29,544 B -> 29.00 KB (+152 B headroom).
-    limit: 29 * KB,
+    // 2.1.0 perf work (#95 incremental ranks, #97, #98 cache release, #99 memo rows; user decision 2026-11-05): 29,913 B -> 29.5 KB.
+    limit: 29.5 * KB,
   },
   {
     name: 'datakable/react: DataTable (default preset + <DataTable />)',
@@ -156,6 +160,7 @@ export default [
     // still leave it ~180 B over.
     // #78 (2.0.3): 32.5 → 32.25 KB, re-measured with the version pinned: 32,908 B (+116 B headroom).
     // 2.0.3 bug fixes (#86-#104; trimmed first, then raised as the owner allows for fixes): 33,441 B -> 32.75 KB (+95 B headroom).
-    limit: 32.75 * KB,
+    // 2.1.0 perf work (#95 incremental ranks, #97, #98 cache release, #99 memo rows; user decision 2026-11-05): 33,916 B -> 33.25 KB.
+    limit: 33.25 * KB,
   },
 ]

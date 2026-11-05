@@ -218,6 +218,11 @@ It renders what the installed features provide:
   pager "Customers pagination", so two tables on a page get distinct names.
 - **Cells** through the column's `cell`, else `format`, else the default formatter; flagged cells
   (`invalidRows: 'flag'`) through `invalidCell`, else the raw value with a `⚠` marker.
+  Body rows are memoised: a row renders its cells again only when its row data (`row.original`),
+  its index or its issues change, or when `columns` is a new array. Typing in the search box does
+  not render the rows until the search result changes them, and a parent re-render with the same
+  props renders no cell. A `cell` renderer that reads other component state must therefore come
+  from a `columns` array that changes with it (e.g. `useMemo(() => [...], [state])`).
 
 ### Loading, error, empty and refreshing
 

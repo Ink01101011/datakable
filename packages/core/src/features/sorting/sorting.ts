@@ -18,6 +18,7 @@ import { boundaryDiagnostics } from '../../intercept/codes'
 import { type ResolvedColumn, resolveColumns } from '../../pipeline/columns'
 import { envDiagnostics } from '../../pipeline/env-codes'
 import { allRows } from '../../pipeline/indices'
+import { PROBE, RELEASE, type Releasable } from '../../pipeline/release'
 import { sliced } from '../../pipeline/slice'
 import type { ColumnValues } from '../../pipeline/types'
 import { type DataMode, modeOption } from '../../source/mode'
@@ -30,7 +31,7 @@ import {
   sortFnIndexComparator,
   typeRank,
 } from './compare'
-import { collationRanks } from './ranks'
+import { collationRanks, type RankState } from './ranks'
 import {
   chooseAuto,
   hasExsorted,
@@ -272,22 +273,40 @@ export const sorting = (opts: SortingOptions = {}) => {
   }
 
   /** Values array → the key of its collation-ranks job (`ctx.slice`); released with the values. */
-  const rankKeys = new WeakMap<object, object>()
-  function ranksFor(ctx: RowModelContext, values: readonly unknown[]) {
+  let rankKeys = new WeakMap<object, object>()
+  /**
+   * Per column id: the state of its last collation ranks, across data versions (#95). A new data
+   * array re-ranks only what changed; it holds the column's current distinct strings, so only the
+   * columns of the current sort keep one (`keepHistory`).
+   */
+  let history = new Map<string, RankState>()
+  /** Drops the rank history of the columns that are not in `by` (the §9.3 memory budget). */
+  function keepHistory(by: readonly { id: unknown }[]) {
+    for (const id of history.keys()) {
+      if (!by.some((e) => String(e.id) === id)) history.delete(id)
+    }
+  }
+  function ranksFor(ctx: RowModelContext, id: string, values: readonly unknown[]) {
     let key = rankKeys.get(values)
     if (!key) {
       key = {}
       rankKeys.set(values, key)
     }
     const c = getCollator(ctx.emit)
-    return sliced(ctx, key, () => collationRanks(values, c))
+    const into = history
+    return sliced(ctx, key, function* () {
+      const r = yield* collationRanks(values, c, into.get(id))
+      if (!r) return null
+      into.set(id, r.state)
+      return r.ranks
+    })
   }
   /** The last sorted output and its input: the stand-in while ranks are computed (§9.1). */
   let shown: { input: Uint32Array; output: Uint32Array } | undefined
 
   // Values that the column cache does not hold, per data reference (released with it).
-  const sortByCache = new WeakMap<readonly unknown[], WeakMap<object, unknown[]>>()
-  const pathCache = new WeakMap<readonly unknown[], Map<string, unknown[]>>()
+  let sortByCache = new WeakMap<readonly unknown[], WeakMap<object, unknown[]>>()
+  let pathCache = new WeakMap<readonly unknown[], Map<string, unknown[]>>()
   /** exsorted feature detection (§8.5), once per feature instance, on the first sort needing it. */
   let exsorted: boolean | undefined
 
@@ -344,7 +363,7 @@ export const sorting = (opts: SortingOptions = {}) => {
     return out
   }
 
-  return defineFeature<'sorting', SortingTypes>({
+  const feature = defineFeature<'sorting', SortingTypes>({
     name: 'sorting',
     stage: 'sort',
     mode: opts.mode ?? 'client',
@@ -383,6 +402,7 @@ export const sorting = (opts: SortingOptions = {}) => {
     },
     rowModel: (indices, state, ctx) => {
       const by = entriesOf(state)
+      keepHistory(by)
       if (by.length === 0 || indices.length < 2) {
         shown = undefined
         return indices
@@ -398,7 +418,7 @@ export const sorting = (opts: SortingOptions = {}) => {
           : (ctx.getColumnValues(id) ?? pathValues(ctx, id))
         const sortFn =
           col && !sortBy ? (fnField(col.def, 'sortFn') as SortFn | undefined) : undefined
-        return { col, desc: e.desc === true, values, sortFn, ranked: false }
+        return { id, col, desc: e.desc === true, values, sortFn, ranked: false }
       })
 
       // Dev (§8.3): a sampled sortFn check; an invalid one falls back to the default comparator.
@@ -455,7 +475,7 @@ export const sorting = (opts: SortingOptions = {}) => {
         let computing = false
         for (const e of entries) {
           if (e.sortFn || e.values instanceof Float64Array) continue
-          const ranks = ranksFor(ctx, e.values)
+          const ranks = ranksFor(ctx, e.id, e.values)
           if (ranks === undefined) computing = true
           else if (ranks) {
             e.values = ranks
@@ -621,4 +641,15 @@ export const sorting = (opts: SortingOptions = {}) => {
       }
     },
   })
+  // #98: a destroyed table drops these caches (the instance may stay referenced).
+  const internal = feature as Releasable
+  internal[RELEASE] = () => {
+    rankKeys = new WeakMap()
+    history = new Map()
+    shown = undefined
+    sortByCache = new WeakMap()
+    pathCache = new WeakMap()
+  }
+  if (DEV) internal[PROBE] = () => ({ rankKeys, history, shown, sortByCache, pathCache })
+  return feature
 }

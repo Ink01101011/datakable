@@ -1,4 +1,4 @@
-import { ExSearch, Scorer } from 'ex-search'
+import { ExSearch } from 'ex-search'
 import { getValue } from '../../column/get-value'
 import { DEV } from '../../diagnostics/env'
 import type { Emit } from '../../diagnostics/types'
@@ -57,7 +57,7 @@ type Read = (r: number) => string
 
 // A throw (no `ExSearch`) counts as missing (hasCapability).
 const hasExSearch = () =>
-  [ExSearch.prototype.search, ExSearch.prototype.setData, Scorer.fuzzy].every(
+  [ExSearch.prototype.search, ExSearch.prototype.setData, ExSearch.prototype.updateConfig].every(
     (f) => typeof f === 'function',
   )
 
@@ -70,8 +70,8 @@ export function probeExSearch(emit: Emit): boolean {
         {
           feature: 'search',
           dependency: 'ex-search',
-          capability: 'ExSearch, Scorer.fuzzy',
-          supported: '^1.1.1',
+          capability: "ExSearch (fuzzyMode: 'word')",
+          supported: '^1.2.0',
           fallback: 'case-insensitive exact / prefix / substring matching (no fuzzy matching)',
         },
         emit,
@@ -201,7 +201,7 @@ export function* buildIndex(
   const foldQuery = (q: string) => fold(q.normalize('NFC'))
   const at = (k: number, r: number) => fold((reads[k] as Read)(r))
   return useExSearch
-    ? exSearchIndex(ctx.data.length, keys, at, foldQuery, config)
+    ? exSearchIndex(keys, at, foldQuery, config)
     : containsIndex(keys, at, foldQuery, config)
 }
 
@@ -222,41 +222,37 @@ function* chunked(
 }
 
 /**
- * The projection as ex-search reads it: an array (iteration, `length`, index reads) of `{ i, c0, … }`
- * items, each built when read and not kept. It shows every row of `data` (`size`), or one chunk of
- * rows while that chunk is matched; ex-search holds this one view (`setData` once).
+ * The projection as ex-search reads it: an array (`length`, index reads) of `{ i, c0, … }` items,
+ * each built when read and not kept. It shows the chunk of rows being matched; ex-search holds
+ * this one view (`setData` once).
  */
-function projection(size: number, keys: readonly Key[], at: (k: number, r: number) => string) {
-  let rows: Uint32Array | undefined
+function projection(keys: readonly Key[], at: (k: number, r: number) => string) {
+  let rows: Uint32Array = new Uint32Array(0)
   // Never written, and its own `length` stays 0: `length` is read through the trap below (setting
   // a large `length` would allocate a backing store).
   const target: Item[] = []
-  const length = () => (rows ? rows.length : size)
-  const item = (j: number): Item => {
-    const r = rows ? (rows[j] as number) : j
-    const o = { i: r } as Record<string, string | number>
-    for (let k = 0; k < keys.length; k++) o[(keys[k] as Key).name] = at(k, r)
-    return o as Item
-  }
   const items = new Proxy(target, {
     get(t, p) {
-      if (p === 'length') return length()
-      const j = arrayIndex(p, length())
-      return j >= 0 ? item(j) : t[p as keyof Item[]]
+      if (p === 'length') return rows.length
+      const j = arrayIndex(p, rows.length)
+      if (j < 0) return t[p as keyof Item[]]
+      const r = rows[j] as number
+      const o = { i: r } as Record<string, string | number>
+      for (let k = 0; k < keys.length; k++) o[(keys[k] as Key).name] = at(k, r)
+      return o
     },
-    has: (t, p) => arrayIndex(p, length()) >= 0 || p in t,
+    has: (t, p) => arrayIndex(p, rows.length) >= 0 || p in t,
   })
   return {
     items,
-    /** Shows `chunk` (row indices), or every row again (`undefined`). */
-    show(chunk: Uint32Array | undefined) {
+    /** Shows `chunk` (row indices). */
+    show(chunk: Uint32Array) {
       rows = chunk
     },
   }
 }
 
 function exSearchIndex(
-  size: number,
   keys: readonly Key[],
   at: (k: number, r: number) => string,
   fold: (v: string) => string,
@@ -271,43 +267,27 @@ function exSearchIndex(
     // stable and avoids radix's score quantisation.
     sortAlgorithm: 'tim',
   })
-  // ex-search measures the edit distance to the whole value, so a typo of one word of a multi-word
-  // cell never matched (#10). For a one-word query, a value without it is shown as the best fuzzy
-  // match of itself and its words, or as '' (scores 0, as the value would). A value with the query
-  // stays whole for the exact / prefix / substring scores. Only strings within `max` of the query's
-  // length are measured (an edit distance is at least the length difference).
-  const max = config.fuzzyMaxDistance
-  let q = ''
-  const near = (k: number, r: number) => {
-    const v = at(k, r)
-    if (v.includes(q) || /\s/.test(q)) return v
-    let best = ''
-    let top = 0
-    const words = v.split(/\s+/)
-    for (const w of words[1] ? [v, ...words] : words) {
-      const s = Math.abs(w.length - q.length) > max ? 0 : Scorer.fuzzy(w, q, max, true)
-      if (s > top) {
-        best = w
-        top = s
-      }
-    }
-    return best
-  }
-  const view = projection(size, keys, near)
+  // A one-word query is measured against the whole value and each of its words, the best wins: a
+  // typo of one word of a multi-word cell matches (#10). ex-search's `fuzzyMode: 'word'` does it
+  // with its bounded matcher (#106). A query with whitespace is measured against whole values only,
+  // as before (a single word is never that query), and is decided once per query, not per row (#96).
+  // ex-search caches the words per position of its data: the view shows another chunk each time,
+  // and a cache kept over every row would hold a word list per row and column (tens of MB at 100k
+  // rows, §9.3), so it is dropped after each chunk (`updateConfig`) and values are split per chunk.
+  const view = projection(keys, at)
   engine.setData(view.items)
   return {
     match(rows, query) {
-      const folded = fold(query)
+      const q = fold(query)
+      const fuzzyMode = /\s/.test(q) ? 'value' : 'word'
       return chunked(rows, keys.length, (chunk) => {
         // Set per chunk, like the view: another job may have matched in between.
-        q = folded
+        engine.updateConfig({ fuzzyMode })
         view.show(chunk)
-        try {
-          // Results are copies of the items (`Omit<Item, …>` drops `i` from the type, not the value).
-          return engine.search(q) as unknown as Hit[]
-        } finally {
-          view.show(undefined)
-        }
+        // Results are copies of the items (`Omit<Item, …>` drops `i` from the type, not the value).
+        const hits = engine.search(q) as unknown as Hit[]
+        engine.updateConfig({})
+        return hits
       })
     },
   }
