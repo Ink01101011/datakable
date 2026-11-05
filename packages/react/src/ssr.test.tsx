@@ -3,6 +3,7 @@ import {
   type Diagnostic,
   type FetchParams,
   type FetchResult,
+  pagination,
   search,
   sorting,
 } from '@datakable/core'
@@ -11,6 +12,7 @@ import { withFetcher } from '@datakable/core/server'
 import { StrictMode } from 'react'
 import { renderToString } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { DataTable } from './data-table'
 import { useDataTable } from './use-data-table'
 
 type User = { id: number; name: string; age: number }
@@ -121,5 +123,26 @@ describe('SSR: renderToString (§7.2)', () => {
     )
     expect(fetcher).not.toHaveBeenCalled()
     expect(vi.getTimerCount()).toBe(0)
+  })
+})
+
+describe('SSR: onDiagnostic timing (#105)', () => {
+  it('diagnostics raised while rendering on the server are delivered before renderToString returns', () => {
+    const codes: string[] = []
+    renderToString(
+      <DataTable
+        data={[
+          { id: 1, name: 'Ada' },
+          { id: 1, name: 'Grace' },
+        ]}
+        rowKey="id"
+        features={[pagination()]}
+        initialState={{ pagination: { pageIndex: 0, pageSize: -1 } }}
+        onDiagnostic={(d: Diagnostic) => codes.push(d.code)}
+      />,
+    )
+    // Read synchronously, right after the render: nothing is left in a microtask.
+    expect(codes).toContain('DK_INVALID_PAGINATION')
+    expect(codes).toContain('DK_DUPLICATE_ROW_KEY')
   })
 })
