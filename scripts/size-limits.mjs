@@ -114,7 +114,8 @@ export default [
     // 2.0.3 bug fixes (#86-#104; trimmed first, then raised as the owner allows for fixes): 27,819 B -> 27.25 KB (+85 B headroom).
     // 2.1.0 perf work (#95 incremental ranks, #97, #98 cache release, #99 memo rows; user decision 2026-11-05): 28,177 B -> 27.75 KB.
     // 2.1.1 #95 incremental search re-match (owner rule: a fix may raise a ratchet it cannot trim; 2026-11-09): 28,286 -> 28,671 B (+385 B) -> 28 KB.
-    limit: 28 * KB,
+    // 2.1.1 #96 no word split with fuzzyMaxDistance 0 (owner rule; three spellings tried, all +7 B): 28,671 -> 28,678 B (+7 B) -> 28.25 KB.
+    limit: 28.25 * KB,
   },
   {
     name: 'datakable/react: useDataTable (default preset + react hook)',

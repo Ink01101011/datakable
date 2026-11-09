@@ -349,11 +349,13 @@ function exSearchIndex(
   // ex-search caches the words per position of its data: the view shows another chunk each time,
   // and a cache kept over every row would hold a word list per row and column (tens of MB at 100k
   // rows, §9.3), so it is dropped after each chunk (`updateConfig`) and values are split per chunk.
+  // With `fuzzyMaxDistance: 0` no word can score (distance 0 is equality, which the exact and
+  // contains tiers score already): values are not split at all, same results (#96).
   const view = projection(keys, at)
   engine.setData(view.items)
   return (chunk, q) => {
     // Set per chunk, like the view: another job may have matched in between.
-    engine.updateConfig({ fuzzyMode: /\s/.test(q) ? 'value' : 'word' })
+    engine.updateConfig({ fuzzyMode: !config.fuzzyMaxDistance || /\s/.test(q) ? 'value' : 'word' })
     view.show(chunk)
     // Results are copies of the items (`Omit<Item, …>` drops `i` from the type, not the value).
     const hits = engine.search(q) as unknown as Hit[]
