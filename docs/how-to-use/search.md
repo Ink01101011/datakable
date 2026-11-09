@@ -65,9 +65,31 @@ table.clearSearch() // empties input and query: every row again
 - **The search index** is built on the first non-blank query, once per data and `columns`
   reference, not per keystroke. On large data it is built in time slices: meanwhile the row model
   shows the previous rows with `status: 'pending'`.
-- **New data re-runs the search.** With a query applied, `setData` with a new array (even a
-  one-row edit) builds the index again and re-matches the query over every row: it costs about as
-  much as a fresh search.
+- **New data re-matches only what changed.** With a query applied, `setData` with a new array
+  builds the index again and reads each row's searched text once, but matches the query again only
+  for rows whose text changed. A row keeps its score when its text hashes the same as the row at
+  the same position, or at the position shifted by an insert or a delete, in the previous array.
+  The hash is 53 bits wide (cyrb53): the chance that a changed row keeps a stale score is at most
+  2·2⁻⁵³ (about 2·10⁻¹⁶) per changed row. Each row is hashed once per data array, on its first
+  match; a new query on the same data hashes nothing.
+  Row identity is never used, so a row object changed in place and passed in a new array is
+  matched again. A one-row edit, an append, a prepend or the same rows in a new array
+  (`data={rows.slice()}`) match at most the changed rows (19 ms instead of 57 ms for a one-row
+  edit at 100k rows in our benchmark); reordering the rows re-matches the rows that moved. The
+  scores of the last search are kept for this: 16 bytes per row (1.6 MB at 100k rows). A new query
+  matches every row, except a narrowing one (next item). A `searchFn` runs again on new data. Changing a row object in place without passing a new
+  array is not supported ([`DK_DATA_MUTATED`](../how-to-fix/errors.md#dk_data_mutated)); with search on, the kept scores can then show stale
+  hits until a new array arrives.
+- **A longer query matches only the previous hits** when that provably gives the same rows: with
+  `fuzzyMaxDistance: 0`, when the previous query (trimmed, NFC, case-folded unless `caseSensitive`)
+  is inside the new one (`ad` → `ada`, `name 12` → `name 123`) and no column weight lets a row
+  reach `threshold` on the new query while missing it on the previous one (ex-search's
+  `canNarrow`). Typing on then matches only the rows still in the results (1 ms instead of 29 ms
+  for `name 12` → `name 123` at 100k rows in our benchmark). Rows a filter hid from the previous
+  search are matched when they come back. With fuzzy matching on (the default) a longer query can
+  match rows the shorter one missed, so every row is matched again, and for a one-word query each
+  cell is split into words again: keeping the words of every cell (about 16 bytes per cell of two
+  words) would not fit the 5 MB memory budget at 100k rows.
 
 ## State
 
@@ -91,7 +113,7 @@ a new applied `query` does.
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
 | `threshold` | `number` (0–1) | `0.3` | Minimum relevance, weights applied, to keep a row. |
-| `fuzzyMaxDistance` | `number` (integer ≥ 0) | `3` | Maximum Levenshtein distance of a fuzzy match. |
+| `fuzzyMaxDistance` | `number` (integer ≥ 0) | `3` | Maximum Levenshtein distance of a fuzzy match. `0` turns fuzzy matching off: cells are no longer split into words for a one-word query, so a keystroke costs about half as much (33 ms instead of 71 ms at 100k rows in our benchmark), with the same results, and a longer query matches only the previous hits (about 1 ms per keystroke at 100k rows). |
 | `caseSensitive` | `boolean` | `false` | Match case. |
 | `typing` | `SearchTyping` | immediate (client), see below (server) | When `query` follows `input`. |
 | `mode` | `'client' \| 'server'` | `'client'` | `'server'`: the server matches the query; core skips this step. |

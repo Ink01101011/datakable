@@ -62,6 +62,30 @@ describe('§9.3 pipeline memory, real default preset, 100k rows (dist, productio
     expect(t.getData()).toBe(data)
   })
 
+  // #96: a one-word query with fuzzy matching on is matched against each word of a cell too
+  // (ex-search's fuzzyMode 'word'). ex-search 1.2.1 can keep the word offsets of every cell (16 B
+  // per cell of two words): kept for all rows that measured 5.57 MB here and 5.08 MB in the PVT
+  // shape below, so the words are split per chunk and dropped (search-index.ts).
+  it(`client search, one-word query (words split per chunk, not kept): ≤ ${BUDGET_MB} MB`, async () => {
+    const data = makeData()
+    const { mb, value: t } = await measureHeap(async () => {
+      const t = preset(data)
+      t.getRowModel()
+      t.setColumnFilter('age', { type: 'range', value: { min: 10 } })
+      t.toggleSort('age')
+      await expect(t.setSearch('nane')).resolves.toEqual({ status: 'applied' })
+      t.getRowModel()
+      return t
+    })
+    const m = t.getRowModel()
+    console.info(
+      `[§9.3 memory] filter+sort+one-word search: ${mb.toFixed(2)} MB (budget ${BUDGET_MB})`,
+    )
+    expect(m.filteredCount).toBeGreaterThan(0)
+    expect(mb).toBeLessThanOrEqual(BUDGET_MB)
+    expect(t.getData()).toBe(data)
+  })
+
   // #27: zero-config search over the PVT data shape (ten mixed-type fields). Only the columns of
   // primitives are searched (strings, nullable numbers, number | string, booleans): seven here;
   // `joined` (Date | string), `tags` (arrays) and `address` (objects) need a `search` weight. A
@@ -80,6 +104,25 @@ describe('§9.3 pipeline memory, real default preset, 100k rows (dist, productio
       return t
     })
     console.info(`[§9.3 memory] zero-config search, 10-column PVT shape: ${mb.toFixed(2)} MB`)
+    expect(t.getRowModel().filteredCount).toBeGreaterThan(0)
+    expect(mb).toBeLessThanOrEqual(BUDGET_MB)
+    expect(t.getData()).toBe(data)
+  })
+
+  it(`zero-config one-word search (words not kept), the 10-column PVT shape: ≤ ${BUDGET_MB} MB`, async () => {
+    const data = mixedUsers(N)
+    const { mb, value: t } = await measureHeap(async () => {
+      const t = createTable({
+        data,
+        rowKey: 'id',
+        features: createDefaultFeatures(),
+        onDiagnostic() {},
+      })
+      t.getRowModel()
+      await expect(t.setSearch('bangkok')).resolves.toEqual({ status: 'applied' })
+      return t
+    })
+    console.info(`[§9.3 memory] zero-config one-word search, PVT shape: ${mb.toFixed(2)} MB`)
     expect(t.getRowModel().filteredCount).toBeGreaterThan(0)
     expect(mb).toBeLessThanOrEqual(BUDGET_MB)
     expect(t.getData()).toBe(data)

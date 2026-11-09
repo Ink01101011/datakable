@@ -1,6 +1,6 @@
 {
   "name": "@datakable/core",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Headless, framework-agnostic core of DataKable — table state, sorting, filtering and types.",
   "license": "MIT",
   "author": "Supakit Kitjanabumrungsak",
@@ -190,7 +190,7 @@
     "check:catalog": "node scripts/check-catalog.mjs"
   },
   "dependencies": {
-    "ex-search": "1.2.0",
+    "ex-search": "1.2.1",
     "exsorted": "1.2.3",
     "kk-debounce": "1.1.0"
   },
