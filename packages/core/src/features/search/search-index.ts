@@ -29,13 +29,34 @@ export interface Hit {
   readonly score: number
 }
 
+/**
+ * The scores of the last match of a table (#95), per data row: `h` the 53-bit hashes of the rows'
+ * searched texts (the index's, `-1`: not hashed), `s` its score (`-1`: no hit, `NaN`: not matched).
+ * 16 bytes per row.
+ */
+export interface Scores {
+  /** The query. */
+  readonly q: string
+  /** The weights of the searched columns, in key order. */
+  readonly w: string
+  readonly h: Float64Array
+  readonly s: Float64Array
+}
+
 /** The matcher of one (data, columns) pair: references to column values, no per-row copy. */
 export interface SearchIndex {
   /**
    * A time-sliced job (§9.1) matching `query` (trimmed, non-blank) against the rows `rows` (row
-   * indices), in chunks: the hits in relevance order ({@link rankHits}).
+   * indices), in chunks: the hits in relevance order ({@link rankHits}). With `memo`, a row whose
+   * searched texts hash like the same row of `memo.scores` (same position, or shifted by the
+   * change in length: an insert or a delete) keeps its score and is not matched again (#95);
+   * `memo.scores` is then replaced by this match's.
    */
-  match(rows: Uint32Array, query: string): Generator<undefined, Uint32Array, undefined>
+  match(
+    rows: Uint32Array,
+    query: string,
+    memo?: { scores?: Scores },
+  ): Generator<undefined, Uint32Array, undefined>
 }
 
 /** Rows per chunk between two `yield`s of a scan (one value per row). */
@@ -195,30 +216,82 @@ export function* buildIndex(
     yield
   }
   if (keys.length === 0) return null
+  const w = keys.map((k) => k.weight).join()
+  /**
+   * A 53-bit hash of row `r`'s searched texts (#95), cyrb53: two 32-bit lanes over the code units
+   * plus one (1–65536), each text closed by a 0 (`charCodeAt` past the end is `NaN`, read as 0 by
+   * `^`), so two different lists of texts hash different sequences; the lanes are mixed at the end.
+   * A changed row is compared with at most two stored hashes: the chance that it keeps a stale
+   * score (a collision) is at most 2·2⁻⁵³ ≈ 2.2·10⁻¹⁶ per changed row (accepted for #95).
+   */
+  const hash = (r: number) => {
+    let a = 0xdeadbeef
+    let b = 0x41c6ce57
+    for (const read of reads) {
+      const v = read(r)
+      for (let j = 0; j <= v.length; j++) {
+        const c = v.charCodeAt(j) + 1
+        a = Math.imul(a ^ c, 2654435761)
+        b = Math.imul(b ^ c, 1597334677)
+      }
+    }
+    a = Math.imul(a ^ (a >>> 16), 2246822507) ^ Math.imul(b ^ (b >>> 13), 3266489909)
+    b = Math.imul(b ^ (b >>> 16), 2246822507) ^ Math.imul(a ^ (a >>> 13), 3266489909)
+    return 4294967296 * (2097151 & b) + (a >>> 0)
+  }
   // Values (NFC already) are folded per chunk while matching; the query is normalised as well, so
   // NFC and NFD spellings match each other like in the `contains` filter (#30).
   const fold = (v: string) => (config.caseSensitive ? v : v.toLowerCase())
   const foldQuery = (q: string) => fold(q.normalize('NFC'))
   const at = (k: number, r: number) => fold((reads[k] as Read)(r))
-  return useExSearch
-    ? exSearchIndex(keys, at, foldQuery, config)
-    : containsIndex(keys, at, foldQuery, config)
-}
-
-/** Matches `rows` chunk by chunk (`score` decides alone, so chunks match like the whole). */
-function* chunked(
-  rows: Uint32Array,
-  columns: number,
-  matchChunk: (chunk: Uint32Array) => Hit[],
-): Generator<undefined, Uint32Array, undefined> {
-  const size = Math.max(256, Math.floor(CELLS / columns))
-  if (rows.length <= size) return rankHits(matchChunk(rows))
-  const hits: Hit[] = []
-  for (let k = 0; k < rows.length; k += size) {
-    for (const h of matchChunk(rows.subarray(k, k + size))) hits.push(h)
-    yield
+  const matchChunk = (useExSearch ? exSearchIndex : containsIndex)(keys, at, config)
+  /**
+   * The hashes of this data version, computed on a row's first match (`-1`: not yet). The texts do
+   * not depend on the query: a keystroke reuses them and hashes no row (#95).
+   */
+  const h = new Float64Array(n).fill(-1)
+  return {
+    *match(rows, query, memo) {
+      const q = foldQuery(query)
+      const prev = memo?.scores
+      const old = prev?.q === query && prev.w === w ? prev : undefined
+      const d = old ? old.h.length - n : 0
+      const s = new Float64Array(n).fill(Number.NaN)
+      const size = Math.max(256, Math.floor(CELLS / keys.length))
+      const hits: Hit[] = []
+      for (let k = 0; k < rows.length; k += size) {
+        if (k) yield
+        const chunk = rows.subarray(k, k + size)
+        const miss: number[] = []
+        for (const r of chunk) {
+          let x = h[r] as number
+          if (x < 0) {
+            x = hash(r)
+            h[r] = x
+          }
+          s[r] = -1
+          if (!old) continue
+          // Out of range reads `undefined`: never equal, never `>= -1` (like `NaN`: not matched).
+          const j = old.h[r] === x ? r : old.h[r + d] === x ? r + d : -1
+          const v = old.s[j] as number
+          if (v >= -1) {
+            s[r] = v
+            if (v >= 0) hits.push({ i: r, score: v })
+          } else miss.push(r)
+        }
+        // A new query (no scores to keep) matches the chunk as it is.
+        const todo = old ? Uint32Array.from(miss) : chunk
+        if (todo.length) {
+          for (const hit of matchChunk(todo, q)) {
+            s[hit.i] = hit.score
+            hits.push(hit)
+          }
+        }
+      }
+      if (memo) memo.scores = { q: query, w, h, s }
+      return rankHits(hits)
+    },
   }
-  return rankHits(hits)
 }
 
 /**
@@ -252,12 +325,14 @@ function projection(keys: readonly Key[], at: (k: number, r: number) => string) 
   }
 }
 
+/** The hits of one chunk of rows for a folded query (`score` decides alone, so chunks match like the whole). */
+type MatchChunk = (chunk: Uint32Array, query: string) => Hit[]
+
 function exSearchIndex(
   keys: readonly Key[],
   at: (k: number, r: number) => string,
-  fold: (v: string) => string,
   config: MatchConfig,
-): SearchIndex {
+): MatchChunk {
   // Values and query are folded already (buildIndex).
   const engine = new ExSearch<Item>({
     keys: keys as Key[],
@@ -276,20 +351,14 @@ function exSearchIndex(
   // rows, §9.3), so it is dropped after each chunk (`updateConfig`) and values are split per chunk.
   const view = projection(keys, at)
   engine.setData(view.items)
-  return {
-    match(rows, query) {
-      const q = fold(query)
-      const fuzzyMode = /\s/.test(q) ? 'value' : 'word'
-      return chunked(rows, keys.length, (chunk) => {
-        // Set per chunk, like the view: another job may have matched in between.
-        engine.updateConfig({ fuzzyMode })
-        view.show(chunk)
-        // Results are copies of the items (`Omit<Item, …>` drops `i` from the type, not the value).
-        const hits = engine.search(q) as unknown as Hit[]
-        engine.updateConfig({})
-        return hits
-      })
-    },
+  return (chunk, q) => {
+    // Set per chunk, like the view: another job may have matched in between.
+    engine.updateConfig({ fuzzyMode: /\s/.test(q) ? 'value' : 'word' })
+    view.show(chunk)
+    // Results are copies of the items (`Omit<Item, …>` drops `i` from the type, not the value).
+    const hits = engine.search(q) as unknown as Hit[]
+    engine.updateConfig({})
+    return hits
   }
 }
 
@@ -297,28 +366,22 @@ function exSearchIndex(
 function containsIndex(
   keys: readonly Key[],
   at: (k: number, r: number) => string,
-  fold: (v: string) => string,
   config: MatchConfig,
-): SearchIndex {
-  return {
-    match(rows, query) {
-      const q = fold(query)
-      return chunked(rows, keys.length, (chunk) => {
-        const hits: Hit[] = []
-        for (let j = 0; j < chunk.length; j++) {
-          const r = chunk[j] as number
-          let best = 0
-          for (let k = 0; k < keys.length; k++) {
-            const v = at(k, r)
-            const raw = v === q ? 1 : v.startsWith(q) ? 0.8 : v.includes(q) ? 0.65 : 0
-            const w = (keys[k] as Key).weight
-            if (raw * w > best) best = raw * w
-          }
-          if (best > 0 && best >= config.threshold) hits.push({ i: r, score: best })
-        }
-        return hits
-      })
-    },
+): MatchChunk {
+  return (chunk, q) => {
+    const hits: Hit[] = []
+    for (let j = 0; j < chunk.length; j++) {
+      const r = chunk[j] as number
+      let best = 0
+      for (let k = 0; k < keys.length; k++) {
+        const v = at(k, r)
+        const raw = v === q ? 1 : v.startsWith(q) ? 0.8 : v.includes(q) ? 0.65 : 0
+        const w = (keys[k] as Key).weight
+        if (raw * w > best) best = raw * w
+      }
+      if (best > 0 && best >= config.threshold) hits.push({ i: r, score: best })
+    }
+    return hits
   }
 }
 

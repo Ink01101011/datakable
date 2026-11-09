@@ -93,7 +93,8 @@ export default [
     // #78 (2.0.3): stays 26.75 KB, re-measured with the version pinned: 27,184 B (+208 B headroom).
     // 2.0.3 bug fixes (#86-#104; trimmed first, then raised as the owner allows for fixes): 27,504 B -> 27.00 KB (+144 B headroom).
     // 2.1.0 perf work (#95 incremental ranks, #97, #98 cache release, #99 memo rows; user decision 2026-11-05): 27,881 B -> 27.5 KB.
-    limit: 27.5 * KB,
+    // 2.1.1 #95 incremental search re-match (owner rule: a fix may raise a ratchet it cannot trim; 2026-11-09): 28,001 -> 28,406 B (+405 B) -> 27.75 KB.
+    limit: 27.75 * KB,
   },
   {
     name: 'datakable: createTable (default preset)',
@@ -112,7 +113,8 @@ export default [
     // #78 (2.0.3): stays 27 KB, re-measured with the version pinned: 27,476 B (+172 B headroom).
     // 2.0.3 bug fixes (#86-#104; trimmed first, then raised as the owner allows for fixes): 27,819 B -> 27.25 KB (+85 B headroom).
     // 2.1.0 perf work (#95 incremental ranks, #97, #98 cache release, #99 memo rows; user decision 2026-11-05): 28,177 B -> 27.75 KB.
-    limit: 27.75 * KB,
+    // 2.1.1 #95 incremental search re-match (owner rule: a fix may raise a ratchet it cannot trim; 2026-11-09): 28,286 -> 28,671 B (+385 B) -> 28 KB.
+    limit: 28 * KB,
   },
   {
     name: 'datakable/react: useDataTable (default preset + react hook)',
@@ -136,7 +138,8 @@ export default [
     // #78 (2.0.3): stays 28.75 KB, re-measured with the version pinned: 29,207 B (+233 B headroom).
     // 2.0.3 bug fixes (#86-#104; trimmed first, then raised as the owner allows for fixes): 29,544 B -> 29.00 KB (+152 B headroom).
     // 2.1.0 perf work (#95 incremental ranks, #97, #98 cache release, #99 memo rows; user decision 2026-11-05): 29,913 B -> 29.5 KB.
-    limit: 29.5 * KB,
+    // 2.1.1 #95 incremental search re-match (owner rule: a fix may raise a ratchet it cannot trim; 2026-11-09): 30,034 -> 30,422 B (+388 B) -> 29.75 KB.
+    limit: 29.75 * KB,
   },
   {
     name: 'datakable/react: DataTable (default preset + <DataTable />)',
@@ -161,6 +164,7 @@ export default [
     // #78 (2.0.3): 32.5 → 32.25 KB, re-measured with the version pinned: 32,908 B (+116 B headroom).
     // 2.0.3 bug fixes (#86-#104; trimmed first, then raised as the owner allows for fixes): 33,441 B -> 32.75 KB (+95 B headroom).
     // 2.1.0 perf work (#95 incremental ranks, #97, #98 cache release, #99 memo rows; user decision 2026-11-05): 33,916 B -> 33.25 KB.
-    limit: 33.25 * KB,
+    // 2.1.1 #95 incremental search re-match (owner rule: a fix may raise a ratchet it cannot trim; 2026-11-09): 34,037 -> 34,425 B (+388 B) -> 33.75 KB.
+    limit: 33.75 * KB,
   },
 ]

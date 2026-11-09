@@ -65,9 +65,19 @@ table.clearSearch() // empties input and query: every row again
 - **The search index** is built on the first non-blank query, once per data and `columns`
   reference, not per keystroke. On large data it is built in time slices: meanwhile the row model
   shows the previous rows with `status: 'pending'`.
-- **New data re-runs the search.** With a query applied, `setData` with a new array (even a
-  one-row edit) builds the index again and re-matches the query over every row: it costs about as
-  much as a fresh search.
+- **New data re-matches only what changed.** With a query applied, `setData` with a new array
+  builds the index again and reads each row's searched text once, but matches the query again only
+  for rows whose text changed. A row keeps its score when its text hashes the same as the row at
+  the same position, or at the position shifted by an insert or a delete, in the previous array.
+  The hash is 53 bits wide (cyrb53): the chance that a changed row keeps a stale score is at most
+  2·2⁻⁵³ (about 2·10⁻¹⁶) per changed row. Each row is hashed once per data array, on its first
+  match; a new query on the same data hashes nothing.
+  Row identity is never used, so a row object changed in place and passed in a new array is
+  matched again. A one-row edit, an append, a prepend or the same rows in a new array
+  (`data={rows.slice()}`) match at most the changed rows (19 ms instead of 57 ms for a one-row
+  edit at 100k rows in our benchmark); reordering the rows re-matches the rows that moved. The
+  scores of the last search are kept for this: 16 bytes per row (1.6 MB at 100k rows). A new query
+  matches every row. A `searchFn` runs again on new data.
 
 ## State
 
