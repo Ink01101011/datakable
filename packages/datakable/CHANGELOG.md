@@ -1,5 +1,18 @@
 # datakable
 
+## 2.1.1
+
+### Patch Changes
+
+- 3792bca: - A new `data` array on a searched table no longer matches the query against every row again: each row's searched text is hashed, and only rows whose text changed since the last search (compared at the same position, or shifted by an insert or a delete) are matched; the others keep their score. Row identity is not used, so a row changed in place and passed in a new array is matched again. A one-row `setData` with a search applied at 100k rows went from about 57 ms to about 19 ms; a new query on the same data hashes nothing. A changed row keeps a stale score only on a 53-bit hash collision (at most 2·2⁻⁵³ per changed row). The kept hashes and scores take 16 bytes per row. The first search on a new `data` array hashes every row, so it costs about a fifth more (about 32 ms to 39 ms at 100k rows). (#95)
+- 06a93f4: - With `fuzzyMaxDistance: 0`, a one-word search query no longer splits every cell into words: no word can match without fuzzy matching, so the matcher compares whole values only, with the same results. A keystroke at 100k rows went from about 71 ms to about 33 ms in that configuration; this change does not touch the default (fuzzy) configuration. (#96)
+- 0e66e19: - Search: `ex-search` goes from 1.2.0 to 1.2.1. With `fuzzyMaxDistance: 0`, a query that extends the previous one (`ad` → `ada`) now matches only the previous query's hits when ex-search's `canNarrow` proves the results are the same, checked on the trimmed, NFC, case-folded query DataKable scores: a keystroke at 100k rows goes from about 29 ms to about 1 ms. A one-word keystroke with fuzzy matching on reads each row once (ex-search 1.2.1 would otherwise read it twice to split it into words). The words of each cell are still split per keystroke: keeping ex-search 1.2.1's word index for every row would exceed the 5 MB memory budget at 100k rows. (#96)
+- Updated dependencies [3792bca]
+- Updated dependencies [06a93f4]
+- Updated dependencies [0e66e19]
+  - @datakable/core@2.1.1
+  - @datakable/react@2.1.1
+
 ## 2.1.0
 
 ### Minor Changes
