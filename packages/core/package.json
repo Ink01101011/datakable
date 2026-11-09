@@ -1,6 +1,6 @@
 {
   "name": "@datakable/core",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Headless, framework-agnostic core of DataKable — table state, sorting, filtering and types.",
   "license": "MIT",
   "author": "Supakit Kitjanabumrungsak",
