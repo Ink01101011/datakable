@@ -23,7 +23,13 @@ import {
   SUPERSEDED,
   type Waiter,
 } from './search-fn-brand'
-import { buildIndex, type MatchConfig, probeExSearch, type SearchIndex } from './search-index'
+import {
+  buildIndex,
+  type MatchConfig,
+  probeExSearch,
+  type Scores,
+  type SearchIndex,
+} from './search-index'
 import { skippedColumnDiagnostics } from './skipped-codes'
 
 keepDiagnostics(optionDiagnostics, skippedColumnDiagnostics)
@@ -216,6 +222,11 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
   let last:
     | { input: Uint32Array; query: string; index: SearchIndex; output: Uint32Array }
     | undefined
+  /**
+   * The scores of the last finished match (#95): a new data array re-matches only the rows whose
+   * searched texts changed (search-index.ts `match`). 16 bytes per data row.
+   */
+  const memo: { scores?: Scores } = {}
   /** The key of the latest matching job (one query over one set of rows). */
   let matching: { rows: Uint32Array; index: SearchIndex; query: string; key: object } | undefined
   /** The step's last output and its input: the stand-in while sliced work runs (§9.1). */
@@ -292,7 +303,7 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
     ) {
       matching = { rows, index, query, key: {} }
     }
-    return sliced(ctx, matching.key, () => index.match(rows, query))
+    return sliced(ctx, matching.key, () => index.match(rows, query, memo))
   }
 
   /** While sliced work runs: the previous output for the same input, else the input. */
