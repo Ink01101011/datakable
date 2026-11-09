@@ -28,16 +28,18 @@ const table = (data: readonly R[], opts: Opts) =>
     getRowModel(): { rows: readonly { index: number }[] }
   }
 
-/** Calls of `split(/\s+/)`: ex-search's word tokeniser (one per cell it splits). */
-function countSplits() {
+/**
+ * Code-unit reads (`charCodeAt`) of the given cell texts: ex-search 1.2.1's word tokeniser scans a
+ * cell's code units to find its words (1.2.0 called `split(/\s+/)`); whole-value matching of a
+ * short query reads none.
+ */
+function countSplits(cells: readonly string[]) {
+  const texts = new Set(cells)
   const counted = { calls: 0 }
-  const split = String.prototype.split as (this: string, sep: unknown, limit?: number) => string[]
-  const spy = vi.spyOn(String.prototype, 'split') as unknown as {
-    mockImplementation(f: (this: string, sep: unknown, limit?: number) => string[]): void
-  }
-  spy.mockImplementation(function (sep, limit) {
-    if (sep instanceof RegExp && sep.source === '\\s+') counted.calls++
-    return split.call(this, sep, limit)
+  const charCodeAt = String.prototype.charCodeAt
+  vi.spyOn(String.prototype, 'charCodeAt').mockImplementation(function (this: string, i) {
+    if (texts.has(String(this))) counted.calls++
+    return charCodeAt.call(this, i)
   })
   return counted
 }
@@ -52,12 +54,14 @@ const data: R[] = [
   { id: 2, name: 'lopes', city: 'São Paulo' },
   { id: 3, name: 'Bob', city: 'Lopez Town' },
 ]
+/** The cell texts as ex-search reads them (folded). */
+const cells = data.flatMap((r) => [r.name, r.city]).map((v) => v.toLowerCase())
 
 describe('search: word splitting per keystroke (#96)', () => {
   it('fuzzyMaxDistance 0: a one-word query splits no cell into words', async () => {
     const t = table(data, { fuzzyMaxDistance: 0 })
     await t.setSearch('lopez')
-    const splits = countSplits()
+    const splits = countSplits(cells)
     await t.setSearch('lope')
     expect(splits.calls).toBe(0)
     expect(ids(t)).toEqual([2, 0, 3])
@@ -66,7 +70,7 @@ describe('search: word splitting per keystroke (#96)', () => {
   it('fuzzy matching on: a one-word query still matches each word of a cell', async () => {
     const t = table(data, { fuzzyMaxDistance: 1 })
     await t.setSearch('lopex')
-    const splits = countSplits()
+    const splits = countSplits(cells)
     await t.setSearch('lopes')
     expect(splits.calls).toBeGreaterThan(0)
     expect(ids(t)).toContain(0)

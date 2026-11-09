@@ -49,8 +49,9 @@ export interface SearchIndex {
    * A time-sliced job (§9.1) matching `query` (trimmed, non-blank) against the rows `rows` (row
    * indices), in chunks: the hits in relevance order ({@link rankHits}). With `memo`, a row whose
    * searched texts hash like the same row of `memo.scores` (same position, or shifted by the
-   * change in length: an insert or a delete) keeps its score and is not matched again (#95);
-   * `memo.scores` is then replaced by this match's.
+   * change in length: an insert or a delete) keeps its score and is not matched again (#95). On
+   * the same data, a query that provably keeps no row the previous one dropped matches only the
+   * previous hits (#96). `memo.scores` is then replaced by this match's.
    */
   match(
     rows: Uint32Array,
@@ -256,6 +257,11 @@ export function* buildIndex(
       const prev = memo?.scores
       const old = prev?.q === query && prev.w === w ? prev : undefined
       const d = old ? old.h.length - n : 0
+      // Same data (the scores hold this index's hashes), a narrowing query: a row the previous
+      // match scored without a hit is not matched again; its hits and the rows it did not see
+      // (`NaN`: filtered out then) are.
+      const cut =
+        !old && prev?.h === h && prev.w === w && matchChunk.narrows?.(foldQuery(prev.q), q)
       const s = new Float64Array(n).fill(Number.NaN)
       const size = Math.max(256, Math.floor(CELLS / keys.length))
       const hits: Hit[] = []
@@ -270,6 +276,10 @@ export function* buildIndex(
             h[r] = x
           }
           s[r] = -1
+          if (cut) {
+            if ((prev.s[r] as number) !== -1) miss.push(r)
+            continue
+          }
           if (!old) continue
           // Out of range reads `undefined`: never equal, never `>= -1` (like `NaN`: not matched).
           const j = old.h[r] === x ? r : old.h[r + d] === x ? r + d : -1
@@ -280,7 +290,7 @@ export function* buildIndex(
           } else miss.push(r)
         }
         // A new query (no scores to keep) matches the chunk as it is.
-        const todo = old ? Uint32Array.from(miss) : chunk
+        const todo = old || cut ? Uint32Array.from(miss) : chunk
         if (todo.length) {
           for (const hit of matchChunk(todo, q)) {
             s[hit.i] = hit.score
@@ -301,6 +311,8 @@ export function* buildIndex(
  */
 function projection(keys: readonly Key[], at: (k: number, r: number) => string) {
   let rows: Uint32Array = new Uint32Array(0)
+  /** The items built for the chunk shown (ex-search 1.2.1 reads a row to split it, then to score it). */
+  let held: Record<string, string | number>[] = []
   // Never written, and its own `length` stays 0: `length` is read through the trap below (setting
   // a large `length` would allocate a backing store).
   const target: Item[] = []
@@ -309,24 +321,33 @@ function projection(keys: readonly Key[], at: (k: number, r: number) => string) 
       if (p === 'length') return rows.length
       const j = arrayIndex(p, rows.length)
       if (j < 0) return t[p as keyof Item[]]
+      if (held[j]) return held[j]
       const r = rows[j] as number
       const o = { i: r } as Record<string, string | number>
       for (let k = 0; k < keys.length; k++) o[(keys[k] as Key).name] = at(k, r)
+      held[j] = o
       return o
     },
     has: (t, p) => arrayIndex(p, rows.length) >= 0 || p in t,
   })
   return {
     items,
-    /** Shows `chunk` (row indices). */
+    /** Shows `chunk` (row indices), each item built once until the next `show`. */
     show(chunk: Uint32Array) {
       rows = chunk
+      held = []
     },
   }
 }
 
 /** The hits of one chunk of rows for a folded query (`score` decides alone, so chunks match like the whole). */
-type MatchChunk = (chunk: Uint32Array, query: string) => Hit[]
+type MatchChunk = ((chunk: Uint32Array, query: string) => Hit[]) & {
+  /**
+   * #96 (c): matching `next` within the hits of `prev` (both folded, as ex-search scores them)
+   * provably equals matching every row. Missing (or `undefined`): never.
+   */
+  narrows?: (prev: string, next: string) => boolean | undefined
+}
 
 function exSearchIndex(
   keys: readonly Key[],
@@ -346,22 +367,30 @@ function exSearchIndex(
   // typo of one word of a multi-word cell matches (#10). ex-search's `fuzzyMode: 'word'` does it
   // with its bounded matcher (#106). A query with whitespace is measured against whole values only,
   // as before (a single word is never that query), and is decided once per query, not per row (#96).
-  // ex-search caches the words per position of its data: the view shows another chunk each time,
-  // and a cache kept over every row would hold a word list per row and column (tens of MB at 100k
-  // rows, §9.3), so it is dropped after each chunk (`updateConfig`) and values are split per chunk.
+  // ex-search 1.2.1 splits a value into words once per `setData` and keeps the word offsets (its
+  // word index, 16 bytes per cell of two words). Kept for every row, it would take DataKable over
+  // its 5 MB budget at 100k rows (§9.3, #96), so it is built for each chunk the view shows and
+  // dropped after it (`updateConfig`): values are split per chunk, each row read once.
   // With `fuzzyMaxDistance: 0` no word can score (distance 0 is equality, which the exact and
   // contains tiers score already): values are not split at all, same results (#96).
   const view = projection(keys, at)
   engine.setData(view.items)
-  return (chunk, q) => {
+  const match = (chunk: Uint32Array, q: string) => {
     // Set per chunk, like the view: another job may have matched in between.
     engine.updateConfig({ fuzzyMode: !config.fuzzyMaxDistance || /\s/.test(q) ? 'value' : 'word' })
     view.show(chunk)
     // Results are copies of the items (`Omit<Item, …>` drops `i` from the type, not the value).
     const hits = engine.search(q) as unknown as Hit[]
     engine.updateConfig({})
+    // The same rows again: drops the items built for them.
+    view.show(chunk)
     return hits
   }
+  // ex-search's `canNarrow` (1.2.1; 1.2.0 never narrows): fuzzy matching off, `prev` inside `next`
+  // and no weight that lets a row reach `threshold` on `next` but not on `prev`; or the same query.
+  // Queries are compared as given: DataKable's own (trimmed, NFC, folded).
+  match.narrows = (prev: string, next: string) => engine.canNarrow?.(prev, next)
+  return match
 }
 
 /** The fallback when ex-search is missing or incompatible: exact 1 · prefix 0.8 · substring 0.65. */

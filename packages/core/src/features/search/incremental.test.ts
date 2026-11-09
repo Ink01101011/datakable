@@ -29,7 +29,10 @@ const table = (data: readonly R[], _q?: string) => {
   return t
 }
 
-/** Rows handed to ex-search for scoring (each `search` call scores the view's current chunk). */
+/**
+ * Rows handed to ex-search for scoring: each `search` call scores its `within` rows (#96), or
+ * every row of its data without one.
+ */
 function countScored() {
   const views = new WeakMap<object, { length: number }>()
   const scored = { rows: 0 }
@@ -39,9 +42,9 @@ function countScored() {
     return setData.call(this as never, items)
   })
   const run = ExSearch.prototype.search
-  vi.spyOn(ExSearch.prototype, 'search').mockImplementation(function (this: object, q) {
-    scored.rows += views.get(this)?.length ?? 0
-    return run.call(this as never, q)
+  vi.spyOn(ExSearch.prototype, 'search').mockImplementation(function (this: object, q, options) {
+    scored.rows += options?.within?.length ?? views.get(this)?.length ?? 0
+    return run.call(this as never, q, options)
   })
   return scored
 }

@@ -94,7 +94,8 @@ export default [
     // 2.0.3 bug fixes (#86-#104; trimmed first, then raised as the owner allows for fixes): 27,504 B -> 27.00 KB (+144 B headroom).
     // 2.1.0 perf work (#95 incremental ranks, #97, #98 cache release, #99 memo rows; user decision 2026-11-05): 27,881 B -> 27.5 KB.
     // 2.1.1 #95 incremental search re-match (owner rule: a fix may raise a ratchet it cannot trim; 2026-11-09): 28,001 -> 28,406 B (+405 B) -> 27.75 KB.
-    limit: 27.75 * KB,
+    // 2.1.1 #96 narrowing a longer query to the previous hits (canNarrow) + one read per row with ex-search 1.2.1 (owner rule; trimmed +99 -> +75 B first): 28,414 -> 28,489 B (+75 B) -> 28 KB.
+    limit: 28 * KB,
   },
   {
     name: 'datakable: createTable (default preset)',
@@ -140,7 +141,8 @@ export default [
     // 2.0.3 bug fixes (#86-#104; trimmed first, then raised as the owner allows for fixes): 29,544 B -> 29.00 KB (+152 B headroom).
     // 2.1.0 perf work (#95 incremental ranks, #97, #98 cache release, #99 memo rows; user decision 2026-11-05): 29,913 B -> 29.5 KB.
     // 2.1.1 #95 incremental search re-match (owner rule: a fix may raise a ratchet it cannot trim; 2026-11-09): 30,034 -> 30,422 B (+388 B) -> 29.75 KB.
-    limit: 29.75 * KB,
+    // 2.1.1 #96 narrowing a longer query to the previous hits (canNarrow) + one read per row with ex-search 1.2.1 (owner rule; trimmed +93 -> +76 B first): 30,428 -> 30,504 B (+76 B) -> 30 KB.
+    limit: 30 * KB,
   },
   {
     name: 'datakable/react: DataTable (default preset + <DataTable />)',

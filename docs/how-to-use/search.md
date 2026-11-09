@@ -77,7 +77,17 @@ table.clearSearch() // empties input and query: every row again
   (`data={rows.slice()}`) match at most the changed rows (19 ms instead of 57 ms for a one-row
   edit at 100k rows in our benchmark); reordering the rows re-matches the rows that moved. The
   scores of the last search are kept for this: 16 bytes per row (1.6 MB at 100k rows). A new query
-  matches every row. A `searchFn` runs again on new data.
+  matches every row, except a narrowing one (next item). A `searchFn` runs again on new data.
+- **A longer query matches only the previous hits** when that provably gives the same rows: with
+  `fuzzyMaxDistance: 0`, when the previous query (trimmed, NFC, case-folded unless `caseSensitive`)
+  is inside the new one (`ad` → `ada`, `name 12` → `name 123`) and no column weight lets a row
+  reach `threshold` on the new query while missing it on the previous one (ex-search's
+  `canNarrow`). Typing on then matches only the rows still in the results (1 ms instead of 29 ms
+  for `name 12` → `name 123` at 100k rows in our benchmark). Rows a filter hid from the previous
+  search are matched when they come back. With fuzzy matching on (the default) a longer query can
+  match rows the shorter one missed, so every row is matched again, and for a one-word query each
+  cell is split into words again: keeping the words of every cell (about 16 bytes per cell of two
+  words) would not fit the 5 MB memory budget at 100k rows.
 
 ## State
 
@@ -101,7 +111,7 @@ a new applied `query` does.
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
 | `threshold` | `number` (0–1) | `0.3` | Minimum relevance, weights applied, to keep a row. |
-| `fuzzyMaxDistance` | `number` (integer ≥ 0) | `3` | Maximum Levenshtein distance of a fuzzy match. `0` turns fuzzy matching off: cells are no longer split into words for a one-word query, so a keystroke costs about half as much (33 ms instead of 71 ms at 100k rows in our benchmark), with the same results. |
+| `fuzzyMaxDistance` | `number` (integer ≥ 0) | `3` | Maximum Levenshtein distance of a fuzzy match. `0` turns fuzzy matching off: cells are no longer split into words for a one-word query, so a keystroke costs about half as much (33 ms instead of 71 ms at 100k rows in our benchmark), with the same results, and a longer query matches only the previous hits (5 ms per keystroke). |
 | `caseSensitive` | `boolean` | `false` | Match case. |
 | `typing` | `SearchTyping` | immediate (client), see below (server) | When `query` follows `input`. |
 | `mode` | `'client' \| 'server'` | `'client'` | `'server'`: the server matches the query; core skips this step. |
