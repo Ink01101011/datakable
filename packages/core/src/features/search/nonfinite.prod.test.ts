@@ -131,7 +131,10 @@ for (const [n, x] of Object.entries(X)) {
   ]
 }
 for (const [n, x] of Object.entries(X)) {
-  CASES[`threshold ${n}, name 1`] = [[{ key: 'name', search: 1 }, { key: 'city' }], { threshold: x }]
+  CASES[`threshold ${n}, name 1`] = [
+    [{ key: 'name', search: 1 }, { key: 'city' }],
+    { threshold: x },
+  ]
   CASES[`threshold ${n}, name 1, city 0.5`] = [
     [
       { key: 'name', search: 1 },
