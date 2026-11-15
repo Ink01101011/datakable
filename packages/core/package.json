@@ -191,7 +191,7 @@
   },
   "dependencies": {
     "ex-search": "2.1.1",
-    "exsorted": "1.2.3",
+    "exsorted": "1.3.0",
     "kk-debounce": "1.1.0"
   },
   "devDependencies": {
