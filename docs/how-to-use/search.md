@@ -93,18 +93,20 @@ table.clearSearch() // empties input and query: every row again
   words of every cell it matches (in time slices, a block of rows at a time) and keeps them:
   ex-search's word index, the word offsets of each cell of two words or more, about 1 byte per
   word of such a cell (a cell of one word costs nothing). Later keystrokes split no cell again: a
-  one-word keystroke at 100k rows takes about 65–75 ms instead of about 115 ms in our benchmark. At
-  100k rows × 3 searched columns of short values the words take about 0.4 MB. A new data array
-  finds them again, on its first one-word query.
-- **The kept words have a cap.** The word index is kept up to 1.5 MB per data array (100k rows × 4
-  columns of two- or three-word text need about 1.45 MB and keep it whole). On long text
-  (descriptions, notes) the rows beyond the cap have their words found again on every one-word
-  keystroke, as in 2.1, with the same results, so memory stays within the 5 MB budget: one searched
-  column of 30 words per cell at 100k rows takes 4.28 MB (6.21 MB without the cap), 100 words 4.51
-  MB (12.61 MB). A one-word keystroke over 100k rows of 30-word cells takes
-  about 148 ms in our benchmark (126 ms if every block were kept, 200 ms in 2.1), over 100-word
-  cells about 475 ms (358 ms, 568 ms). For long text at large row counts, [`fuzzyMaxRows`](#large-data)
-  turns typo matching off: no words are found or kept at all.
+  one-word keystroke over 100k rows of `name N` values takes about 56 ms instead of about 82 ms in
+  2.1 in our benchmark. At 100k rows × 3 searched columns of short values the words take about 0.4
+  MB. A new data array finds them again, on its first one-word query.
+- **The kept words share a memory allowance.** The search state of a data array stays within 2
+  MiB: 10 bytes per data row for the scores kept between keystrokes, up to 4 bytes per hit, and
+  the kept words in what is left (about 0.66 MiB at 100k rows, 1.3 MiB at 50k, none from about
+  150k rows). The rows whose words do not fit have them found again on every one-word keystroke,
+  as in 2.1, with the same results. This keeps the §9.3 scenarios within 5 MB at 100k rows: for
+  example filter + sort + a one-word query over 4 columns of two- or three-word text takes 4.35
+  MB, over one 30-word column 4.54 MB. The gain per keystroke therefore depends on the text: at
+  100k rows, about 31 % for one column of short values, 12–17 % for 4 columns of two- or
+  three-word text, 15 % for 30-word cells and 4 % for 100-word cells, against 2.1. For long text at
+  large row counts, [`fuzzyMaxRows`](#large-data) turns typo matching off: no words are found or
+  kept at all.
 
 ## State
 
@@ -350,12 +352,11 @@ await table.setSearch('somchia') // a typo: found up to 50,000 rows, not above
 - **When it takes effect.** Development builds report
   [`DK_SEARCH_FUZZY_OFF`](../how-to-fix/errors.md#dk_search_fuzzy_off) (info) once per data
   array, on its first search, when the limit switches typo matching off.
-- **Choosing a value.** At 100k rows (4 searched columns of names, cities and numbers; Node on an
-  Apple M-series laptop, no CPU throttle, production build, median of 5 processes), the first
-  one-word query took 117 ms with typo matching and 60 ms with `fuzzyMaxRows: 50_000`; later
-  one-word keystrokes took about 52 ms and 31 ms. The table's memory for filter + sort + a
-  one-word query at 100k rows is 4.37 MB with typo matching and 3.21 MB above the limit (no word
-  index). Pick the row count above which a keystroke feels slow on the devices your users have (a
+- **Choosing a value.** At 100k rows (one searched column of `name N` values plus two numbers;
+  Node on an Apple M-series laptop, no CPU throttle, production build, median of 5 processes),
+  one-word keystrokes took about 54 ms with typo matching and 21 ms with `fuzzyMaxRows: 50_000`.
+  The table's memory for filter + sort + a one-word query at 100k rows is 3.80 MB with typo
+  matching and 2.63 MB above the limit (no word index). Pick the row count above which a keystroke feels slow on the devices your users have (a
   phone is several times slower than this laptop), and keep typo matching where your users rely
   on it (names, addresses). Omitted, typo matching stays on at every size, as before.
 
