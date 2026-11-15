@@ -195,8 +195,10 @@ const toText = (q: unknown): string => (q == null ? '' : String(q))
  * weight 1, #27).
  *
  * - The matcher is built on the first non-blank query, once per data + columns (not per keystroke),
- *   over the column cache's values; ex-search reads the projection `{ i, c0, c1, … }` one chunk of
- *   rows at a time, built while matching and not kept (§9.3 memory); results map back by index.
+ *   over the column cache's values; ex-search reads the projection `{ i, c0, c1, … }` of the rows
+ *   it matches, built for each call and not kept (§9.3 memory); results map back by index. The
+ *   words of each cell (one-word queries, fuzzy matching on) are found once per data array, a block
+ *   of rows at a time, and kept: ex-search's word index (#96).
  * - A blank or whitespace-only query keeps every row. The query is trimmed before matching.
  * - Rows are ordered by relevance (score descending, ties by original index); a sort stage after
  *   search overrides that order.

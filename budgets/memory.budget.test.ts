@@ -62,11 +62,12 @@ describe('§9.3 pipeline memory, real default preset, 100k rows (dist, productio
     expect(t.getData()).toBe(data)
   })
 
-  // #96: a one-word query with fuzzy matching on is matched against each word of a cell too
-  // (ex-search's fuzzyMode 'word'). ex-search 1.2.1 can keep the word offsets of every cell (16 B
-  // per cell of two words): kept for all rows that measured 5.57 MB here and 5.08 MB in the PVT
-  // shape below, so the words are split per chunk and dropped (search-index.ts).
-  it(`client search, one-word query (words split per chunk, not kept): ≤ ${BUDGET_MB} MB`, async () => {
+  // #96 (a): a one-word query with fuzzy matching on is matched against each word of a cell too
+  // (ex-search's fuzzyMode 'word'), and keeps ex-search's word index of this data version (the
+  // word offsets of each cell of two words or more: `name 123` is one), so later keystrokes split
+  // no cell again. ex-search 1.2.1's index (16 B per two-word cell) measured 5.57 MB here and
+  // 5.08 MB in the PVT shape below; 2.1.1's is about 1.6 B per value (#124).
+  it(`client search, one-word query (word index kept): ≤ ${BUDGET_MB} MB`, async () => {
     const data = makeData()
     const { mb, value: t } = await measureHeap(async () => {
       const t = preset(data)
@@ -109,7 +110,7 @@ describe('§9.3 pipeline memory, real default preset, 100k rows (dist, productio
     expect(t.getData()).toBe(data)
   })
 
-  it(`zero-config one-word search (words not kept), the 10-column PVT shape: ≤ ${BUDGET_MB} MB`, async () => {
+  it(`zero-config one-word search (word index kept), the 10-column PVT shape: ≤ ${BUDGET_MB} MB`, async () => {
     const data = mixedUsers(N)
     const { mb, value: t } = await measureHeap(async () => {
       const t = createTable({

@@ -1,11 +1,10 @@
-import { ExSearch } from 'ex-search'
+import { canNarrow, ExSearch } from 'ex-search'
 import { getValue } from '../../column/get-value'
 import { DEV } from '../../diagnostics/env'
 import type { Emit } from '../../diagnostics/types'
 import type { RowModelContext } from '../../feature/types'
 import { nullishOf, type SlicedFormatting } from '../../pipeline/column-cache'
 import { resolveColumns } from '../../pipeline/columns'
-import { arrayIndex } from '../../pipeline/row'
 import { detectCapability, hasCapability } from '../../versioning/capability'
 
 /** Matcher settings (the client options of `search()`, defaults applied). */
@@ -19,7 +18,7 @@ export interface MatchConfig {
  * One projected row as ex-search reads it: `i` is the row index (results map back by it, never by
  * identity: ex-search returns copies), `c0`, `c1`, … the formatted values of the searchable
  * columns. Flat keys also sidestep ex-search's top-level-key limitation for nested paths. Items
- * are built per chunk while matching and dropped after it (§9.3 memory): none is kept.
+ * are built while ex-search reads them and dropped after its call (§9.3 memory): none is kept.
  */
 export type Item = Record<string, string | number> & { readonly i: number }
 
@@ -77,9 +76,10 @@ interface Key {
 /** The formatted value of row `r` of one searchable column. */
 type Read = (r: number) => string
 
-// A throw (no `ExSearch`) counts as missing (hasCapability).
+// A throw (no `ExSearch`) counts as missing (hasCapability). `canNarrow` comes with
+// `search(q, { within })` (1.2.1 / 2.1.0), which matching relies on.
 const hasExSearch = () =>
-  [ExSearch.prototype.search, ExSearch.prototype.setData, ExSearch.prototype.updateConfig].every(
+  [ExSearch.prototype.search, ExSearch.prototype.setData, ExSearch.prototype.canNarrow].every(
     (f) => typeof f === 'function',
   )
 
@@ -93,7 +93,7 @@ export function probeExSearch(emit: Emit): boolean {
           feature: 'search',
           dependency: 'ex-search',
           capability: "ExSearch (fuzzyMode: 'word')",
-          supported: '^1.2.0',
+          supported: '^2.1.1',
           fallback: 'case-insensitive exact / prefix / substring matching (no fuzzy matching)',
         },
         emit,
@@ -245,7 +245,14 @@ export function* buildIndex(
   const fold = (v: string) => (config.caseSensitive ? v : v.toLowerCase())
   const foldQuery = (q: string) => fold(q.normalize('NFC'))
   const at = (k: number, r: number) => fold((reads[k] as Read)(r))
-  const matchChunk = (useExSearch ? exSearchIndex : containsIndex)(keys, at, config)
+  /** Rows matched per slice. */
+  const size = Math.max(256, Math.floor(CELLS / keys.length))
+  /**
+   * Rows per block (#96 a): half a slice, so building a block's word index (every row read and
+   * split) and matching the block fit one slice, like the rows of a slice matched (§9.1).
+   */
+  const block = size >> 1
+  const matcher = (useExSearch ? exSearchMatcher : containsMatcher)(keys, at, config, n, block)
   /**
    * The hashes of this data version, computed on a row's first match (`-1`: not yet). The texts do
    * not depend on the query: a keystroke reuses them and hashes no row (#95).
@@ -260,14 +267,24 @@ export function* buildIndex(
       // Same data (the scores hold this index's hashes), a narrowing query: a row the previous
       // match scored without a hit is not matched again; its hits and the rows it did not see
       // (`NaN`: filtered out then) are.
-      const cut =
-        !old && prev?.h === h && prev.w === w && matchChunk.narrows?.(foldQuery(prev.q), q)
+      const cut = !old && prev?.h === h && prev.w === w && matcher.narrows?.(foldQuery(prev.q), q)
       const s = new Float64Array(n).fill(Number.NaN)
-      const size = Math.max(256, Math.floor(CELLS / keys.length))
       const hits: Hit[] = []
-      for (let k = 0; k < rows.length; k += size) {
-        if (k) yield
-        const chunk = rows.subarray(k, k + size)
+      /** Rows read since the last `yield`: matched, or read to build a block's word index. */
+      let spent = 0
+      // Runs of rows of one block, in the order given (a filter's output: ascending).
+      for (let k = 0; k < rows.length; ) {
+        const b = Math.floor((rows[k] as number) / block)
+        let e = k + 1
+        while (e < rows.length && Math.floor((rows[e] as number) / block) === b) e++
+        const cost = e - k + (matcher.cost?.(b, q) ?? 0)
+        if (spent && spent + cost > size) {
+          yield
+          spent = 0
+        }
+        spent += cost
+        const chunk = rows.subarray(k, e)
+        k = e
         const miss: number[] = []
         for (const r of chunk) {
           let x = h[r] as number
@@ -292,7 +309,7 @@ export function* buildIndex(
         // A new query (no scores to keep) matches the chunk as it is.
         const todo = old || cut ? Uint32Array.from(miss) : chunk
         if (todo.length) {
-          for (const hit of matchChunk(todo, q)) {
+          for (const hit of matcher(b, todo, q)) {
             s[hit.i] = hit.score
             hits.push(hit)
           }
@@ -305,104 +322,119 @@ export function* buildIndex(
 }
 
 /**
- * The projection as ex-search reads it: an array (`length`, index reads) of `{ i, c0, … }` items,
- * each built when read and not kept. It shows the chunk of rows being matched; ex-search holds
- * this one view (`setData` once).
+ * The data ex-search reads for rows `start` … `start + length - 1`: an array-like `{ length }` that
+ * holds the `{ i, c0, … }` items of one call's rows (block-relative indices `js`, or every row) while
+ * the call runs, and none after it (§9.3 memory: emptied, it keeps no element store). ex-search 2.x
+ * reads a row once per key and again for each result; a plain object is read about twice as fast
+ * as a Proxy building each item on read (and an array would keep 8 bytes per row).
  */
-function projection(keys: readonly Key[], at: (k: number, r: number) => string) {
-  let rows: Uint32Array = new Uint32Array(0)
-  /** The items built for the chunk shown (ex-search 1.2.1 reads a row to split it, then to score it). */
-  let held: Record<string, string | number>[] = []
-  // Never written, and its own `length` stays 0: `length` is read through the trap below (setting
-  // a large `length` would allocate a backing store).
-  const target: Item[] = []
-  const items = new Proxy(target, {
-    get(t, p) {
-      if (p === 'length') return rows.length
-      const j = arrayIndex(p, rows.length)
-      if (j < 0) return t[p as keyof Item[]]
-      if (held[j]) return held[j]
-      const r = rows[j] as number
-      const o = { i: r } as Record<string, string | number>
-      for (let k = 0; k < keys.length; k++) o[(keys[k] as Key).name] = at(k, r)
-      held[j] = o
-      return o
-    },
-    has: (t, p) => arrayIndex(p, rows.length) >= 0 || p in t,
-  })
+function view(
+  keys: readonly Key[],
+  at: (k: number, r: number) => string,
+  start: number,
+  length: number,
+) {
+  const items = { length } as unknown as Item[]
   return {
     items,
-    /** Shows `chunk` (row indices), each item built once until the next `show`. */
-    show(chunk: Uint32Array) {
-      rows = chunk
-      held = []
+    /**
+     * Builds the items of rows `js` (block-relative) for one call (`on`), or drops them (`delete`:
+     * an `undefined` element would keep the element store).
+     */
+    hold(js: Uint32Array, on: boolean) {
+      for (const j of js) {
+        if (on) {
+          const o = { i: start + j } as Record<string, string | number>
+          for (let k = 0; k < keys.length; k++) o[(keys[k] as Key).name] = at(k, start + j)
+          items[j] = o as Item
+        } else delete items[j]
+      }
     },
   }
 }
 
-/** The hits of one chunk of rows for a folded query (`score` decides alone, so chunks match like the whole). */
-type MatchChunk = ((chunk: Uint32Array, query: string) => Hit[]) & {
+/**
+ * The hits among `rows` (row indices, all in block `b`) for a folded query (`score` decides alone,
+ * so parts match like the whole).
+ */
+type Matcher = ((b: number, rows: Uint32Array, query: string) => Hit[]) & {
+  /** Rows read to build block `b`'s word index before `query` is matched there. Missing: none. */
+  cost?: (b: number, query: string) => number
   /**
    * #96 (c): matching `next` within the hits of `prev` (both folded, as ex-search scores them)
-   * provably equals matching every row. Missing (or `undefined`): never.
+   * provably equals matching every row. Missing: never.
    */
-  narrows?: (prev: string, next: string) => boolean | undefined
+  narrows?: (prev: string, next: string) => boolean
 }
 
-function exSearchIndex(
+function exSearchMatcher(
   keys: readonly Key[],
   at: (k: number, r: number) => string,
   config: MatchConfig,
-): MatchChunk {
+  n: number,
+  size: number,
+): Matcher {
   // Values and query are folded already (buildIndex).
-  const engine = new ExSearch<Item>({
+  const base = {
     keys: keys as Key[],
     ...config,
     caseSensitive: true,
     // DataKable re-ranks with exact scores and an index tie-break; tim keeps ex-search's own pass
     // stable and avoids radix's score quantisation.
-    sortAlgorithm: 'tim',
-  })
+    sortAlgorithm: 'tim' as const,
+  }
   // A one-word query is measured against the whole value and each of its words, the best wins: a
   // typo of one word of a multi-word cell matches (#10). ex-search's `fuzzyMode: 'word'` does it
   // with its bounded matcher (#106). A query with whitespace is measured against whole values only,
   // as before (a single word is never that query), and is decided once per query, not per row (#96).
-  // ex-search 1.2.1 splits a value into words once per `setData` and keeps the word offsets (its
-  // word index, 16 bytes per cell of two words). Kept for every row, it would take DataKable over
-  // its 5 MB budget at 100k rows (§9.3, #96), so it is built for each chunk the view shows and
-  // dropped after it (`updateConfig`): values are split per chunk, each row read once.
   // With `fuzzyMaxDistance: 0` no word can score (distance 0 is equality, which the exact and
   // contains tiers score already): values are not split at all, same results (#96).
-  const view = projection(keys, at)
-  engine.setData(view.items)
-  const match = (chunk: Uint32Array, q: string) => {
-    // Set per chunk, like the view: another job may have matched in between.
-    engine.updateConfig({ fuzzyMode: !config.fuzzyMaxDistance || /\s/.test(q) ? 'value' : 'word' })
-    view.show(chunk)
-    // Results are copies of the items (`Omit<Item, …>` drops `i` from the type, not the value).
-    const hits = engine.search(q) as unknown as Hit[]
-    engine.updateConfig({})
-    // The same rows again: drops the items built for them.
-    view.show(chunk)
-    return hits
+  const words = (q: string) => config.fuzzyMaxDistance > 0 && !/\s/.test(q)
+  // #96 (a): ex-search splits the values into words once per `setData`, on the first word-mode
+  // search, and keeps the word offsets (its word index: about 1.6 bytes per value in 2.1.1, none for
+  // a value of one word). One view and two engines (whole values, words) per block of rows, made on
+  // first use: a block's words are split in one slice (§9.1) the first time a one-word query matches
+  // there, and later keystrokes over this data version split nothing. Never `updateConfig` on the
+  // word engine: it drops the index.
+  const blocks: { view: ReturnType<typeof view>; value?: ExSearch<Item>; word?: ExSearch<Item> }[] =
+    []
+  const length = (b: number) => Math.min(size, n - b * size)
+  const match: Matcher = (b, rows, q) => {
+    const start = b * size
+    const k = blocks[b] ?? { view: view(keys, at, start, length(b)) }
+    blocks[b] = k
+    const mode = words(q) ? 'word' : 'value'
+    const js = rows.map((r) => r - start)
+    // A new word engine builds its word index in this call: it reads every row of the block.
+    const read = mode === 'word' && !k.word ? Uint32Array.from(k.view.items, (_, j) => j) : js
+    const engine = k[mode] ?? new ExSearch<Item>({ ...base, fuzzyMode: mode }).setData(k.view.items)
+    k[mode] = engine
+    k.view.hold(read, true)
+    try {
+      // Results are copies of the items (`Omit<Item, …>` drops `i` from the type, not the value).
+      return engine.search(q, { within: js }) as unknown as Hit[]
+    } finally {
+      k.view.hold(read, false)
+    }
   }
-  // ex-search's `canNarrow` (1.2.1; 1.2.0 never narrows): fuzzy matching off, `prev` inside `next`
-  // and no weight that lets a row reach `threshold` on `next` but not on `prev`; or the same query.
-  // Queries are compared as given: DataKable's own (trimmed, NFC, folded).
-  match.narrows = (prev: string, next: string) => engine.canNarrow?.(prev, next)
+  match.cost = (b, q) => (words(q) && !blocks[b]?.word ? length(b) : 0)
+  // ex-search's `canNarrow`: fuzzy matching off, `prev` inside `next` and no weight that lets a row
+  // reach `threshold` on `next` but not on `prev`; or the same query. Queries are compared as
+  // DataKable scores them (trimmed, NFC, folded).
+  match.narrows = (prev, next) => canNarrow(prev, next, base)
   return match
 }
 
 /** The fallback when ex-search is missing or incompatible: exact 1 · prefix 0.8 · substring 0.65. */
-function containsIndex(
+function containsMatcher(
   keys: readonly Key[],
   at: (k: number, r: number) => string,
   config: MatchConfig,
-): MatchChunk {
-  return (chunk, q) => {
+): Matcher {
+  return (_, rows, q) => {
     const hits: Hit[] = []
-    for (let j = 0; j < chunk.length; j++) {
-      const r = chunk[j] as number
+    for (let j = 0; j < rows.length; j++) {
+      const r = rows[j] as number
       let best = 0
       for (let k = 0; k < keys.length; k++) {
         const v = at(k, r)

@@ -78,8 +78,8 @@ table.clearSearch() // empties input and query: every row again
   edit at 100k rows in our benchmark); reordering the rows re-matches the rows that moved. The
   scores of the last search are kept for this: 16 bytes per row (1.6 MB at 100k rows). A new query
   matches every row, except a narrowing one (next item). A `searchFn` runs again on new data. Changing a row object in place without passing a new
-  array is not supported ([`DK_DATA_MUTATED`](../how-to-fix/errors.md#dk_data_mutated)); with search on, the kept scores can then show stale
-  hits until a new array arrives.
+  array is not supported ([`DK_DATA_MUTATED`](../how-to-fix/errors.md#dk_data_mutated)); with search on, the kept scores and the kept
+  words of each cell (next items) can then show stale hits until a new array arrives.
 - **A longer query matches only the previous hits** when that provably gives the same rows: with
   `fuzzyMaxDistance: 0`, when the previous query (trimmed, NFC, case-folded unless `caseSensitive`)
   is inside the new one (`ad` → `ada`, `name 12` → `name 123`) and no column weight lets a row
@@ -87,9 +87,15 @@ table.clearSearch() // empties input and query: every row again
   `canNarrow`). Typing on then matches only the rows still in the results (1 ms instead of 29 ms
   for `name 12` → `name 123` at 100k rows in our benchmark). Rows a filter hid from the previous
   search are matched when they come back. With fuzzy matching on (the default) a longer query can
-  match rows the shorter one missed, so every row is matched again, and for a one-word query each
-  cell is split into words again: keeping the words of every cell (about 16 bytes per cell of two
-  words) would not fit the 5 MB memory budget at 100k rows.
+  match rows the shorter one missed, so every row is matched again.
+- **The words of each cell are found once per data array.** A one-word query with fuzzy matching
+  on is measured against each word of a cell. The first one-word query on a data array finds the
+  words of every cell it matches (in time slices, a block of rows at a time) and keeps them:
+  ex-search's word index, the word offsets of each cell of two words or more (about 1 to 1.6 bytes
+  per cell; a cell of one word costs nothing). Later keystrokes split no cell again: a one-word
+  keystroke at 100k rows takes about 70–90 ms instead of about 120 ms in our benchmark. At 100k
+  rows × 3 searched columns the words take about 0.4 MB, within the 5 MB memory budget. A new data
+  array finds them again, on its first one-word query.
 
 ## State
 
@@ -113,7 +119,7 @@ a new applied `query` does.
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
 | `threshold` | `number` (0–1) | `0.3` | Minimum relevance, weights applied, to keep a row. |
-| `fuzzyMaxDistance` | `number` (integer ≥ 0) | `3` | Maximum Levenshtein distance of a fuzzy match. `0` turns fuzzy matching off: cells are no longer split into words for a one-word query, so a keystroke costs about half as much (33 ms instead of 71 ms at 100k rows in our benchmark), with the same results, and a longer query matches only the previous hits (about 1 ms per keystroke at 100k rows). |
+| `fuzzyMaxDistance` | `number` (integer ≥ 0) | `3` | Maximum Levenshtein distance of a fuzzy match. `0` turns fuzzy matching off: a one-word query is matched against whole cells only (no words are found or kept), so a keystroke costs less (about 29 ms instead of 70–90 ms at 100k rows in our benchmark), with the same results as matching each word, and a longer query matches only the previous hits (about 1 ms per keystroke at 100k rows). |
 | `caseSensitive` | `boolean` | `false` | Match case. |
 | `typing` | `SearchTyping` | immediate (client), see below (server) | When `query` follows `input`. |
 | `mode` | `'client' \| 'server'` | `'client'` | `'server'`: the server matches the query; core skips this step. |

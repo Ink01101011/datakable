@@ -157,17 +157,32 @@ describe('search: a longer query matches only the previous hits (#96 c)', () => 
     expect(ids(weighted)).toEqual(await cold(data, 'ada', { fuzzyMaxDistance: 0, threshold: 0.4 }))
   })
 
-  it('an ex-search without canNarrow (1.2.0) never narrows', async () => {
+  // Matching relies on `search(q, { within })`, which came with `canNarrow` (1.2.1 / 2.1.0): an
+  // ex-search without it (1.2.0) is reported and not used (the contains fallback never narrows).
+  it('an ex-search without canNarrow (1.2.0) is reported, not used, and never narrows', async () => {
     const proto = ExSearch.prototype as unknown as { canNarrow?: unknown }
     const own = Object.getOwnPropertyDescriptor(proto, 'canNarrow')
     Object.defineProperty(proto, 'canNarrow', { value: undefined, configurable: true })
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {
       const data = make(N)
-      const t = table(data, { fuzzyMaxDistance: 0 })
+      const codes: string[] = []
+      const t = createTable({
+        data,
+        columns: [
+          { key: 'name', search: 1 },
+          { key: 'city', search: 0.5 },
+        ],
+        features: [search({ fuzzyMaxDistance: 0 })],
+        onDiagnostic: (d) => {
+          codes.push(d.code)
+        },
+      }) as never as T
       await t.setSearch('ad')
-      scored.rows = 0
       await t.setSearch('ada')
-      expect(scored.rows).toBe(N)
+      expect(codes).toContain('DK_DEP_INCOMPATIBLE')
+      expect(scored.rows).toBe(0)
+      expect(ids(t).length).toBeGreaterThan(0)
       expect(ids(t)).toEqual(await cold(data, 'ada', { fuzzyMaxDistance: 0 }))
     } finally {
       if (own) Object.defineProperty(proto, 'canNarrow', own)
