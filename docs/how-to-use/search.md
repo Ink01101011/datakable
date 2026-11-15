@@ -120,7 +120,7 @@ a new applied `query` does.
 | --- | --- | --- | --- |
 | `threshold` | `number` (0–1) | `0.3` | Minimum relevance, weights applied, to keep a row. |
 | `fuzzyMaxDistance` | `number` (integer ≥ 0) | `3` | Maximum Levenshtein distance of a fuzzy match. `0` turns fuzzy matching off: a one-word query is matched against whole cells only (no words are found or kept), so a keystroke costs less (about 26 ms instead of 65–75 ms at 100k rows in our benchmark), with the same results as matching each word, and a longer query matches only the previous hits (about 1 ms per keystroke at 100k rows). |
-| `fuzzyMaxRows` | `number` (integer ≥ 0) | — (never) | Large data: when the data array has more rows than this (every row, before filters), matching runs as with `fuzzyMaxDistance: 0` — typos stop matching, no word index is kept. At or below it, `fuzzyMaxDistance` applies. See [Large data](#large-data). |
+| `fuzzyMaxRows` | `number` (integer ≥ 0, or `Infinity`) | — (never; `Infinity` is the same) | Large data: when the data array has more rows than this (every row, before filters), matching runs as with `fuzzyMaxDistance: 0` — typos stop matching, no word index is kept. At or below it, `fuzzyMaxDistance` applies. See [Large data](#large-data). |
 | `caseSensitive` | `boolean` | `false` | Match case. |
 | `typing` | `SearchTyping` | immediate (client), see below (server) | When `query` follows `input`. |
 | `mode` | `'client' \| 'server'` | `'client'` | `'server'`: the server matches the query; core skips this step. |

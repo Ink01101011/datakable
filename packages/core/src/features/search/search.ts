@@ -91,7 +91,7 @@ export interface SearchOptions<T = AnyRow> {
   /**
    * Large data (#123): when the data array has more rows than this (every row, before filters),
    * matching runs as with `fuzzyMaxDistance: 0`: exact, prefix and substring matches only, so a
-   * typo no longer matches, and no word index is kept. Default: never.
+   * typo no longer matches, and no word index is kept. Default (or `Infinity`): never.
    */
   fuzzyMaxRows?: number
   /** Default `false`. */
@@ -178,7 +178,12 @@ const searchOptions = {
     noEffect: matching,
   },
   fuzzyMaxDistance: count,
-  fuzzyMaxRows: count,
+  // `Infinity` reads as "never", like the default.
+  fuzzyMaxRows: {
+    ...count,
+    check: (v: number) => v === Number.POSITIVE_INFINITY || count.check(v),
+    expected: 'a non-negative integer or Infinity',
+  },
   caseSensitive: { type: 'boolean', noEffect: matching },
   typing: { type: 'object', shape: typingOptions },
   mode: modeOption,

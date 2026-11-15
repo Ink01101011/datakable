@@ -88,6 +88,13 @@ describe('search({ fuzzyMaxRows }) (#123)', () => {
     expect(fuzzyOff()).toEqual([])
   })
 
+  it('Infinity: never, the same as omitting it (R F5)', async () => {
+    const data = make(50)
+    const plain = await results(table(data))
+    expect(await results(table(data, { fuzzyMaxRows: Number.POSITIVE_INFINITY }))).toEqual(plain)
+    expect(fuzzyOff()).toEqual([])
+  })
+
   it('n == limit: fuzzy matching on; n == limit + 1: off', async () => {
     const at = table(make(7), { fuzzyMaxRows: 7 })
     await at.setSearch('carx')
@@ -253,13 +260,13 @@ describe('search({ fuzzyMaxRows }) (#123)', () => {
 })
 
 describe('search({ fuzzyMaxRows }): options (#123)', () => {
-  it('a non-negative integer, else DK_INVALID_OPTION', () => {
-    for (const bad of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, '10', null]) {
+  it('a non-negative integer or Infinity, else DK_INVALID_OPTION', () => {
+    for (const bad of [-1, 1.5, Number.NaN, Number.NEGATIVE_INFINITY, '10', null]) {
       expect(() => table(make(3), { fuzzyMaxRows: bad as never }), String(bad)).toThrow(
         /DK_INVALID_OPTION|fuzzyMaxRows/,
       )
     }
-    for (const ok of [0, 1, 50_000]) {
+    for (const ok of [0, 1, 50_000, Number.POSITIVE_INFINITY]) {
       seen = []
       table(make(3), { fuzzyMaxRows: ok })
       expect(seen.map((d) => d.code)).toEqual([])
