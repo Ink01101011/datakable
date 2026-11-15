@@ -93,11 +93,20 @@ table.clearSearch() // empties input and query: every row again
 - **The words of each cell are found once per data array.** A one-word query with fuzzy matching
   on is measured against each word of a cell. The first one-word query on a data array finds the
   words of every cell it matches (in time slices, a block of rows at a time) and keeps them:
-  ex-search's word index, the word offsets of each cell of two words or more (about 1 to 1.6 bytes
-  per cell; a cell of one word costs nothing). Later keystrokes split no cell again: a one-word
-  keystroke at 100k rows takes about 65–75 ms instead of about 115 ms in our benchmark. At 100k
-  rows × 3 searched columns the words take about 0.4 MB, within the 5 MB memory budget. A new data
-  array finds them again, on its first one-word query.
+  ex-search's word index, the word offsets of each cell of two words or more, about 1 byte per
+  word of such a cell (a cell of one word costs nothing). Later keystrokes split no cell again: a
+  one-word keystroke at 100k rows takes about 65–75 ms instead of about 115 ms in our benchmark. At
+  100k rows × 3 searched columns of short values the words take about 0.4 MB. A new data array
+  finds them again, on its first one-word query.
+- **The kept words have a cap.** The word index is kept up to 1.75 MB per data array (about 1.5 MB
+  for 100k rows × 4 columns of two- or three-word text, which stays whole). On long text
+  (descriptions, notes) the rows beyond the cap have their words found again on every one-word
+  keystroke, as in 2.1, with the same results, so memory stays within the 5 MB budget: one searched
+  column of 30 words per cell at 100k rows takes 4.51 MB (6.21 MB without the cap), 100 words 4.45
+  MB (12.61 MB). A one-word keystroke over 100k rows of 30-word cells takes
+  about 152 ms in our benchmark (131 ms if every block were kept, 200 ms in 2.1), over 100-word
+  cells about 500 ms (378 ms, 568 ms). For long text at large row counts, [`fuzzyMaxRows`](#large-data)
+  turns typo matching off: no words are found or kept at all.
 
 ## State
 
