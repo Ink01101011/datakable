@@ -65,7 +65,8 @@ export type SortAlgorithm =
 type BaseColumn<T, V, R> = {
   header?: string
   /**
-   * Search weight. Once any column declares one, only weighted columns are searched; when none
+   * Search weight, a finite number (`Infinity` / `NaN`: `DK_INVALID_OPTION` in development). Once
+   * any column declares one, only weighted columns are searched; when none
    * does, the columns of strings, numbers and booleans are (a date, array or object column needs a
    * weight to be searched).
    */

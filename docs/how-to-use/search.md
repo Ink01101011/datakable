@@ -43,7 +43,9 @@ table.clearSearch() // empties input and query: every row again
 ```
 
 - **Which columns.** When any column declares a `search` weight, only the columns with a weight
-  above 0 are searched. When no column declares one (including zero-config columns), the columns
+  above 0 are searched (a weight is a finite number: `Infinity` or `NaN` is
+  [`DK_INVALID_OPTION`](../how-to-fix/errors.md#dk_invalid_option) in development builds; production
+  builds search with it as 2.1 did). When no column declares one (including zero-config columns), the columns
   of strings, numbers and booleans (nullable) are searched at weight 1. A column of dates, arrays
   or other objects is searched only with a `search` weight: formatting it would keep a string per
   row (see [Performance](performance.md)). Development builds report

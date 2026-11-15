@@ -215,30 +215,37 @@ describe('ex-search 2.x upgrade: the same rows in the same order as 1.2.1 (#123)
     expect(new Set(Object.values(got).map((h) => h.join('|'))).size).toBeGreaterThan(10)
   })
 
-  // The one difference found: ex-search 2.x rejects a non-finite weight (RangeError). A column
-  // `search: Infinity` ranked rows with infinite scores on 1.2.1 (rows 0 and 1 here); on 2.x the
-  // search step fails, is reported, and keeps every row. Not a valid weight; the same holds for a
-  // threshold outside 0–1 in production (development rejects it: DK_INVALID_OPTION).
-  it('a non-finite column weight: the search step fails and is reported (DK_FEATURE_FAILED)', async () => {
-    const codes: string[] = []
-    const t = createTable({
-      data: [
-        { id: 0, name: 'ada lovelace', city: 'london' },
-        { id: 1, name: 'bob', city: 'ada town' },
-        { id: 2, name: 'x', city: 'y' },
-      ],
-      columns: [
-        { key: 'name', search: Number.POSITIVE_INFINITY },
-        { key: 'city', search: 1 },
-      ],
-      features: [search()],
-      onDiagnostic: (d) => {
-        codes.push(d.code)
-      },
-    })
-    await t.setSearch('ada')
-    expect(codes).toContain('DK_FEATURE_FAILED')
-    expect(ids(t as never)).toEqual([0, 1, 2])
+  // ex-search 2.x rejects a non-finite weight or threshold (RangeError), which 1.2.1 scored with.
+  // Production searches as datakable 2.1.1 did (nonfinite.prod.test.ts, against a reference
+  // recorded with the published 2.1.1); development reports a non-finite column weight as a
+  // config error, and rejected a non-finite threshold already (R F2).
+  it('development: a non-finite column weight is DK_INVALID_OPTION (createTable, setOptions)', () => {
+    const data = [{ id: 0, name: 'ada lovelace', city: 'london' }]
+    const make = (weight: number) => () =>
+      createTable({
+        data,
+        columns: [{ key: 'id' }, { key: 'name', search: weight }, { key: 'city', search: 1 }],
+        features: [search()],
+        onDiagnostic() {},
+      })
+    for (const bad of [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.NaN]) {
+      let err: { code?: string; diagnostic?: { where: unknown; problem: string } } | undefined
+      try {
+        make(bad)()
+      } catch (e) {
+        err = e as typeof err
+      }
+      expect(err?.code, String(bad)).toBe('DK_INVALID_OPTION')
+      expect(err?.diagnostic?.where).toEqual({ kind: 'option', path: 'columns[1].search' })
+      expect(err?.diagnostic?.problem).toContain(String(bad))
+    }
+    // Finite weights, 0 and negative ones (not searched) stay valid.
+    for (const ok of [0, -1, 0.5, 2, 1e6]) expect(make(ok), String(ok)).not.toThrow()
+    const t = make(1)()
+    expect(() =>
+      t.setOptions({ columns: [{ key: 'name', search: Number.POSITIVE_INFINITY }] as never }),
+    ).toThrow(/DK_INVALID_OPTION|columns\[0\]\.search/)
+    expect(t.getOptions().columns).toHaveLength(3)
   })
 
   it('every keystroke matches a cold table for the same query', async () => {

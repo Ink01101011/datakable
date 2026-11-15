@@ -347,10 +347,17 @@ function exSearchMatcher(
   n: number,
   size: number,
 ): Matcher {
+  // R F2: ex-search 2.x rejects a non-finite weight or threshold, which 1.2.1 (datakable 2.1.1)
+  // scored with. Such a config hands it finite stand-ins that keep every row (weight 1, threshold
+  // -1), and its hits are scored as 1.2.1 did from their raw field scores (`run`).
+  const finite = Number.isFinite(config.threshold) && keys.every((k) => Number.isFinite(k.weight))
   // Values and query are folded already (buildIndex).
   const base = {
-    keys: keys as Key[],
     ...config,
+    keys: finite
+      ? keys
+      : keys.map((k) => ({ ...k, weight: Number.isFinite(k.weight) ? k.weight : 1 })),
+    threshold: finite ? config.threshold : -1,
     caseSensitive: true,
     // DataKable re-ranks with exact scores and an index tie-break; tim keeps ex-search's own pass
     // stable and avoids radix's score quantisation.
@@ -390,7 +397,20 @@ function exSearchMatcher(
     }
     try {
       // Results are copies of the items (`Omit<Item, …>` drops `i` from the type, not the value).
-      return engine.search(q, { within: rows.map((r) => r - start) }) as unknown as Hit[]
+      const hits = engine.search(q, { within: rows.map((r) => r - start) })
+      if (finite) return hits as unknown as Hit[]
+      // 1.2.1's score: the best raw × weight (a NaN product, 0 × Infinity, never wins) / 100; a row
+      // is kept unless below `threshold` (a NaN threshold keeps every row).
+      const out: Hit[] = []
+      for (const h of hits) {
+        let best = Number.NEGATIVE_INFINITY
+        h.fieldMatches.forEach((f, k) => {
+          const v = f.rawScore * (keys[k] as Key).weight
+          if (v > best) best = v
+        })
+        if (!(best / 100 < config.threshold)) out.push({ i: (h as Item).i, score: best / 100 })
+      }
+      return out
     } finally {
       // `delete`: an `undefined` element would keep the element store.
       for (const r of read) delete items[r - start]
@@ -424,10 +444,11 @@ function exSearchMatcher(
   // DataKable scores them (trimmed, NFC, folded). The method, not the `canNarrow` export: a named
   // ESM import of an export an older ex-search lacks would stop the package loading before the
   // probe (which requires the method) could fall back.
+  // Not with stand-ins for non-finite values: they do not score like the config.
   let narrowing: ExSearch<Item> | undefined
   match.narrows = (prev, next) => {
     narrowing ??= new ExSearch<Item>(base)
-    return narrowing.canNarrow(prev, next)
+    return finite && narrowing.canNarrow(prev, next)
   }
   return match
 }
