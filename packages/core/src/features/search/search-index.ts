@@ -1,4 +1,4 @@
-import { canNarrow, ExSearch } from 'ex-search'
+import { ExSearch } from 'ex-search'
 import { getValue } from '../../column/get-value'
 import { DEV } from '../../diagnostics/env'
 import type { Emit } from '../../diagnostics/types'
@@ -421,8 +421,14 @@ function exSearchMatcher(
   match.cost = (b, q) => (words(q) && !blocks[b] ? length(b) : 0)
   // ex-search's `canNarrow`: fuzzy matching off, `prev` inside `next` and no weight that lets a row
   // reach `threshold` on `next` but not on `prev`; or the same query. Queries are compared as
-  // DataKable scores them (trimmed, NFC, folded).
-  match.narrows = (prev, next) => canNarrow(prev, next, base)
+  // DataKable scores them (trimmed, NFC, folded). The method, not the `canNarrow` export: a named
+  // ESM import of an export an older ex-search lacks would stop the package loading before the
+  // probe (which requires the method) could fall back.
+  let narrowing: ExSearch<Item> | undefined
+  match.narrows = (prev, next) => {
+    narrowing ??= new ExSearch<Item>(base)
+    return narrowing.canNarrow(prev, next)
+  }
   return match
 }
 
