@@ -96,7 +96,8 @@ export default [
     // 2.1.1 #95 incremental search re-match (owner rule: a fix may raise a ratchet it cannot trim; 2026-11-09): 28,001 -> 28,406 B (+405 B) -> 27.75 KB.
     // 2.1.1 #96 narrowing a longer query to the previous hits (canNarrow) + one read per row with ex-search 1.2.1 (owner rule; trimmed +99 -> +75 B first): 28,414 -> 28,489 B (+75 B) -> 28 KB.
     // 2.2.0 #96 (a) ex-search 2.1.1's word index kept per block of rows across keystrokes, items as a plain array-like (owner rule; trimmed +328 -> +176 B first): 28,518 -> 28,694 B (+176 B) -> 28.25 KB. Round 2 (one whole-value engine, quarter-slice runs; trimmed +77 -> +19 B): 28,713 B.
-    limit: 28.25 * KB,
+    // 2.2.0 release-gate fixes (R F1 word index kept up to a 1.75 MB cap per data array + rows per slice by characters for long text; R F2 non-finite weight / threshold scored as 2.1.1; owner rule; trimmed first, core + search +617 -> +536 B): 28,742 -> 29,278 B (+536 B) -> 28.75 KB.
+    limit: 28.75 * KB,
   },
   {
     name: 'datakable: createTable (default preset)',
@@ -119,7 +120,8 @@ export default [
     // 2.1.1 #96 no word split with fuzzyMaxDistance 0 (owner rule; three spellings tried, all +7 B): 28,671 -> 28,678 B (+7 B) -> 28.25 KB.
     // 2.1.1 #96 narrowing (canNarrow), within the ratchet: 28,678 -> 28,757 B (+79 B).
     // 2.2.0 #96 (a) ex-search 2.1.1's word index kept per block of rows across keystrokes, items as a plain array-like (owner rule; trimmed +355 -> +169 B first): 28,785 -> 28,954 B (+169 B) -> 28.5 KB. Round 2: 28,980 B.
-    limit: 28.5 * KB,
+    // 2.2.0 release-gate fixes (R F1 word index kept up to a 1.75 MB cap per data array + rows per slice by characters for long text; R F2 non-finite weight / threshold scored as 2.1.1; owner rule; trimmed first, core + search +617 -> +536 B): 29,027 -> 29,632 B (+605 B) -> 29 KB.
+    limit: 29 * KB,
   },
   {
     name: 'datakable/react: useDataTable (default preset + react hook)',
@@ -147,7 +149,8 @@ export default [
     // 2.1.1 #96 narrowing a longer query to the previous hits (canNarrow) + one read per row with ex-search 1.2.1 (owner rule; trimmed +93 -> +76 B first): 30,428 -> 30,504 B (+76 B) -> 30 KB.
     // 2.2.0 #96 (a) ex-search 2.1.1's word index kept per block of rows across keystrokes, within the ratchet: 30,529 -> 30,705 B (+176 B). Round 2 (trimmed +112 -> +12 B): 30,717 B, within the ratchet.
     // 2.2.0 #123 search option fuzzyMaxRows (new API: the effective distance per data version, and the kept scores keyed by it; owner rule, trimmed +53 -> +43 B first): 30,717 -> 30,760 B (+43 B) -> 30.25 KB.
-    limit: 30.25 * KB,
+    // 2.2.0 release-gate fixes (R F1 word index kept up to a 1.75 MB cap per data array + rows per slice by characters for long text; R F2 non-finite weight / threshold scored as 2.1.1; owner rule; trimmed first, core + search +617 -> +536 B): 30,760 -> 31,356 B (+596 B) -> 30.75 KB.
+    limit: 30.75 * KB,
   },
   {
     name: 'datakable/react: DataTable (default preset + <DataTable />)',
@@ -175,6 +178,7 @@ export default [
     // 2.1.1 #95 incremental search re-match (owner rule: a fix may raise a ratchet it cannot trim; 2026-11-09): 34,037 -> 34,425 B (+388 B) -> 33.75 KB.
     // 2.1.1 #96 fuzzy-0 split skip + narrowing (canNarrow), within the ratchet: 34,425 -> 34,508 B (+83 B).
     // 2.2.0 #96 (a) ex-search 2.1.1's word index kept per block of rows across keystrokes, items as a plain array-like (owner rule; trimmed first): 34,541 -> 34,725 B (+184 B) -> 34 KB. Round 2: 34,752 B.
-    limit: 34 * KB,
+    // 2.2.0 release-gate fixes (R F1 word index kept up to a 1.75 MB cap per data array + rows per slice by characters for long text; R F2 non-finite weight / threshold scored as 2.1.1; owner rule; trimmed first, core + search +617 -> +536 B): 34,777 -> 35,362 B (+585 B) -> 34.75 (34.5 KB leaves it 34 B over) KB.
+    limit: 34.75 * KB,
   },
 ]
