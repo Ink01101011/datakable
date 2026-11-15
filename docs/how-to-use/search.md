@@ -93,7 +93,7 @@ table.clearSearch() // empties input and query: every row again
   words of every cell it matches (in time slices, a block of rows at a time) and keeps them:
   ex-search's word index, the word offsets of each cell of two words or more (about 1 to 1.6 bytes
   per cell; a cell of one word costs nothing). Later keystrokes split no cell again: a one-word
-  keystroke at 100k rows takes about 70–90 ms instead of about 120 ms in our benchmark. At 100k
+  keystroke at 100k rows takes about 65–75 ms instead of about 115 ms in our benchmark. At 100k
   rows × 3 searched columns the words take about 0.4 MB, within the 5 MB memory budget. A new data
   array finds them again, on its first one-word query.
 
@@ -119,7 +119,7 @@ a new applied `query` does.
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
 | `threshold` | `number` (0–1) | `0.3` | Minimum relevance, weights applied, to keep a row. |
-| `fuzzyMaxDistance` | `number` (integer ≥ 0) | `3` | Maximum Levenshtein distance of a fuzzy match. `0` turns fuzzy matching off: a one-word query is matched against whole cells only (no words are found or kept), so a keystroke costs less (about 29 ms instead of 70–90 ms at 100k rows in our benchmark), with the same results as matching each word, and a longer query matches only the previous hits (about 1 ms per keystroke at 100k rows). |
+| `fuzzyMaxDistance` | `number` (integer ≥ 0) | `3` | Maximum Levenshtein distance of a fuzzy match. `0` turns fuzzy matching off: a one-word query is matched against whole cells only (no words are found or kept), so a keystroke costs less (about 26 ms instead of 65–75 ms at 100k rows in our benchmark), with the same results as matching each word, and a longer query matches only the previous hits (about 1 ms per keystroke at 100k rows). |
 | `caseSensitive` | `boolean` | `false` | Match case. |
 | `typing` | `SearchTyping` | immediate (client), see below (server) | When `query` follows `input`. |
 | `mode` | `'client' \| 'server'` | `'client'` | `'server'`: the server matches the query; core skips this step. |

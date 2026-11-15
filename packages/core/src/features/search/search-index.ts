@@ -248,10 +248,12 @@ export function* buildIndex(
   /** Rows matched per slice. */
   const size = Math.max(256, Math.floor(CELLS / keys.length))
   /**
-   * Rows per block (#96 a): half a slice, so building a block's word index (every row read and
-   * split) and matching the block fit one slice, like the rows of a slice matched (§9.1).
+   * Rows per block (#96 a, word matching): half a slice, so building a block's word index (every
+   * row read and split) and matching a run of it fit one slice (§9.1).
    */
   const block = size >> 1
+  /** Rows matched between two `yield`s: a quarter slice, so a slice ends close to its deadline. */
+  const run = size >> 2
   const matcher = (useExSearch ? exSearchMatcher : containsMatcher)(keys, at, config, n, block)
   /**
    * The hashes of this data version, computed on a row's first match (`-1`: not yet). The texts do
@@ -272,13 +274,14 @@ export function* buildIndex(
       const hits: Hit[] = []
       /** Rows read since the last `yield`: matched, or read to build a block's word index. */
       let spent = 0
-      // Runs of rows of one block, in the order given (a filter's output: ascending).
+      // Runs of at most `run` rows of one block, in the order given (a filter's output: ascending),
+      // a `yield` between two (the slice ends close to its deadline, §9.1).
       for (let k = 0; k < rows.length; ) {
         const b = Math.floor((rows[k] as number) / block)
         let e = k + 1
-        while (e < rows.length && Math.floor((rows[e] as number) / block) === b) e++
+        while (e < rows.length && e - k < run && Math.floor((rows[e] as number) / block) === b) e++
         const cost = e - k + (matcher.cost?.(b, q) ?? 0)
-        if (spent && spent + cost > size) {
+        if (spent && spent + cost > run) {
           yield
           spent = 0
         }
@@ -322,38 +325,6 @@ export function* buildIndex(
 }
 
 /**
- * The data ex-search reads for rows `start` … `start + length - 1`: an array-like `{ length }` that
- * holds the `{ i, c0, … }` items of one call's rows (block-relative indices `js`, or every row) while
- * the call runs, and none after it (§9.3 memory: emptied, it keeps no element store). ex-search 2.x
- * reads a row once per key and again for each result; a plain object is read about twice as fast
- * as a Proxy building each item on read (and an array would keep 8 bytes per row).
- */
-function view(
-  keys: readonly Key[],
-  at: (k: number, r: number) => string,
-  start: number,
-  length: number,
-) {
-  const items = { length } as unknown as Item[]
-  return {
-    items,
-    /**
-     * Builds the items of rows `js` (block-relative) for one call (`on`), or drops them (`delete`:
-     * an `undefined` element would keep the element store).
-     */
-    hold(js: Uint32Array, on: boolean) {
-      for (const j of js) {
-        if (on) {
-          const o = { i: start + j } as Record<string, string | number>
-          for (let k = 0; k < keys.length; k++) o[(keys[k] as Key).name] = at(k, start + j)
-          items[j] = o as Item
-        } else delete items[j]
-      }
-    },
-  }
-}
-
-/**
  * The hits among `rows` (row indices, all in block `b`) for a folded query (`score` decides alone,
  * so parts match like the whole).
  */
@@ -390,34 +361,62 @@ function exSearchMatcher(
   // With `fuzzyMaxDistance: 0` no word can score (distance 0 is equality, which the exact and
   // contains tiers score already): values are not split at all, same results (#96).
   const words = (q: string) => config.fuzzyMaxDistance > 0 && !/\s/.test(q)
-  // #96 (a): ex-search splits the values into words once per `setData`, on the first word-mode
-  // search, and keeps the word offsets (its word index: about 1.6 bytes per value in 2.1.1, none for
-  // a value of one word). One view and two engines (whole values, words) per block of rows, made on
-  // first use: a block's words are split in one slice (§9.1) the first time a one-word query matches
-  // there, and later keystrokes over this data version split nothing. Never `updateConfig` on the
-  // word engine: it drops the index.
-  const blocks: { view: ReturnType<typeof view>; value?: ExSearch<Item>; word?: ExSearch<Item> }[] =
-    []
-  const length = (b: number) => Math.min(size, n - b * size)
-  const match: Matcher = (b, rows, q) => {
-    const start = b * size
-    const k = blocks[b] ?? { view: view(keys, at, start, length(b)) }
-    blocks[b] = k
-    const mode = words(q) ? 'word' : 'value'
-    const js = rows.map((r) => r - start)
-    // A new word engine builds its word index in this call: it reads every row of the block.
-    const read = mode === 'word' && !k.word ? Uint32Array.from(k.view.items, (_, j) => j) : js
-    const engine = k[mode] ?? new ExSearch<Item>({ ...base, fuzzyMode: mode }).setData(k.view.items)
-    k[mode] = engine
-    k.view.hold(read, true)
+  /**
+   * An engine and the data it reads: an array-like `{ length }` holding the `{ i, c0, … }` items of
+   * one call's rows, row `r` at `r - start`, while the call runs, and none after it (§9.3 memory:
+   * emptied, it keeps no element store). ex-search 2.x reads a row once per key and again for each
+   * result: a plain object is read about twice as fast as a Proxy building each item on read (and
+   * an array would keep 8 bytes per row); items from offset 0 up keep fast elements.
+   */
+  type Engine = { items: Item[]; engine: ExSearch<Item> }
+  const engine = (length: number, fuzzyMode: 'value' | 'word'): Engine => {
+    const items = { length } as unknown as Item[]
+    return { items, engine: new ExSearch<Item>({ ...base, fuzzyMode }).setData(items) }
+  }
+  /** Rows `rows` matched by `e`, row `r` at `r - start` of its data; `read`: the rows it reads. */
+  const run = (
+    { items, engine }: Engine,
+    rows: Uint32Array,
+    read: Uint32Array,
+    start: number,
+    q: string,
+  ) => {
+    for (const r of read) {
+      const o = { i: r } as Record<string, string | number>
+      for (let k = 0; k < keys.length; k++) o[(keys[k] as Key).name] = at(k, r)
+      items[r - start] = o as Item
+    }
     try {
       // Results are copies of the items (`Omit<Item, …>` drops `i` from the type, not the value).
-      return engine.search(q, { within: js }) as unknown as Hit[]
+      return engine.search(q, { within: rows.map((r) => r - start) }) as unknown as Hit[]
     } finally {
-      k.view.hold(read, false)
+      // `delete`: an `undefined` element would keep the element store.
+      for (const r of read) delete items[r - start]
     }
   }
-  match.cost = (b, q) => (words(q) && !blocks[b]?.word ? length(b) : 0)
+  /** Whole values: one engine over every row (made on first use), each call from its first row. */
+  let whole: Engine | undefined
+  // #96 (a): ex-search splits the values into words once per `setData`, on the first word-mode
+  // search, and keeps the word offsets (its word index: about 1.6 bytes per value in 2.1.1, none for
+  // a value of one word). Only word matching has blocks: one word engine per block of rows, made on
+  // first use; a block's words are split in one slice (§9.1) the first time a one-word query
+  // matches there, and later keystrokes over this data version split nothing. Never `updateConfig`
+  // on it: that drops the index.
+  const blocks: Engine[] = []
+  const length = (b: number) => Math.min(size, n - b * size)
+  const match: Matcher = (b, rows, q) => {
+    if (!words(q)) {
+      whole = whole ?? engine(n, 'value')
+      return run(whole, rows, rows, Math.min(...rows), q)
+    }
+    const start = b * size
+    // A new word engine builds its word index in this call: it reads every row of the block.
+    const read = blocks[b] ? rows : Uint32Array.from({ length: length(b) }, (_, j) => start + j)
+    const k = blocks[b] ?? engine(length(b), 'word')
+    blocks[b] = k
+    return run(k, rows, read, start, q)
+  }
+  match.cost = (b, q) => (words(q) && !blocks[b] ? length(b) : 0)
   // ex-search's `canNarrow`: fuzzy matching off, `prev` inside `next` and no weight that lets a row
   // reach `threshold` on `next` but not on `prev`; or the same query. Queries are compared as
   // DataKable scores them (trimmed, NFC, folded).
