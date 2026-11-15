@@ -213,6 +213,34 @@ describe(`§9.3 longest task at 100k rows, CPU throttle ${THROTTLE}x (browser ph
     withinMs(next.longest, LONG_TASK_MS, 'next query longest task')
   })
 
+  // R F1: long text keeps its word index only up to a cap; the blocks over it have their words
+  // split again on every one-word keystroke, still in time slices.
+  it(`one-word queries over 30-word cells (word index over its cap): every task ≤ ${LONG_TASK_MS} ms`, async () => {
+    const { '100k long text first query': first, '100k long text next query': next } =
+      await samples(async () => {
+        const words = ['alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot', 'golf', 'hotel']
+        const t = createTable({
+          data: Array.from({ length: 100_000 }, (_, i) => ({
+            id: i,
+            text: Array.from({ length: 30 }, (_, j) => words[(i * 31 + j * 7) % 8]).join(' '),
+          })),
+          rowKey: 'id',
+          columns: [{ key: 'id' }, { key: 'text', search: 1 }],
+          features: createDefaultFeatures(),
+          onDiagnostic() {},
+        })
+        t.getRowModel()
+        const first = await interact(t, '100k long text, first query', type(t, 'hotell'))
+        expect(first.yields).toBeGreaterThan(0)
+        const next = await interact(t, '100k long text, next query', type(t, 'hotelx'))
+        expect(next.yields).toBeGreaterThan(0)
+        expect(t.getRowModel().filteredCount).toBeGreaterThan(0)
+        return { '100k long text first query': first, '100k long text next query': next }
+      })
+    withinMs(first.longest, LONG_TASK_MS, 'first query longest task')
+    withinMs(next.longest, LONG_TASK_MS, 'next query longest task')
+  })
+
   it(`sorting a string column (collation ranks): every task ≤ ${LONG_TASK_MS} ms`, async () => {
     const { '100k sort name': sort } = await samples(async () => {
       const t = table(100_000)

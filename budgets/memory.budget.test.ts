@@ -28,6 +28,14 @@ const makeData = (): R[] =>
 
 const BUDGET_MB = 5
 
+const WORDS = ['alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot', 'golf', 'hotel', 'india']
+/** 100k rows of one text column, `words` words per cell. */
+const longText = (words: number) =>
+  Array.from({ length: N }, (_, i) => ({
+    id: i,
+    text: Array.from({ length: words }, (_, j) => WORDS[(i * 31 + j * 7) % WORDS.length]).join(' '),
+  }))
+
 function preset(data: R[]) {
   return createTable({ data, rowKey: 'id', features: createDefaultFeatures(), onDiagnostic() {} })
 }
@@ -169,6 +177,35 @@ describe('§9.3 pipeline memory, real default preset, 100k rows (dist, productio
     expect(mb).toBeLessThanOrEqual(BUDGET_MB)
     expect(t.getData()).toBe(data)
   })
+
+  // R F1: the word index costs about 1 byte per word of a multi-word cell, so long text would keep
+  // MBs (30 words per cell: 6.22 MB, 100 words: 13.03 MB before the cap). It is kept up to a cap
+  // per data array; the blocks over it are split again on each keystroke.
+  for (const words of [30, 100]) {
+    it(`one searched column of ${words} words per cell, one-word queries: ≤ ${BUDGET_MB} MB`, async () => {
+      const data = longText(words)
+      const { mb, value: t } = await measureHeap(async () => {
+        const t = createTable({
+          data,
+          rowKey: 'id',
+          columns: [{ key: 'id' }, { key: 'text', search: 1 }],
+          features: createDefaultFeatures(),
+          onDiagnostic() {},
+        })
+        t.getRowModel()
+        await expect(t.setSearch('hotell')).resolves.toEqual({ status: 'applied' })
+        await expect(t.setSearch('hotelx')).resolves.toEqual({ status: 'applied' })
+        t.getRowModel()
+        return t
+      })
+      console.info(
+        `[§9.3 memory] one-word search, ${words} words per cell: ${mb.toFixed(2)} MB (budget ${BUDGET_MB})`,
+      )
+      expect(t.getRowModel().filteredCount).toBeGreaterThan(0)
+      expect(mb).toBeLessThanOrEqual(BUDGET_MB)
+      expect(t.getData()).toBe(data)
+    })
+  }
 
   // A string sort keeps the column's collation-rank state across data versions (#95): the ranks
   // and the distinct strings in rank order, no string → id map (100k distinct names: 7.86 MB).
