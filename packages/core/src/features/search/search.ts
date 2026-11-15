@@ -178,11 +178,13 @@ const searchOptions = {
     noEffect: matching,
   },
   fuzzyMaxDistance: count,
-  // `Infinity` reads as "never", like the default.
+  // `Infinity` reads as "never", like the default. No spread: the schema must stay a pure literal,
+  // or production bundles keep it.
   fuzzyMaxRows: {
-    ...count,
-    check: (v: number) => v === Number.POSITIVE_INFINITY || count.check(v),
+    type: 'number',
+    check: (v: number) => v === Number.POSITIVE_INFINITY || (Number.isInteger(v) && v >= 0),
     expected: 'a non-negative integer or Infinity',
+    noEffect: matching,
   },
   caseSensitive: { type: 'boolean', noEffect: matching },
   typing: { type: 'object', shape: typingOptions },
