@@ -68,13 +68,22 @@ const CHUNK = 4096
  */
 const CELLS = 16_384
 
+/**
+ * Characters matched per chunk (R F1): long text (sentences, descriptions) matches fewer rows per
+ * chunk, as many columns do. Shorter text is held by {@link CELLS} alone.
+ */
+const CHARS = 524_288
+
 interface Key {
   readonly name: string
   readonly weight: number
 }
 
-/** The formatted value of row `r` of one searchable column. */
-type Read = (r: number) => string
+/**
+ * The formatted value of row `r` of one searchable column; `c`: the characters of its strings (a
+ * column {@link scan} read), for the slice size.
+ */
+type Read = ((r: number) => string) & { c?: number }
 
 // A throw (no `ExSearch`) counts as missing (hasCapability). `canNarrow` comes with
 // `search(q, { within })` (1.2.1 / 2.1.0), which matching relies on.
@@ -121,17 +130,19 @@ function numberReader(values: Float64Array): Read {
  * the column cache formats those. `undefined` when a read throws. The values are read in NFC (#30),
  * normalised here, never per keystroke: the rows whose value is not NFC (rare: NFD input from
  * macOS, Thai or Vietnamese keyboards) keep their NFC form in a sparse map. Only values with a code
- * unit from U+0300 (combining marks and up) can change.
+ * unit from U+0300 (combining marks and up) can change. Counts the characters of the strings.
  */
 function* scan(
   size: number,
   get: (r: number) => unknown,
 ): Generator<undefined, Read | false | undefined, undefined> {
   const over = new Map<number, string>()
+  let c = 0
   try {
     for (let r = 0; r < size; r++) {
       const v = get(r)
       if (v !== null && (typeof v === 'object' || typeof v === 'function')) return false
+      if (typeof v === 'string') c += v.length
       if (typeof v === 'string' && /[\u0300-\uffff]/.test(v)) {
         const n = v.normalize('NFC')
         if (n !== v) over.set(r, n)
@@ -145,7 +156,7 @@ function* scan(
     const v = get(r)
     return v === null || v === undefined ? '' : String(v)
   }
-  return over.size ? (r) => over.get(r) ?? read(r) : read
+  return Object.assign(over.size ? (r: number) => over.get(r) ?? read(r) : read, { c })
 }
 
 /**
@@ -247,8 +258,10 @@ export function* buildIndex(
   const fold = (v: string) => (config.caseSensitive ? v : v.toLowerCase())
   const foldQuery = (q: string) => fold(q.normalize('NFC'))
   const at = (k: number, r: number) => fold((reads[k] as Read)(r))
+  // The characters of the searched strings (numbers are short), for long text (CHARS).
+  const chars = reads.reduce((sum, read) => sum + (read.c ?? 0), 1)
   /** Rows matched per slice. */
-  const size = Math.max(256, Math.floor(CELLS / keys.length))
+  const size = Math.max(16, Math.min(Math.max(256, CELLS / keys.length), (CHARS * n) / chars)) | 0
   /**
    * Rows per block (#96 a, word matching): half a slice, so building a block's word index (every
    * row read and split) and matching a run of it fit one slice (§9.1).
@@ -282,7 +295,7 @@ export function* buildIndex(
         const b = Math.floor((rows[k] as number) / block)
         let e = k + 1
         while (e < rows.length && e - k < run && Math.floor((rows[e] as number) / block) === b) e++
-        const cost = e - k + (matcher.cost?.(b, q) ?? 0)
+        const cost = e - k + (matcher.cost?.(b, q, e - k) ?? 0)
         if (spent && spent + cost > run) {
           yield
           spent = 0
@@ -331,13 +344,66 @@ export function* buildIndex(
  * so parts match like the whole).
  */
 type Matcher = ((b: number, rows: Uint32Array, query: string) => Hit[]) & {
-  /** Rows read to build block `b`'s word index before `query` is matched there. Missing: none. */
-  cost?: (b: number, query: string) => number
+  /**
+   * Rows read, besides the `rows` rows matched, to build block `b`'s word index before `query` is
+   * matched there. Missing: none.
+   */
+  cost?: (b: number, query: string, rows: number) => number
   /**
    * #96 (c): matching `next` within the hits of `prev` (both folded, as ex-search scores them)
    * provably equals matching every row. Missing: never.
    */
   narrows?: (prev: string, next: string) => boolean
+}
+
+/**
+ * The most a data version keeps in word indexes (R F1), in bytes. A block whose index would take
+ * the total over it is matched without keeping one. An object so tests can lower it.
+ */
+export const WORD_INDEX = { cap: 1_835_008 } // 1.75 MB
+
+/** What a kept block's engine costs besides its index data (objects, typed-array headers). */
+export const ENGINE_BYTES = 1024
+
+/** ex-search's whitespace (`wordSpans`): the set of `\s` in a regular expression. */
+const space = (c: number) =>
+  c === 32 || (c > 8 && c < 14) || c === 160 || (c > 5759 && /\s/.test(String.fromCharCode(c)))
+
+/** A varint's bytes (cells under 2M characters). */
+const varint = (x: number) => (x < 128 ? 1 : x < 16_384 ? 2 : 3)
+
+/**
+ * The bytes ex-search 2.1.1's word index keeps for a cell `v` (`buildWordIndex`): none for a cell
+ * of no word, or of one word and no other character; else a varint header, the trailing whitespace
+ * length (when not 0), the first word's start, and for each later word its distance from the
+ * previous start (×2, +1 when the gap before it is not one character) and that gap when it is not
+ * one character. Exact for that layout, so about 1 byte per word of a multi-word cell (R F1). The
+ * groups (16 bytes per 64 cells with any) and the engine are counted by the caller.
+ */
+export function wordIndexBytes(v: string): number {
+  const n = v.length
+  let bytes = 0
+  let words = 0
+  let start = 0
+  let end = 0
+  for (let i = 0; ; ) {
+    while (i < n && space(v.charCodeAt(i))) i++
+    if (i === n) break
+    const s = i
+    while (i < n && !space(v.charCodeAt(i))) i++
+    const gap = s - end
+    bytes += !words++
+      ? varint(s)
+      : gap > 1
+        ? varint((s - start) * 2 + 1) + varint(gap)
+        : varint((s - start) * 2)
+    start = s
+    end = i
+  }
+  const t = n - end
+  if (!words || (words < 2 && !start && !t)) return 0
+  if (t) bytes += varint(t)
+  return bytes + varint(bytes * 2 + (t ? 1 : 0))
 }
 
 function exSearchMatcher(
@@ -350,13 +416,14 @@ function exSearchMatcher(
   // R F2: ex-search 2.x rejects a non-finite weight or threshold, which 1.2.1 (datakable 2.1.1)
   // scored with. Such a config hands it finite stand-ins that keep every row (weight 1, threshold
   // -1), and its hits are scored as 1.2.1 did from their raw field scores (`run`).
-  const finite = Number.isFinite(config.threshold) && keys.every((k) => Number.isFinite(k.weight))
+  // Weights are > 0 here (buildIndex): Infinity is the non-finite one.
+  const finite = Number.isFinite(config.threshold) && keys.every((k) => k.weight < Infinity)
   // Values and query are folded already (buildIndex).
   const base = {
     ...config,
-    keys: finite
+    keys: (finite
       ? keys
-      : keys.map((k) => ({ ...k, weight: Number.isFinite(k.weight) ? k.weight : 1 })),
+      : keys.map((k) => ({ ...k, weight: k.weight < Infinity ? k.weight : 1 }))) as Key[],
     threshold: finite ? config.threshold : -1,
     caseSensitive: true,
     // DataKable re-ranks with exact scores and an index tie-break; tim keeps ex-search's own pass
@@ -382,17 +449,34 @@ function exSearchMatcher(
     const items = { length } as unknown as Item[]
     return { items, engine: new ExSearch<Item>({ ...base, fuzzyMode }).setData(items) }
   }
-  /** Rows `rows` matched by `e`, row `r` at `r - start` of its data; `read`: the rows it reads. */
+  /** What the word index of the block being read keeps, in bytes (`run` with `count`). */
+  let counted = 0
+  /**
+   * Rows `rows` matched by `e`, row `r` at `r - start` of its data; `read`: the rows it reads. With
+   * `count`, adds what ex-search's word index keeps for them to `counted`: each cell's bytes and 16
+   * per 64 cells (by position in the engine's data) with any.
+   */
   const run = (
     { items, engine }: Engine,
     rows: Uint32Array,
     read: Uint32Array,
     start: number,
     q: string,
+    count?: boolean,
   ) => {
+    let group = -1
     for (const r of read) {
       const o = { i: r } as Record<string, string | number>
-      for (let k = 0; k < keys.length; k++) o[(keys[k] as Key).name] = at(k, r)
+      for (let k = 0; k < keys.length; k++) {
+        const v = at(k, r)
+        o[(keys[k] as Key).name] = v
+        const c = count && wordIndexBytes(v)
+        if (c) {
+          const z = ((r - start) * keys.length + k) >>> 6
+          counted += c + (z === group ? 0 : 16)
+          group = z
+        }
+      }
       items[r - start] = o as Item
     }
     try {
@@ -401,16 +485,14 @@ function exSearchMatcher(
       if (finite) return hits as unknown as Hit[]
       // 1.2.1's score: the best raw × weight (a NaN product, 0 × Infinity, never wins) / 100; a row
       // is kept unless below `threshold` (a NaN threshold keeps every row).
-      const out: Hit[] = []
-      for (const h of hits) {
-        let best = Number.NEGATIVE_INFINITY
-        h.fieldMatches.forEach((f, k) => {
-          const v = f.rawScore * (keys[k] as Key).weight
-          if (v > best) best = v
-        })
-        if (!(best / 100 < config.threshold)) out.push({ i: (h as Item).i, score: best / 100 })
-      }
-      return out
+      return hits.flatMap((h) => {
+        const score =
+          h.fieldMatches.reduce((best, f, k) => {
+            const v = f.rawScore * (keys[k] as Key).weight
+            return v > best ? v : best
+          }, -Infinity) / 100
+        return score < config.threshold ? [] : [{ i: (h as unknown as Item).i, score }]
+      })
     } finally {
       // `delete`: an `undefined` element would keep the element store.
       for (const r of read) delete items[r - start]
@@ -419,37 +501,48 @@ function exSearchMatcher(
   /** Whole values: one engine over every row (made on first use), each call from its first row. */
   let whole: Engine | undefined
   // #96 (a): ex-search splits the values into words once per `setData`, on the first word-mode
-  // search, and keeps the word offsets (its word index: about 1.6 bytes per value in 2.1.1, none for
-  // a value of one word). Only word matching has blocks: one word engine per block of rows, made on
+  // search, and keeps the word offsets (its word index, about 1 byte per word of a multi-word cell:
+  // `wordIndexBytes`). Only word matching has blocks: one word engine per block of rows, made on
   // first use; a block's words are split in one slice (§9.1) the first time a one-word query
   // matches there, and later keystrokes over this data version split nothing. Never `updateConfig`
   // on it: that drops the index.
-  const blocks: Engine[] = []
+  // R F1: what is kept grows with the text, not the row count, so a block is kept only while the
+  // total stays within `WORD_INDEX.cap` for this data version. A block that would go over it is
+  // `null`: each call matches its rows with an engine of its own, its index built over those rows
+  // and dropped with it (2.1.1's way): the same results, its words split on every keystroke.
+  const blocks: (Engine | null)[] = []
+  /** Bytes kept by the engines in `blocks`. */
+  let kept = 0
   const length = (b: number) => Math.min(size, n - b * size)
+  const over = (b: number) => blocks[b] === null || (!blocks[b] && kept >= WORD_INDEX.cap)
   const match: Matcher = (b, rows, q) => {
     if (!words(q)) {
       whole = whole ?? engine(n, 'value')
       return run(whole, rows, rows, Math.min(...rows), q)
     }
     const start = b * size
+    const known = blocks[b]
+    if (known) return run(known, rows, rows, start, q)
+    const k = engine(length(b), 'word')
+    if (over(b)) return run(k, rows, rows, start, q)
     // A new word engine builds its word index in this call: it reads every row of the block.
-    const read = blocks[b] ? rows : Uint32Array.from({ length: length(b) }, (_, j) => start + j)
-    const k = blocks[b] ?? engine(length(b), 'word')
-    blocks[b] = k
-    return run(k, rows, read, start, q)
+    counted = ENGINE_BYTES
+    const read = Uint32Array.from({ length: length(b) }, (_, j) => start + j)
+    const hits = run(k, rows, read, start, q, true)
+    const fits = kept + counted <= WORD_INDEX.cap
+    if (fits) kept += counted
+    blocks[b] = fits ? k : null
+    return hits
   }
-  match.cost = (b, q) => (words(q) && !blocks[b] ? length(b) : 0)
+  match.cost = (b, q, m) => (!words(q) || blocks[b] ? 0 : over(b) ? m : length(b))
   // ex-search's `canNarrow`: fuzzy matching off, `prev` inside `next` and no weight that lets a row
   // reach `threshold` on `next` but not on `prev`; or the same query. Queries are compared as
   // DataKable scores them (trimmed, NFC, folded). The method, not the `canNarrow` export: a named
   // ESM import of an export an older ex-search lacks would stop the package loading before the
   // probe (which requires the method) could fall back.
   // Not with stand-ins for non-finite values: they do not score like the config.
-  let narrowing: ExSearch<Item> | undefined
-  match.narrows = (prev, next) => {
-    narrowing ??= new ExSearch<Item>(base)
-    return finite && narrowing.canNarrow(prev, next)
-  }
+  const narrowing = new ExSearch<Item>(base)
+  match.narrows = (prev, next) => finite && narrowing.canNarrow(prev, next)
   return match
 }
 

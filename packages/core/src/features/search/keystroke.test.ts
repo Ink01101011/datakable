@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createTable } from '../../table/create-table'
 import { columnFilters } from '../column-filters'
 import { search } from './search'
-import { rankHits } from './search-index'
+import { ENGINE_BYTES, rankHits, WORD_INDEX, wordIndexBytes } from './search-index'
 
 // #96: per-keystroke work DataKable asks of ex-search. With `fuzzyMaxDistance: 0` no fuzzy score
 // can pass (distance 0 means equal strings, which the exact / contains tiers already score), so
@@ -323,6 +323,191 @@ describe('search: the kept word index over several blocks of rows (#96 a)', () =
             if (filter) c.setColumnFilter('n', filter)
             await c.setSearch(q)
             expect(ids(t), `${e.op} "${q}"`).toEqual(ids(c))
+          }
+        },
+      ),
+      { numRuns: 8 },
+    )
+  })
+})
+
+describe('search: the kept word index has a byte cap per data array (R F1)', () => {
+  // Two searched columns: 4096 rows per block (rows short enough not to shrink it, search-index.ts
+  // CHARS). Six-word cells cost about 7 bytes each in ex-search's word index; with the cap lowered
+  // to 100 kB about two blocks fit, the others are matched with an engine of their own per call
+  // (their words split on every keystroke).
+  type Q = R & { n: number }
+  const BLOCK = 4096
+  const make = (data: readonly Q[], opts: Opts = {}) =>
+    createTable({
+      data,
+      columns: [...columns, { key: 'n' as const, search: 0 }],
+      features: [columnFilters(), search(opts)],
+    }) as never as T
+  const WORDS = ['garcia', 'lopez', 'Lopes', 'ada', 'Lovelace', 'Bob', 'chiang', 'mai', 'São']
+  const rowsOf = (count: number, seed: number, long = 1): Q[] =>
+    Array.from({ length: count }, (_, id) => {
+      const x = (id * 2654435761 + seed * 40503) >>> 0
+      const w = (k: number) => WORDS[(x >>> k) % WORDS.length] as string
+      const text = Array.from({ length: 6 }, (_, j) => w(j * 4)).join(' ')
+      return {
+        id,
+        // Unique texts (the row id at the end) so a read maps back to its row.
+        name: x % 7 < long * 7 ? `${text} r${id}` : `${w(1)} ${w(5)} r${id}`,
+        city: x % 5 ? `${w(13)}  ${w(17)} c${id}` : `c${id}`,
+        n: x % 4,
+      }
+    })
+  /** The rows whose cell texts are read (`charCodeAt`): split into words, or counted. */
+  function readRows(data: readonly Q[]) {
+    const row = new Map<string, number>()
+    for (const r of data) {
+      row.set(r.name.toLowerCase(), r.id)
+      row.set(r.city.toLowerCase(), r.id)
+    }
+    const seen = new Set<number>()
+    // Patched by hand: a spy would record every one of millions of calls.
+    String.prototype.charCodeAt = function (this: string, i: number) {
+      const id = row.get(String(this))
+      if (id !== undefined) seen.add(id)
+      return charCodeAt.call(this, i)
+    }
+    return seen
+  }
+  const charCodeAt = String.prototype.charCodeAt
+  const blocksOf = (rows: Iterable<number>) => new Set([...rows].map((r) => Math.floor(r / BLOCK)))
+  /** What the cap counts for block `b` of `data` (search-index.ts `run` with `count`). */
+  function blockBytes(data: readonly Q[], b: number) {
+    let bytes = ENGINE_BYTES
+    let group = -1
+    for (let r = b * BLOCK; r < Math.min(data.length, (b + 1) * BLOCK); r++) {
+      const q = data[r] as Q
+      for (const [k, v] of [q.name, q.city].entries()) {
+        const c = wordIndexBytes(v.toLowerCase())
+        const z = ((r - b * BLOCK) * 2 + k) >>> 6
+        if (c) bytes += c + (z === group ? 0 : 16)
+        if (c) group = z
+      }
+    }
+    return bytes
+  }
+  const CAP = WORD_INDEX.cap
+  afterEach(() => {
+    WORD_INDEX.cap = CAP
+    String.prototype.charCodeAt = charCodeAt
+  })
+
+  it('the kept blocks stay within the cap; the others are split again on every keystroke', async () => {
+    WORD_INDEX.cap = 100_000
+    const data = rowsOf(20_000, 3)
+    const t = make(data)
+    await t.setSearch('lopex')
+    const seen = readRows(data)
+    await t.setSearch('lovelase')
+    const resplit = blocksOf(seen)
+    const kept = [0, 1, 2, 3, 4].filter((b) => !resplit.has(b))
+    // Some blocks kept, some not, in the same table.
+    expect(kept.length).toBeGreaterThan(0)
+    expect(resplit.size).toBeGreaterThan(0)
+    const bytes = kept.reduce((sum, b) => sum + blockBytes(data, b), 0)
+    expect(bytes).toBeLessThanOrEqual(WORD_INDEX.cap)
+    // A dropped block is split again on each keystroke, a kept one never.
+    seen.clear()
+    await t.setSearch('gracia')
+    expect(blocksOf(seen)).toEqual(resplit)
+    // Under the default cap the same table keeps every block.
+    WORD_INDEX.cap = CAP
+    const u = make(data)
+    await u.setSearch('lopex')
+    const none = readRows(data)
+    await u.setSearch('lovelase')
+    expect(none.size).toBe(0)
+  })
+
+  it('a new data array starts from zero', async () => {
+    WORD_INDEX.cap = 100_000
+    const data = rowsOf(20_000, 5)
+    const t = make(data)
+    await t.setSearch('lopex')
+    await t.setSearch('lovelase')
+    // The same rows in a new array: a new data version, its blocks kept from the first one again.
+    const next = data.slice()
+    t.setOptions({ data: next })
+    await t.setSearch('gracia')
+    const seen = readRows(next)
+    await t.setSearch('chang')
+    const resplit = blocksOf(seen)
+    expect(resplit.has(0)).toBe(false)
+    expect(resplit.size).toBeGreaterThan(0)
+  })
+
+  it('randomised: kept and dropped blocks in one table equal a cold search', async () => {
+    const word = fc.constantFrom('lopex', 'lopes', 'lovelase', 'gracia', 'ada', 'chang', 'sao')
+    const step = fc.oneof(
+      { weight: 3, arbitrary: fc.record({ op: fc.constant('query' as const), q: word }) },
+      {
+        weight: 1,
+        arbitrary: fc.record({
+          op: fc.constant('extend' as const),
+          add: fc.constantFrom('z', 'a', ' x'),
+        }),
+      },
+      {
+        weight: 2,
+        arbitrary: fc.record({
+          op: fc.constant('edit' as const),
+          at: fc.nat({ max: 19_999 }),
+          name: word,
+          inPlace: fc.boolean(),
+        }),
+      },
+      { weight: 1, arbitrary: fc.record({ op: fc.constant('filter' as const), max: fc.nat(3) }) },
+      { weight: 1, arbitrary: fc.record({ op: fc.constant('copy' as const) }) },
+    )
+    await fc.assert(
+      fc.asyncProperty(
+        fc.nat(),
+        fc.constantFrom(0.3, 0.6, 1),
+        fc.constantFrom(50_000, 100_000, 200_000),
+        word,
+        fc.array(step, { minLength: 1, maxLength: 5 }),
+        fc.record({
+          threshold: fc.constantFrom(0.3, 0.5),
+          fuzzyMaxDistance: fc.constantFrom(1, 3),
+        }),
+        async (seed, long, cap, q0, steps, opts) => {
+          WORD_INDEX.cap = cap
+          let data = rowsOf(20_000, seed, long)
+          let q: string = q0
+          let filter: unknown
+          const t = make(data, opts)
+          if (seed % 2) {
+            // Blocks first touched through a filter: the later ones are kept or not in a new order.
+            filter = { type: 'range', value: { max: seed % 3 } }
+            t.setColumnFilter('n', filter)
+          }
+          await t.setSearch(q)
+          for (const e of steps) {
+            if (e.op === 'query') q = e.q
+            else if (e.op === 'extend') q += e.add
+            else if (e.op === 'filter') {
+              filter = e.max === 3 ? undefined : { type: 'range', value: { max: e.max } }
+              t.setColumnFilter('n', filter)
+            } else {
+              if (e.op === 'edit' && e.inPlace) Object.assign(data[e.at] as Q, { name: e.name })
+              data = data.slice()
+              if (e.op === 'edit' && !e.inPlace) {
+                data[e.at] = { id: -1, name: `${e.name} lopez ada`, city: 'x', n: 1 }
+              }
+              t.setOptions({ data })
+            }
+            await t.setSearch(q)
+            WORD_INDEX.cap = CAP
+            const c = make(data, opts)
+            if (filter) c.setColumnFilter('n', filter)
+            await c.setSearch(q)
+            WORD_INDEX.cap = cap
+            expect(ids(t), `${e.op} "${q}" cap ${cap}`).toEqual(ids(c))
           }
         },
       ),
