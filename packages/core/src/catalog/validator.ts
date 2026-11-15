@@ -226,23 +226,6 @@ function checkFeatures(ctx: OptionCheckContext, features: readonly unknown[]) {
   }
 }
 
-/** A column's `search` weight: ex-search 2.x rejects a non-finite one (R F2). */
-const SEARCH_WEIGHT: OptionRule = {
-  type: 'number',
-  expected: 'a finite number (a search weight; 0 or less: not searched)',
-}
-
-/** `columns[i].search`: a finite number when it is a number (production searches as 2.1.1 did). */
-function checkColumns(level: Level, columns: unknown) {
-  if (!Array.isArray(columns)) return
-  columns.forEach((c, i) => {
-    const w = (c as { search?: unknown } | null)?.search
-    if (typeof w === 'number' && !Number.isFinite(w)) {
-      invalid(level, `columns[${i}].search`, SEARCH_WEIGHT, w)
-    }
-  })
-}
-
 // --- entry points ----------------------------------------------------------------------------------
 
 /**
@@ -259,7 +242,6 @@ export function validateOptions(input: object, ctx: OptionCheckContext): void {
     ...(Array.isArray(features) ? { features: features as AnyFeature[] } : {}),
   }
   checkLevel(level, tableOptions.schema, options, options, '')
-  checkColumns(level, options.columns)
   if (Array.isArray(features)) checkFeatures(ctx, features)
 }
 
@@ -289,13 +271,17 @@ export function validateOptionChange(
   const next = merged as Record<string, unknown>
   const previous = before as Values
   const features = previous.features
-  const level: Level = {
-    ctx,
-    phase: 'setOptions',
-    ...(Array.isArray(features) ? { features: features as AnyFeature[] } : {}),
-  }
-  checkLevel(level, tableOptions.schema, partial, next, '')
-  checkColumns(level, partial.columns)
+  checkLevel(
+    {
+      ctx,
+      phase: 'setOptions',
+      ...(Array.isArray(features) ? { features: features as AnyFeature[] } : {}),
+    },
+    tableOptions.schema,
+    partial,
+    next,
+    '',
+  )
   const schema = tableOptions.schema as OptionsSchema
   for (const key of Object.keys(partial)) {
     const rule = Object.hasOwn(schema, key) ? schema[key] : undefined
