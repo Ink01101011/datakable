@@ -392,45 +392,19 @@ export const WORD_INDEX = { cap: 2_097_152, row: 14, codes: 65_536 }
  */
 export const ENGINE_BYTES = 1536
 
-/** ex-search's whitespace (`wordSpans`): the set of `\s` in a regular expression. */
-const space = (c: number) =>
-  c === 32 || (c > 8 && c < 14) || c === 160 || (c > 5759 && /\s/.test(String.fromCharCode(c)))
-
-/** A varint's bytes (cells under 2M characters). */
-const varint = (x: number) => (x < 128 ? 1 : x < 16_384 ? 2 : 3)
-
 /**
- * The bytes ex-search 2.1.1's word index keeps for a cell `v` (`buildWordIndex`): none for a cell
- * of no word, or of one word and no other character; else a varint header, the trailing whitespace
- * length (when not 0), the first word's start, and for each later word its distance from the
- * previous start (×2, +1 when the gap before it is not one character) and that gap when it is not
- * one character. Exact for that layout, so about 1 byte per word of a multi-word cell (R F1). The
- * groups (16 bytes per 64 cells with any) and the engine are counted by the caller.
+ * At least the bytes ex-search 2.1.1's word index keeps for a cell `v` (`buildWordIndex`), from its
+ * whitespace (`\s`, ex-search's set) and length: a varint header, the trailing whitespace length,
+ * the first word's start, and per later word its distance from the previous start plus the gap when
+ * it is longer than one character, each one byte up to 63 characters. So the whitespace count + 3,
+ * plus one per 64 characters for longer distances and headers. None without whitespace (one word).
+ * It over-counts by about one byte per cell (two- or three-word cells: 4 instead of 3; 30 words:
+ * 34 instead of 31), so what is kept stays under the allowance (R F1, R2 N1). The groups (16 bytes
+ * per 64 cells with any) and the engine are counted by the caller.
  */
-export function wordIndexBytes(v: string): number {
-  const n = v.length
-  let bytes = 0
-  let words = 0
-  let start = 0
-  let end = 0
-  for (let i = 0; ; ) {
-    while (i < n && space(v.charCodeAt(i))) i++
-    if (i === n) break
-    const s = i
-    while (i < n && !space(v.charCodeAt(i))) i++
-    const gap = s - end
-    bytes += !words++
-      ? varint(s)
-      : gap > 1
-        ? varint((s - start) * 2 + 1) + varint(gap)
-        : varint((s - start) * 2)
-    start = s
-    end = i
-  }
-  const t = n - end
-  if (!words || (words < 2 && !start && !t)) return 0
-  if (t) bytes += varint(t)
-  return bytes + varint(bytes * 2 + (t ? 1 : 0))
+export const wordIndexBytes = (v: string): number => {
+  const ws = v.length - v.replace(/\s/g, '').length
+  return ws && ws + 3 + (v.length >> 6)
 }
 
 function exSearchMatcher(
