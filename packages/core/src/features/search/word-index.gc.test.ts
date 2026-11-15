@@ -117,7 +117,8 @@ describe('word index bytes: the estimate against retained memory (R F1)', () => 
         retained * 1.35 + 16_384,
       )
       expect(engines[0]?.search('zzzzz')).toEqual([])
-    })
+      // Several engines over long text with full GCs between readings: over 5 s on a CI runner.
+    }, 60_000)
   }
 
   it('wordIndexBytes is never below the exact layout, and close above it (property)', () => {
