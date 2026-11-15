@@ -94,8 +94,9 @@ table.clearSearch() // empties input and query: every row again
   ex-search's word index, the word offsets of each cell of two words or more, about 1 byte per
   word of such a cell (a cell of one word costs nothing). Later keystrokes split no cell again: a
   one-word keystroke over 100k rows of `name N` values takes about 56 ms instead of about 82 ms in
-  2.1 in our benchmark. At 100k rows × 3 searched columns of short values the words take about 0.4
-  MB. A new data array finds them again, on its first one-word query.
+  2.1 in our benchmark. The first one-word query, which also finds and counts the words, takes about
+  3–7 % longer than in 2.1. At 100k rows × 3 searched columns of short values the words take about
+  0.4 MB. A new data array finds them again, on its first one-word query.
 - **The kept words share a memory allowance.** The search state of a data array stays within 2
   MiB: 10 bytes per data row for the scores kept between keystrokes, up to 4 bytes per hit, and
   the kept words in what is left (about 0.66 MiB at 100k rows, 1.3 MiB at 50k, none from about
