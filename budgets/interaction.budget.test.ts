@@ -274,7 +274,8 @@ describe(`§9.3 longest task at 100k rows, CPU throttle ${THROTTLE}x (browser ph
       return r
     })
     for (const [label, r] of Object.entries(runs)) withinMs(r.longest, LONG_TASK_MS, label)
-  })
+    // Five processes of three keystrokes over 200 MB of text: 80 s on a CI runner (default 60 s).
+  }, 240_000)
 
   it(`sorting a string column (collation ranks): every task ≤ ${LONG_TASK_MS} ms`, async () => {
     const { '100k sort name': sort } = await samples(async () => {
