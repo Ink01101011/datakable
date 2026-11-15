@@ -292,9 +292,15 @@ export const sorting = (opts: SortingOptions = {}) => {
       key = {}
       rankKeys.set(values, key)
     }
-    const c = getCollator(ctx.emit)
+    const emit = ctx.emit
     const into = history
     return sliced(ctx, key, function* () {
+      // The collator is built inside the job's first slice (still in this run, so `emit` holds),
+      // and a slow build ends that slice: a page's first Intl.Collator loads ICU's collation data,
+      // ~5 ms (~20 ms under a 4x CPU throttle), and the input's task should not also carry a slice
+      // of rank work (#130). A collator that is already built costs nothing here.
+      const c = getCollator(emit)
+      yield
       const r = yield* collationRanks(values, c, into.get(id))
       if (!r) return null
       into.set(id, r.state)

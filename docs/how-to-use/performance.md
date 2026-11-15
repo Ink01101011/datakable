@@ -64,8 +64,10 @@ pnpm check:budgets  # sizes against their limits, then the memory and interactio
   including formatting the searchable columns, and the collation ranks) runs in slices of a few
   milliseconds, yielding through `scheduler.yield()` (or `setTimeout` where it is missing,
   `DK_ENV_FALLBACK`). Meanwhile the row model keeps the previous
-  rows with `status: 'pending'`, and it updates when the work is done. Slicing only happens in the
-  browser after the first row model; the server and the first render compute synchronously.
+  rows with `status: 'pending'`, and it updates when the work is done. When the last slice ran
+  past its time, the pipeline run that applies the result waits for the next task instead of
+  lengthening that one. Slicing only happens in the browser after the first row model; the server
+  and the first render compute synchronously.
 - **Cell callbacks per column, not per cell.** Your `format`, `accessor`, filter `fn` and `sortBy`
   run in one `column:batch` per column per pipeline run, with an inline `try/catch`; interceptors
   and the error boundary see one call per column (when search formats a column time-sliced, one

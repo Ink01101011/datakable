@@ -221,6 +221,91 @@ describe('ctx.slice: the runner contract (§9.1)', () => {
     expect(of('DK_ENV_FALLBACK')).toHaveLength(0)
   })
 
+  /** A `scheduler.yield` whose tasks run one at a time, on `next()`. */
+  function steppedScheduler() {
+    const waiting: (() => void)[] = []
+    vi.stubGlobal('scheduler', {
+      yield: () => new Promise<void>((resolve) => waiting.push(resolve)),
+    })
+    return {
+      pending: () => waiting.length,
+      async next() {
+        waiting.shift()?.()
+        await new Promise((r) => setTimeout(r, 0))
+      },
+    }
+  }
+
+  it('a job that ends past its slice deadline applies its result in a task of its own (#130)', async () => {
+    fastClock() // every slice ends at its first yield, and every slice ends past its deadline
+    const tasks = steppedScheduler()
+    const { feature } = slicedFilter(2)
+    const t = createTable({ data: people(6), features: [feature], onDiagnostic })
+    t.getRowModel()
+    api(t).turnOn()
+    expect(t.getRowModel().status).toBe('pending') // slice 1: up to the first yield
+    await tasks.next() // slice 2: up to the second yield
+    expect(t.getRowModel().status).toBe('pending')
+    await tasks.next() // slice 3: the job returns, past the deadline: the result waits a task
+    expect(t.getRowModel().status).toBe('pending')
+    expect(tasks.pending()).toBe(1)
+    await tasks.next() // the recompute with the result, in its own task
+    expect(t.getRowModel().status).toBe('idle')
+    expect(at(t.getRowModel())).toEqual([0, 2, 4])
+    expect(tasks.pending()).toBe(0)
+  })
+
+  it('a job that ends within its slice applies its result in the same task', async () => {
+    // A clock that moves only when the job says so: its first step overruns the first slice, its
+    // second one costs nothing.
+    let clock = 0
+    vi.spyOn(performance, 'now').mockImplementation(() => clock)
+    const tasks = steppedScheduler()
+    const key = {}
+    const feature = defineFeature({
+      name: 'evens',
+      stage: 'filter',
+      initialState: () => ({ on: false }),
+      createApi: (ctx) => ({ turnOn: () => ctx.setState({ on: true }) }),
+      rowModel: (indices, state, ctx) => {
+        if (!state.on) return indices
+        const keep = ctx.slice?.(key, function* () {
+          clock += 100
+          yield
+          return indices.filter((r) => r % 2 === 0)
+        })
+        return keep ?? indices
+      },
+    }) as AnyFeature
+    const t = createTable({ data: people(6), features: [feature], onDiagnostic })
+    t.getRowModel()
+    api(t).turnOn()
+    expect(t.getRowModel().status).toBe('pending')
+    await tasks.next() // the job returns within the slice: applied in this task
+    expect(t.getRowModel().status).toBe('idle')
+    expect(at(t.getRowModel())).toEqual([0, 2, 4])
+    expect(tasks.pending()).toBe(0)
+  })
+
+  it('a job cancelled while its result waits for its task is not applied', async () => {
+    fastClock()
+    const tasks = steppedScheduler()
+    const { feature } = slicedFilter(2)
+    const t = createTable({ data: people(6), features: [feature], onDiagnostic })
+    t.getRowModel()
+    const notified = vi.fn()
+    t.subscribe(notified)
+    api(t).turnOn()
+    await tasks.next()
+    await tasks.next() // the job returned; its result waits a task
+    expect(tasks.pending()).toBe(1)
+    const before = notified.mock.calls.length
+    t.destroy()
+    await tasks.next()
+    expect(notified).toHaveBeenCalledTimes(before)
+    expect(of('DK_INTERNAL_ERROR')).toHaveLength(0)
+  })
+
   it('runJob runs a job to completion (replay, contexts without slicing)', () => {
     expect(
       runJob(function* () {
@@ -574,5 +659,66 @@ describe('sorting: collation ranks for string columns at n ≥ 10k (§6.4, §9.1
     ;(t as unknown as { toggleSort(id: string): void }).toggleSort('s')
     expect(t.getRowModel().status).toBe('idle')
     expect(t.getRowModel().rows.map((r) => r.index)).toEqual(reference(true))
+  })
+
+  /** `Intl.Collator` whose construction takes `ms` on a frozen clock. */
+  function collatorTaking(ms: number) {
+    let clock = 0
+    vi.spyOn(performance, 'now').mockImplementation(() => clock)
+    const Real = Intl.Collator
+    let built = 0
+    class Timed extends Real {
+      constructor(locales?: string | string[], options?: Intl.CollatorOptions) {
+        built++
+        clock += ms
+        super(locales, options)
+      }
+    }
+    vi.stubGlobal('Intl', Object.assign(Object.create(Intl), { Collator: Timed }))
+    return { built: () => built }
+  }
+
+  it('a slow first collator (ICU data loading) ends the first slice: the ranks run in later tasks (#130)', async () => {
+    const t = createTable({ data: rows, columns: [{ key: 's' }], features: [sorting()] })
+    const unsorted = t.getRowModel().rows.map((r) => r.index)
+    // A page's first Intl.Collator loads ICU's collation data: ~5 ms, ~20 ms under a 4x throttle.
+    const timed = collatorTaking(SLICE_MS + 1)
+    ;(t as unknown as { toggleSort(id: string): void }).toggleSort('s')
+    // The input's task built the collator and stopped there: no rank work on top of it.
+    expect(t.getRowModel().status).toBe('pending')
+    expect(timed.built()).toBe(1)
+    expect(t.getRowModel().rows.map((r) => r.index)).toEqual(unsorted)
+    for (let i = 0; i < 2000 && t.getRowModel().status === 'pending'; i++) await settle(1)
+    expect(t.getRowModel().status).toBe('idle')
+    expect(t.getRowModel().rows.map((r) => r.index)).toEqual(reference(false))
+    expect(timed.built()).toBe(1)
+  })
+
+  it('a fast collator keeps a sort that fits in one slice synchronous', () => {
+    const t = createTable({ data: rows, columns: [{ key: 's' }], features: [sorting()] })
+    t.getRowModel()
+    const timed = collatorTaking(0)
+    ;(t as unknown as { toggleSort(id: string): void }).toggleSort('s')
+    expect(t.getRowModel().status).toBe('idle')
+    expect(t.getRowModel().rows.map((r) => r.index)).toEqual(reference(false))
+    expect(timed.built()).toBe(1)
+  })
+
+  it('an unsupported locale is still reported once when the collator ends the first slice (#130)', async () => {
+    const t = createTable({
+      data: rows,
+      columns: [{ key: 's' }],
+      features: [sorting({ locale: 'xx' })],
+      onDiagnostic,
+    })
+    t.getRowModel()
+    collatorTaking(SLICE_MS + 1)
+    ;(t as unknown as { toggleSort(id: string): void }).toggleSort('s')
+    expect(t.getRowModel().status).toBe('pending')
+    const collation = () => of('DK_ENV_FALLBACK').filter((d) => d.details.api === 'Intl.Collator')
+    expect(collation()).toHaveLength(1)
+    for (let i = 0; i < 2000 && t.getRowModel().status === 'pending'; i++) await settle(1)
+    expect(t.getRowModel().rows.map((r) => r.index)).toEqual(reference(false))
+    expect(collation()).toHaveLength(1)
   })
 })

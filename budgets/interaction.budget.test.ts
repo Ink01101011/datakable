@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { createDefaultFeatures, createTable } from '@datakable/core'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { throttleClock, trackTasks } from './measure'
+import { IN_SAMPLE, SAMPLES, sampled, type Tasks, throttleClock, trackTasks } from './measure'
 import { mixedUsers } from './mixed-users'
 
 // §9.3 interaction budgets under a 4x CPU throttle (T37), on the built `@datakable/core` in
@@ -21,6 +21,11 @@ import { mixedUsers } from './mixed-users'
 //   `pending` (the INP view of an interaction). The CPU time until the result is applied
 //   (`total`) is printed next to it and compared with 100 ms; it is not asserted: it depends on
 //   the host's speed and is close to 100 ms for a first string sort (reported to the user).
+//
+// Samples (#130): every timing budget is the median of SAMPLES samples, each a lone run of its test
+// in a fresh process (measure.ts `sampled`); every sample is printed. One run of the 100k string
+// sort's longest task read 39–56 ms from run to run, depending on what ran before it in the
+// process; a lone run is the same measurement without that, and its median is stable.
 
 const THROTTLE = 4
 const LONG_TASK_MS = 50
@@ -31,6 +36,7 @@ const INTERACTION_MS = 100
 // noisy, so there the timings are printed, not asserted; size, memory and batch budgets still are.
 const ENFORCE_TIMING = process.env.CI !== 'true'
 function withinMs(actual: number, limit: number, label: string, strictlyBelow = false) {
+  if (IN_SAMPLE) return // one sample: the parent process asserts the median
   const ok = strictlyBelow ? actual < limit : actual <= limit
   if (ENFORCE_TIMING) {
     if (strictlyBelow) expect.soft(actual, label).toBeLessThan(limit)
@@ -81,7 +87,7 @@ type T = {
 }
 
 /** Runs one interaction to completion; its tasks (throttled ms). */
-async function interact(t: T, label: string, act: () => void) {
+async function interact(t: T, label: string, act: () => void): Promise<Tasks> {
   tracker.reset()
   let acting = true
   let settle = () => {}
@@ -110,6 +116,12 @@ async function interact(t: T, label: string, act: () => void) {
   return r
 }
 
+/** The median of {@link SAMPLES} lone runs of the current test, each in a fresh process (#130). */
+function samples<K extends string>(sample: () => Promise<Record<K, Tasks>>) {
+  const title = (expect.getState().currentTestName ?? '').split(' > ').at(-1) as string
+  return sampled('budgets/interaction.budget.test.ts', title, sample)
+}
+
 const type = (t: T, q: string) => () => {
   void t.setSearch(q)
   void t.flushSearch()
@@ -119,75 +131,99 @@ describe(`§9.3 interaction on 10k rows, client mode, CPU throttle ${THROTTLE}x`
   // Each kind on a fresh table of all 10k rows (cold caches: the first sort / query pays for the
   // column cache, the projection or the collation ranks).
   it(`type / sort / page respond in < ${INTERACTION_MS} ms`, async () => {
-    const typing = table(10_000)
-    const sorted = table(10_000)
-    const numeric = table(10_000)
-    const paged = table(10_000)
-    const runs = {
-      'type (first query)': await interact(
-        typing,
-        '10k type, first query',
-        type(typing, 'name 12'),
-      ),
-      'type (next query)': await interact(typing, '10k type, next query', type(typing, 'name 123')),
-      'sort (string, first)': await interact(sorted, '10k sort name', () =>
-        sorted.toggleSort('name'),
-      ),
-      'sort (string, again)': await interact(sorted, '10k sort name desc', () =>
-        sorted.toggleSort('name'),
-      ),
-      'sort (number)': await interact(numeric, '10k sort age', () => numeric.toggleSort('age')),
-      page: await interact(paged, '10k next page', () => paged.nextPage()),
-    }
+    const runs = await samples(async () => {
+      const typing = table(10_000)
+      const sorted = table(10_000)
+      const numeric = table(10_000)
+      const paged = table(10_000)
+      const r = {
+        '10k type (first query)': await interact(
+          typing,
+          '10k type, first query',
+          type(typing, 'name 12'),
+        ),
+        '10k type (next query)': await interact(
+          typing,
+          '10k type, next query',
+          type(typing, 'name 123'),
+        ),
+        '10k sort (string, first)': await interact(sorted, '10k sort name', () =>
+          sorted.toggleSort('name'),
+        ),
+        '10k sort (string, again)': await interact(sorted, '10k sort name desc', () =>
+          sorted.toggleSort('name'),
+        ),
+        '10k sort (number)': await interact(numeric, '10k sort age', () =>
+          numeric.toggleSort('age'),
+        ),
+        '10k page': await interact(paged, '10k next page', () => paged.nextPage()),
+      }
+      expect(typing.getState().search.query).toBe('name 123')
+      expect(sorted.getSortDirection('name')).toBe('desc')
+      expect(paged.getState().pagination.pageIndex).toBe(1)
+      return r
+    })
     for (const [label, r] of Object.entries(runs)) {
       withinMs(r.first, INTERACTION_MS, label, true)
       if (r.total >= INTERACTION_MS) {
-        console.info(
-          `[§9.3 4x] 10k ${label}: total ${r.total.toFixed(1)} ms ≥ ${INTERACTION_MS} ms`,
-        )
+        console.info(`[§9.3 4x] ${label}: total ${r.total.toFixed(1)} ms ≥ ${INTERACTION_MS} ms`)
       }
     }
-    expect(typing.getState().search.query).toBe('name 123')
-    expect(sorted.getSortDirection('name')).toBe('desc')
-    expect(paged.getState().pagination.pageIndex).toBe(1)
   })
 })
 
 describe(`§9.3 longest task at 100k rows, CPU throttle ${THROTTLE}x (browser phase)`, () => {
   it(`building the search projection: every task ≤ ${LONG_TASK_MS} ms (time-sliced)`, async () => {
-    const t = table(100_000)
-    const first = await interact(t, '100k type, first query (projection)', type(t, 'name 12'))
-    // Sliced: the work ran in several tasks between scheduler.yield() calls.
-    expect(first.yields).toBeGreaterThan(0)
+    const { '100k first query': first, '100k next query': next } = await samples(async () => {
+      const t = table(100_000)
+      const first = await interact(t, '100k type, first query (projection)', type(t, 'name 12'))
+      // Sliced: the work ran in several tasks between scheduler.yield() calls.
+      expect(first.yields).toBeGreaterThan(0)
+      const next = await interact(t, '100k type, next query', type(t, 'name 123'))
+      expect(t.getRowModel().filteredCount).toBeGreaterThan(0)
+      return { '100k first query': first, '100k next query': next }
+    })
     withinMs(first.longest, LONG_TASK_MS, 'first query longest task')
-    const next = await interact(t, '100k type, next query', type(t, 'name 123'))
     withinMs(next.longest, LONG_TASK_MS, 'next query longest task')
-    expect(t.getRowModel().filteredCount).toBeGreaterThan(0)
   })
 
   it(`building the projection over mixed zero-config columns: every task ≤ ${LONG_TASK_MS} ms (#40)`, async () => {
     // Dates, arrays, nullable numbers: the per-column formatting is sliced too, not one task each.
-    const t = createTable({
-      data: mixedUsers(100_000),
-      rowKey: 'id',
-      features: createDefaultFeatures(),
-      onDiagnostic() {},
-    })
-    t.getRowModel()
-    const first = await interact(t, '100k mixed type, first query (projection)', type(t, 'bangkok'))
-    expect(first.yields).toBeGreaterThan(0)
+    const { '100k mixed first query': first, '100k mixed next query': next } = await samples(
+      async () => {
+        const t = createTable({
+          data: mixedUsers(100_000),
+          rowKey: 'id',
+          features: createDefaultFeatures(),
+          onDiagnostic() {},
+        })
+        t.getRowModel()
+        const first = await interact(
+          t,
+          '100k mixed type, first query (projection)',
+          type(t, 'bangkok'),
+        )
+        expect(first.yields).toBeGreaterThan(0)
+        const next = await interact(t, '100k mixed type, next query', type(t, 'zürich'))
+        expect(t.getRowModel().filteredCount).toBeGreaterThan(0)
+        return { '100k mixed first query': first, '100k mixed next query': next }
+      },
+    )
     withinMs(first.longest, LONG_TASK_MS, 'first query longest task')
-    const next = await interact(t, '100k mixed type, next query', type(t, 'zürich'))
     withinMs(next.longest, LONG_TASK_MS, 'next query longest task')
-    expect(t.getRowModel().filteredCount).toBeGreaterThan(0)
   })
 
   it(`sorting a string column (collation ranks): every task ≤ ${LONG_TASK_MS} ms`, async () => {
-    const t = table(100_000)
-    const r = await interact(t, '100k sort name', () => t.toggleSort('name'))
-    expect(r.yields).toBeGreaterThan(0)
-    withinMs(r.longest, LONG_TASK_MS, 'string sort longest task')
-    const names = t.getRowModel().rows.map((row) => row.original.name)
-    expect(names).toEqual([...names].sort(new Intl.Collator(undefined, { numeric: true }).compare))
+    const { '100k sort name': sort } = await samples(async () => {
+      const t = table(100_000)
+      const sort = await interact(t, '100k sort name', () => t.toggleSort('name'))
+      expect(sort.yields).toBeGreaterThan(0)
+      const names = t.getRowModel().rows.map((row) => row.original.name)
+      expect(names).toEqual(
+        [...names].sort(new Intl.Collator(undefined, { numeric: true }).compare),
+      )
+      return { '100k sort name': sort }
+    })
+    withinMs(sort.longest, LONG_TASK_MS, 'string sort longest task')
   })
 })
