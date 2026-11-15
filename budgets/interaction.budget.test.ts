@@ -241,6 +241,41 @@ describe(`§9.3 longest task at 100k rows, CPU throttle ${THROTTLE}x (browser ph
     withinMs(next.longest, LONG_TASK_MS, 'next query longest task')
   })
 
+  // R2 N4: 300 words per cell (about 2 KB): the blocks over the cap have their words split again
+  // on every keystroke; a run of them is charged by its characters.
+  it(`one-word keystrokes over 300-word cells: every task ≤ ${LONG_TASK_MS} ms`, async () => {
+    const runs = await samples(async () => {
+      const words = ['alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot', 'golf', 'hotel']
+      const t = createTable({
+        data: Array.from({ length: 100_000 }, (_, i) => ({
+          id: i,
+          text: Array.from({ length: 300 }, (_, j) => words[(i * 31 + j * 7) % 8]).join(' '),
+        })),
+        rowKey: 'id',
+        columns: [{ key: 'id' }, { key: 'text', search: 1 }],
+        features: createDefaultFeatures(),
+        onDiagnostic() {},
+      })
+      t.getRowModel()
+      const r = {
+        '100k 300 words first query': await interact(t, '100k 300 words, first', type(t, 'hotell')),
+        '100k 300 words second query': await interact(
+          t,
+          '100k 300 words, second',
+          type(t, 'hotelx'),
+        ),
+        '100k 300 words third query': await interact(
+          t,
+          '100k 300 words, third',
+          type(t, 'hotelxy'),
+        ),
+      }
+      expect(t.getRowModel().filteredCount).toBeGreaterThan(0)
+      return r
+    })
+    for (const [label, r] of Object.entries(runs)) withinMs(r.longest, LONG_TASK_MS, label)
+  })
+
   it(`sorting a string column (collation ranks): every task ≤ ${LONG_TASK_MS} ms`, async () => {
     const { '100k sort name': sort } = await samples(async () => {
       const t = table(100_000)

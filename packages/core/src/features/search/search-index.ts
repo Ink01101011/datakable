@@ -5,6 +5,7 @@ import type { Emit } from '../../diagnostics/types'
 import type { RowModelContext } from '../../feature/types'
 import { nullishOf, type SlicedFormatting } from '../../pipeline/column-cache'
 import { resolveColumns } from '../../pipeline/columns'
+import { runJob } from '../../pipeline/slice'
 import { detectCapability, hasCapability } from '../../versioning/capability'
 
 /** Matcher settings (the client options of `search()`, defaults applied). */
@@ -348,7 +349,7 @@ export function* buildIndex(
         }
       }
       if (memo) memo.scores = { q: query, w, h, s, t }
-      return rankHits(hits)
+      return yield* ranked(hits)
     },
   }
 }
@@ -596,13 +597,36 @@ function containsMatcher(
   }
 }
 
+/** Relevance order (§6.3): score descending, ties by original row index. */
+const order = (a: Hit, b: Hit) => b.score - a.score || a.i - b.i
+
+/** Hits sorted per slice (R2 N4: one sort of 100k hits is a 40 ms task under a 4x throttle). */
+const RANK = 16_384
+
 /**
- * Hits in relevance order (§6.3): score descending, ties by original row index. Enforced here so
- * the order never depends on the matcher's own ranking. Sorts `hits` (a fresh array) in place.
+ * Hits in relevance order (§6.3), enforced here so the order never depends on the matcher's own
+ * ranking, in time slices: parts of {@link RANK} hits sorted, then merged two at a time, a `yield`
+ * after each. `order` is a total order (row indices are unique), so the merge equals one sort.
  */
-export function rankHits(hits: Hit[]): Uint32Array {
-  return Uint32Array.from(
-    hits.sort((a, b) => b.score - a.score || a.i - b.i),
-    (h) => h.i,
-  )
+function* ranked(hits: Hit[]): Generator<undefined, Uint32Array, undefined> {
+  const parts: Hit[][] = []
+  for (let k = 0; k < hits.length; k += RANK) {
+    parts.push(hits.slice(k, k + RANK).sort(order))
+    yield
+  }
+  while (parts.length > 1) {
+    const a = parts.shift() as Hit[]
+    const b = parts.shift() as Hit[]
+    const m: Hit[] = []
+    let i = 0
+    let j = 0
+    while (i < a.length && j < b.length)
+      m.push((order(a[i] as Hit, b[j] as Hit) < 0 ? a[i++] : b[j++]) as Hit)
+    parts.push(m.concat(a.slice(i), b.slice(j)))
+    yield
+  }
+  return Uint32Array.from(parts[0] ?? [], (h) => h.i)
 }
+
+/** {@link ranked} at once. */
+export const rankHits = (hits: Hit[]): Uint32Array => runJob(() => ranked(hits))
