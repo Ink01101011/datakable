@@ -178,7 +178,9 @@ export function createSlicer(host: SlicerHost): Slicer {
       asked = undefined
       if (!keep) return
       for (const task of running) {
-        if (keep.has(task)) continue
+        // A job that ended (done or failed) and waits for its task (`drive`) keeps its result for
+        // a later ask, as one that ended in time does.
+        if (keep.has(task) || task.state !== 'running') continue
         task.state = 'cancelled'
         running.delete(task)
         tasks.delete(task.key)

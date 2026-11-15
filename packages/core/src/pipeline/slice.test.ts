@@ -8,7 +8,7 @@ import { withSearchFn } from '../features/search/with-search-fn'
 import { sorting } from '../features/sorting/sorting'
 import { defineInterceptor } from '../intercept/define'
 import { createTable } from '../table/create-table'
-import { runJob, SLICE_MS } from './slice'
+import { createSlicer, runJob, SLICE_MS } from './slice'
 
 // Time-slicing (§9.1, §6.6). Slicing needs a browser phase (`document`, else the run is SSR and
 // synchronous) and a table that already has a row model. A fast clock (every reading +100 ms)
@@ -304,6 +304,39 @@ describe('ctx.slice: the runner contract (§9.1)', () => {
     await tasks.next()
     expect(notified).toHaveBeenCalledTimes(before)
     expect(of('DK_INTERNAL_ERROR')).toHaveLength(0)
+  })
+
+  it('a late job keeps its result when a run that does not ask for it comes first (R F4)', async () => {
+    fastClock() // every slice ends at its first yield, past its deadline
+    const tasks = steppedScheduler()
+    const done = vi.fn()
+    const slicer = createSlicer({
+      emit: () => {},
+      enabled: () => true,
+      trigger: () => 'api:test',
+      done,
+    })
+    const key = {}
+    const jobs = vi.fn()
+    const job = function* () {
+      jobs()
+      yield
+      return 'A'
+    }
+    slicer.begin()
+    expect(slicer.run(key, job, 'f')).toBeUndefined()
+    slicer.end()
+    await tasks.next() // the job returns past its deadline: its result waits a task
+    expect(tasks.pending()).toBe(1)
+    slicer.begin() // a run that does not ask for it (the query cleared, the sort removed)
+    slicer.end()
+    await tasks.next()
+    expect(done).toHaveBeenCalledTimes(1)
+    slicer.begin()
+    expect(slicer.run(key, job, 'f')).toBe('A')
+    slicer.end()
+    expect(jobs).toHaveBeenCalledTimes(1)
+    expect(done).toHaveBeenCalledTimes(1)
   })
 
   it('runJob runs a job to completion (replay, contexts without slicing)', () => {
