@@ -207,6 +207,87 @@ describe('§9.3 pipeline memory, real default preset, 100k rows (dist, productio
     })
   }
 
+  // R2 N1: filter (age ≥ 10) + sort (age) + one-word queries over multi-word text, the kept word
+  // index on top of the per-row search state (scores, hashes) and the filter and sort state. A broad
+  // query (`hotell` → `hotelx`: most rows) and a selective one (`lopez` → `lopex`: a third).
+  const textTable = (words: number, cols: number) =>
+    Array.from({ length: N }, (_, i) => {
+      const o: Record<string, string | number> = { id: i, age: (i * 7919) % 100 }
+      for (let c = 0; c < cols; c++) {
+        o[`t${c}`] = Array.from(
+          { length: words || 2 + (i % 2) },
+          (_, j) => WORDS[(i * 31 + j * 7 + c * 3) % WORDS.length],
+        ).join(' ')
+      }
+      o.name = `name ${i}`
+      o.city = `${['Lopez', 'Paris', 'Oslo'][i % 3]} ${i % 97}`
+      return o
+    })
+  for (const [label, words, cols] of [
+    ['4 columns of 2-3 words', 0, 4],
+    ['one column of 30 words', 30, 1],
+  ] as const) {
+    for (const [q1, q2] of [
+      ['hotell', 'hotelx'],
+      ['lopez', 'lopex'],
+    ]) {
+      it(`filter + sort + one-word queries (${q1}), ${label} + name / city: ≤ ${BUDGET_MB} MB`, async () => {
+        const data = textTable(words, cols)
+        const { mb, value: t } = await measureHeap(async () => {
+          const t = createTable({
+            data,
+            rowKey: 'id',
+            columns: [
+              { key: 'id' },
+              ...Array.from({ length: cols }, (_, c) => ({ key: `t${c}`, search: 1 })),
+              { key: 'name', search: 1 },
+              { key: 'city', search: 1 },
+              { key: 'age' },
+            ],
+            features: createDefaultFeatures(),
+            onDiagnostic() {},
+          })
+          t.getRowModel()
+          t.setColumnFilter('age', { type: 'range', value: { min: 10 } })
+          t.toggleSort('age')
+          await expect(t.setSearch(q1)).resolves.toEqual({ status: 'applied' })
+          await expect(t.setSearch(q2)).resolves.toEqual({ status: 'applied' })
+          t.getRowModel()
+          return t
+        })
+        console.info(
+          `[§9.3 memory] filter+sort+one-word (${q1}), ${label}: ${mb.toFixed(2)} MB, ` +
+            `${t.getRowModel().filteredCount} hits (budget ${BUDGET_MB})`,
+        )
+        expect(t.getRowModel().filteredCount).toBeGreaterThan(0)
+        expect(mb).toBeLessThanOrEqual(BUDGET_MB)
+        expect(t.getData()).toBe(data)
+      })
+    }
+  }
+
+  it(`zero-config filter + sort + one-word query, the 10-column PVT shape: ≤ ${BUDGET_MB} MB`, async () => {
+    const data = mixedUsers(N)
+    const { mb, value: t } = await measureHeap(async () => {
+      const t = createTable({
+        data,
+        rowKey: 'id',
+        features: createDefaultFeatures(),
+        onDiagnostic() {},
+      })
+      t.getRowModel()
+      t.setColumnFilter('age', { type: 'range', value: { min: 20 } })
+      t.toggleSort('age')
+      await expect(t.setSearch('usr')).resolves.toEqual({ status: 'applied' })
+      t.getRowModel()
+      return t
+    })
+    console.info(`[§9.3 memory] zero-config filter+sort+one-word, PVT shape: ${mb.toFixed(2)} MB`)
+    expect(t.getRowModel().filteredCount).toBeGreaterThan(0)
+    expect(mb).toBeLessThanOrEqual(BUDGET_MB)
+    expect(t.getData()).toBe(data)
+  })
+
   // A string sort keeps the column's collation-rank state across data versions (#95): the ranks
   // and the distinct strings in rank order, no string → id map (100k distinct names: 7.86 MB).
   it(`string sort by name (100k distinct strings), paginated: ≤ ${BUDGET_MB} MB`, () => {

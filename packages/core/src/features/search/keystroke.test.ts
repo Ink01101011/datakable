@@ -1,6 +1,6 @@
 import { ExSearch } from 'ex-search'
 import fc from 'fast-check'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createTable } from '../../table/create-table'
 import { columnFilters } from '../column-filters'
 import { search } from './search'
@@ -392,8 +392,14 @@ describe('search: the kept word index has a byte cap per data array (R F1)', () 
     return bytes
   }
   const CAP = WORD_INDEX.cap
+  const ROW = WORD_INDEX.row
+  // The cap for the indexes alone: no per-row allowance (search-index.ts WORD_INDEX).
+  beforeEach(() => {
+    WORD_INDEX.row = 0
+  })
   afterEach(() => {
     WORD_INDEX.cap = CAP
+    WORD_INDEX.row = ROW
     String.prototype.charCodeAt = charCodeAt
   })
 
@@ -422,6 +428,29 @@ describe('search: the kept word index has a byte cap per data array (R F1)', () 
     const none = readRows(data)
     await u.setSearch('lovelase')
     expect(none.size).toBe(0)
+  })
+
+  it('the indexes get what the per-row state leaves: cap - row bytes × data rows (R2 N1)', async () => {
+    const data = rowsOf(20_000, 3)
+    const resplit = async () => {
+      const t = make(data)
+      await t.setSearch('lopex')
+      const seen = readRows(data)
+      await t.setSearch('lovelase')
+      String.prototype.charCodeAt = charCodeAt
+      return [...blocksOf(seen)].sort()
+    }
+    WORD_INDEX.cap = 100_000
+    const alone = await resplit()
+    // The same 100 kB left for the indexes once 14 bytes per row are taken.
+    WORD_INDEX.row = 14
+    WORD_INDEX.cap = 100_000 + 14 * 20_000
+    expect(await resplit()).toEqual(alone)
+    expect(alone.length).toBeGreaterThan(0)
+    expect(alone.length).toBeLessThan(5)
+    // Nothing left: no block kept, every one split again.
+    WORD_INDEX.cap = 14 * 20_000
+    expect(await resplit()).toEqual([0, 1, 2, 3, 4])
   })
 
   it('a new data array starts from zero', async () => {

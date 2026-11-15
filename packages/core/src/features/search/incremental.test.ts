@@ -3,6 +3,7 @@ import fc from 'fast-check'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createTable } from '../../table/create-table'
 import { search } from './search'
+import { WORD_INDEX } from './search-index'
 
 // #95 (search half): a new data array re-scores only the rows whose searched text changed. The
 // scores of the previous version are reused by a per-row hash of the searched texts, compared at
@@ -167,52 +168,59 @@ describe('search: a new data array re-scores only what changed (#95)', () => {
     expect(scored.rows).toBe(N)
   })
 
-  it('randomised: incremental results equal a cold search after any edit sequence', async () => {
-    const text = fc.constantFrom('ada', 'adam', 'bob', 'Zürich', 'naïve', 'zu', 'a', '', 'ADA x')
-    const row = fc.record({ name: text, city: text, n: fc.option(fc.integer({ max: 20 })) })
-    const edit = fc.oneof(
-      fc.record({ op: fc.constant('mutate' as const), at: fc.nat(), row }),
-      fc.record({ op: fc.constant('replace' as const), at: fc.nat(), row }),
-      fc.record({ op: fc.constant('insert' as const), at: fc.nat(), row }),
-      fc.record({ op: fc.constant('delete' as const), at: fc.nat() }),
-      fc.record({ op: fc.constant('reverse' as const) }),
-      fc.record({ op: fc.constant('rotate' as const), at: fc.nat() }),
-      fc.record({ op: fc.constant('copy' as const) }),
-      fc.record({ op: fc.constant('query' as const), q: text }),
-    )
-    await fc.assert(
-      fc.asyncProperty(
-        fc.array(row, { maxLength: 40 }),
-        text,
-        fc.array(edit, { maxLength: 12 }),
-        async (rows, q0, edits) => {
-          let id = 0
-          let data: R[] = rows.map((r) => ({ id: id++, ...r }))
-          let q = q0 === '' ? 'ada' : q0
-          const t = table(data, q)
-          await t.setSearch(q)
-          for (const e of edits) {
-            const at = 'at' in e ? e.at % Math.max(1, data.length) : 0
-            if (e.op === 'query') {
-              q = e.q === '' ? q : e.q
-              await t.setSearch(q)
-              continue
+  // R2 N1: the kept scores are codes into a table of the match's distinct scores; past its size a
+  // score is kept as "not matched" (re-matched next time). A table of one score forces that path.
+  for (const codes of [WORD_INDEX.codes, 3]) {
+    it(`randomised: incremental results equal a cold search after any edit sequence (score table ${codes})`, async () => {
+      const before = WORD_INDEX.codes
+      WORD_INDEX.codes = codes
+      const text = fc.constantFrom('ada', 'adam', 'bob', 'Zürich', 'naïve', 'zu', 'a', '', 'ADA x')
+      const row = fc.record({ name: text, city: text, n: fc.option(fc.integer({ max: 20 })) })
+      const edit = fc.oneof(
+        fc.record({ op: fc.constant('mutate' as const), at: fc.nat(), row }),
+        fc.record({ op: fc.constant('replace' as const), at: fc.nat(), row }),
+        fc.record({ op: fc.constant('insert' as const), at: fc.nat(), row }),
+        fc.record({ op: fc.constant('delete' as const), at: fc.nat() }),
+        fc.record({ op: fc.constant('reverse' as const) }),
+        fc.record({ op: fc.constant('rotate' as const), at: fc.nat() }),
+        fc.record({ op: fc.constant('copy' as const) }),
+        fc.record({ op: fc.constant('query' as const), q: text }),
+      )
+      await fc.assert(
+        fc.asyncProperty(
+          fc.array(row, { maxLength: 40 }),
+          text,
+          fc.array(edit, { maxLength: 12 }),
+          async (rows, q0, edits) => {
+            let id = 0
+            let data: R[] = rows.map((r) => ({ id: id++, ...r }))
+            let q = q0 === '' ? 'ada' : q0
+            const t = table(data, q)
+            await t.setSearch(q)
+            for (const e of edits) {
+              const at = 'at' in e ? e.at % Math.max(1, data.length) : 0
+              if (e.op === 'query') {
+                q = e.q === '' ? q : e.q
+                await t.setSearch(q)
+                continue
+              }
+              if (e.op === 'mutate' && data[at]) Object.assign(data[at] as R, e.row)
+              data = data.slice()
+              if (e.op === 'replace' && data[at]) data[at] = { id: id++, ...e.row }
+              if (e.op === 'insert') data.splice(at, 0, { id: id++, ...e.row })
+              if (e.op === 'delete') data.splice(at, 1)
+              if (e.op === 'reverse') data.reverse()
+              if (e.op === 'rotate') data = [...data.slice(at), ...data.slice(0, at)]
+              t.setOptions({ data })
+              const cold = table(data, q)
+              await cold.setSearch(q)
+              expect(ids(t)).toEqual(ids(cold))
             }
-            if (e.op === 'mutate' && data[at]) Object.assign(data[at] as R, e.row)
-            data = data.slice()
-            if (e.op === 'replace' && data[at]) data[at] = { id: id++, ...e.row }
-            if (e.op === 'insert') data.splice(at, 0, { id: id++, ...e.row })
-            if (e.op === 'delete') data.splice(at, 1)
-            if (e.op === 'reverse') data.reverse()
-            if (e.op === 'rotate') data = [...data.slice(at), ...data.slice(0, at)]
-            t.setOptions({ data })
-            const cold = table(data, q)
-            await cold.setSearch(q)
-            expect(ids(t)).toEqual(ids(cold))
-          }
-        },
-      ),
-      { numRuns: 300 },
-    )
-  })
+          },
+        ),
+        { numRuns: 300 },
+      )
+      WORD_INDEX.codes = before
+    })
+  }
 })

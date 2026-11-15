@@ -30,8 +30,10 @@ export interface Hit {
 
 /**
  * The scores of the last match of a table (#95), per data row: `h` the 53-bit hashes of the rows'
- * searched texts (the index's, `-1`: not hashed), `s` its score (`-1`: no hit, `NaN`: not matched).
- * 16 bytes per row.
+ * searched texts (the index's, `-1`: not hashed), `s` its score as a code into `t`: `t[0]` is
+ * `NaN` (not matched), `t[1]` is `-1` (no hit), the others the distinct scores of the match. 10
+ * bytes per row (R2 N1: a `Float64Array` of scores took 6 more; a match has a few hundred distinct
+ * scores, exact in `t`; past 65,534 a score is stored as not matched, which only re-matches it).
  */
 export interface Scores {
   /** The query. */
@@ -39,7 +41,8 @@ export interface Scores {
   /** The fuzzy distance, then the weights of the searched columns in key order. */
   readonly w: string
   readonly h: Float64Array
-  readonly s: Float64Array
+  readonly s: Uint16Array
+  readonly t: readonly number[]
 }
 
 /** The matcher of one (data, columns) pair: references to column values, no per-row copy. */
@@ -285,7 +288,18 @@ export function* buildIndex(
       // match scored without a hit is not matched again; its hits and the rows it did not see
       // (`NaN`: filtered out then) are.
       const cut = !old && prev?.h === h && prev.w === w && matcher.narrows?.(foldQuery(prev.q), q)
-      const s = new Float64Array(n).fill(Number.NaN)
+      const s = new Uint16Array(n)
+      const t = [Number.NaN, -1]
+      const codes = new Map<number, number>()
+      /** The code of score `v` in `t` (0: not matched, when `t` is full). */
+      const code = (v: number) => {
+        let c = codes.get(v)
+        if (c === undefined && t.length < WORD_INDEX.codes) {
+          c = t.push(v) - 1
+          codes.set(v, c)
+        }
+        return c ?? 0
+      }
       const hits: Hit[] = []
       /** Rows read since the last `yield`: matched, or read to build a block's word index. */
       let spent = 0
@@ -310,17 +324,17 @@ export function* buildIndex(
             x = hash(r)
             h[r] = x
           }
-          s[r] = -1
+          s[r] = 1
           if (cut) {
-            if ((prev.s[r] as number) !== -1) miss.push(r)
+            if (prev.s[r] !== 1) miss.push(r)
             continue
           }
           if (!old) continue
           // Out of range reads `undefined`: never equal, never `>= -1` (like `NaN`: not matched).
           const j = old.h[r] === x ? r : old.h[r + d] === x ? r + d : -1
-          const v = old.s[j] as number
+          const v = old.t[old.s[j] as number] as number
           if (v >= -1) {
-            s[r] = v
+            s[r] = code(v)
             if (v >= 0) hits.push({ i: r, score: v })
           } else miss.push(r)
         }
@@ -328,12 +342,12 @@ export function* buildIndex(
         const todo = old || cut ? Uint32Array.from(miss) : chunk
         if (todo.length) {
           for (const hit of matcher(b, todo, q)) {
-            s[hit.i] = hit.score
+            s[hit.i] = code(hit.score)
             hits.push(hit)
           }
         }
       }
-      if (memo) memo.scores = { q: query, w, h, s }
+      if (memo) memo.scores = { q: query, w, h, s, t }
       return rankHits(hits)
     },
   }
@@ -357,12 +371,19 @@ type Matcher = ((b: number, rows: Uint32Array, query: string) => Hit[]) & {
 }
 
 /**
- * The most a data version keeps in word indexes (R F1), in bytes. A block whose index would take
- * the total over it is matched without keeping one. An object so tests can lower it.
+ * Search state allowance per data version (R F1, R2 N1), in bytes: `cap` for the per-row state
+ * (`row` bytes per data row: the 8-byte hash and 2-byte score code of `Scores`, and up to 4 bytes of
+ * output per hit) and the kept word indexes together. The word indexes get what the rows leave:
+ * `cap - row * n`, none from about 150k rows up. A block whose index would take them over it is
+ * matched without keeping one. `codes`: the size of a match's score table. An object so tests can
+ * change them.
+ *
+ * Measured at 100k rows (budget harness, warm code), filter (age) + sort (age) + one-word queries:
+ * the zero-config PVT shape holds 4.13 MB before any index (after `Scores` went from 16 to 10 bytes
+ * per row), 4 columns of 2–3 words 3.69 MB, one 30-word column 3.91 MB; 2 MiB leaves the indexes
+ * 0.66 MiB at 100k (1.32 MiB at 50k), so each stays under 5 MB.
  */
-// 1.5 MB: 100k rows x 4 columns of two- or three-word text (about 1.5 MB) keep their whole index;
-// one column of 30 or 100 words per cell stays within the 5 MB budget at 100k rows.
-export const WORD_INDEX = { cap: 1_572_864 }
+export const WORD_INDEX = { cap: 2_097_152, row: 14, codes: 65_536 }
 
 /**
  * What a kept block's engine costs besides its index data (objects, typed-array headers, its
@@ -512,14 +533,15 @@ function exSearchMatcher(
   // matches there, and later keystrokes over this data version split nothing. Never `updateConfig`
   // on it: that drops the index.
   // R F1: what is kept grows with the text, not the row count, so a block is kept only while the
-  // total stays within `WORD_INDEX.cap` (1.5 MB) for this data version. A block that would go over it is
+  // total stays within what `WORD_INDEX` leaves the indexes of this data version. One that would go over it is
   // `null`: each call matches its rows with an engine of its own, its index built over those rows
   // and dropped with it (2.1.1's way): the same results, its words split on every keystroke.
   const blocks: (Engine | null)[] = []
   /** Bytes kept by the engines in `blocks`. */
   let kept = 0
   const length = (b: number) => Math.min(size, n - b * size)
-  const over = (b: number) => blocks[b] === null || (!blocks[b] && kept >= WORD_INDEX.cap)
+  const cap = () => WORD_INDEX.cap - WORD_INDEX.row * n
+  const over = (b: number) => blocks[b] === null || (!blocks[b] && kept >= cap())
   const match: Matcher = (b, rows, q) => {
     if (!words(q)) {
       whole = whole ?? engine(n, 'value')
@@ -534,7 +556,7 @@ function exSearchMatcher(
     counted = ENGINE_BYTES
     const read = Uint32Array.from({ length: length(b) }, (_, j) => start + j)
     const hits = run(k, rows, read, start, q, true)
-    const fits = kept + counted <= WORD_INDEX.cap
+    const fits = kept + counted <= cap()
     if (fits) kept += counted
     blocks[b] = fits ? k : null
     return hits
