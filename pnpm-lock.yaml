@@ -94,8 +94,8 @@ importers:
   packages/core:
     dependencies:
       ex-search:
-        specifier: 1.2.1
-        version: 1.2.1(exsorted@1.2.3)(react@19.3.0)
+        specifier: 2.1.1
+        version: 2.1.1(exsorted@1.2.3)(react@19.3.0)
       exsorted:
         specifier: 1.2.3
         version: 1.2.3
@@ -963,8 +963,8 @@ packages:
   estree-walker@3.0.3:
     resolution: {integrity: sha512-7RUKfXgSMMkzt6ZuXmqapOurLGPPfgj6l9uRZ7lRGolvk0y2yocc35LdcxKC5PQZdn2DMqioAQ2NoWcrTKmm6g==}
 
-  ex-search@1.2.1:
-    resolution: {integrity: sha512-sit1E3F0v3PNjJL/WT5AvNWWQkz1GY7zH+MPD/hCV2+AU4X0h6KKArymnLaBil98c3rwJ/qKA171NJvTiJ+JMg==}
+  ex-search@2.1.1:
+    resolution: {integrity: sha512-6VHoZhhe0N540Ya1hkQzFg9h/VYZNhPhdz8u5zJqG+fWsPypnTfgBIkYJSrfTKwTPrIWOgM3uH0xCtZTGjkWIw==}
     engines: {node: '>=18'}
     peerDependencies:
       ex-flow: ^1.0.4
@@ -2246,7 +2246,7 @@ snapshots:
     dependencies:
       '@types/estree': 1.0.9
 
-  ex-search@1.2.1(exsorted@1.2.3)(react@19.3.0):
+  ex-search@2.1.1(exsorted@1.2.3)(react@19.3.0):
     dependencies:
       exsorted: 1.2.3
     optionalDependencies:
