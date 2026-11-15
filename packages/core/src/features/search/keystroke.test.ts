@@ -453,6 +453,31 @@ describe('search: the kept word index has a byte cap per data array (R F1)', () 
     expect(await resplit()).toEqual([0, 1, 2, 3, 4])
   })
 
+  it('once the indexes are full, a new block is matched without building its index (FIX2 round 2)', async () => {
+    WORD_INDEX.cap = 100_000
+    const data = rowsOf(20_000, 3)
+    const t = make(data)
+    // A quarter of the rows (n === 0): a block built for keeping reads all its rows, one matched
+    // the 2.1.1 way only those.
+    t.setColumnFilter('n', { type: 'range', value: { max: 0 } })
+    const seen = readRows(data)
+    await t.setSearch('lopex')
+    String.prototype.charCodeAt = charCodeAt
+    const built = [0, 1, 2, 3, 4].filter((b) =>
+      data.slice(b * BLOCK, (b + 1) * BLOCK).some((r) => r.n !== 0 && seen.has(r.id)),
+    )
+    // The kept blocks (re-split none on the next keystroke), and at most the one that did not fit.
+    const again = readRows(data)
+    await t.setSearch('lovelase')
+    String.prototype.charCodeAt = charCodeAt
+    const kept = [0, 1, 2, 3, 4].filter(
+      (b) => !data.slice(b * BLOCK, (b + 1) * BLOCK).some((r) => again.has(r.id)),
+    )
+    expect(kept.length).toBeGreaterThan(0)
+    expect(built.length).toBeLessThanOrEqual(kept.length + 1)
+    expect(built.length).toBeLessThan(5)
+  })
+
   it('a new data array starts from zero', async () => {
     WORD_INDEX.cap = 100_000
     const data = rowsOf(20_000, 5)

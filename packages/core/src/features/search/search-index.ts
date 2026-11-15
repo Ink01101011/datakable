@@ -514,9 +514,16 @@ function exSearchMatcher(
   const blocks: (Engine | null)[] = []
   /** Bytes kept by the engines in `blocks`. */
   let kept = 0
+  /** Rows of the kept blocks; `-1` once a block did not fit (no new one is kept after it). */
+  let rowsKept = 0
   const length = (b: number) => Math.min(size, n - b * size)
   const cap = () => WORD_INDEX.cap - WORD_INDEX.row * n
-  const over = (b: number) => blocks[b] === null || (!blocks[b] && kept >= cap())
+  // Decided before a block's index is built (FIX2 round 2): a block that would go over the cap at
+  // the kept blocks' bytes per row, or any after one that did not fit, is matched the 2.1.1 way
+  // instead of building an index to throw away.
+  const over = (b: number) =>
+    blocks[b] === null ||
+    (!blocks[b] && (rowsKept < 0 || kept + (rowsKept ? (kept / rowsKept) * length(b) : 0) > cap()))
   const match: Matcher = (b, rows, q) => {
     if (!words(q)) {
       whole = whole ?? engine(n, 'value')
@@ -533,6 +540,7 @@ function exSearchMatcher(
     const hits = run(k, rows, read, start, q, true)
     const fits = kept + counted <= cap()
     if (fits) kept += counted
+    rowsKept = fits ? rowsKept + length(b) : -1
     blocks[b] = fits ? k : null
     return hits
   }
