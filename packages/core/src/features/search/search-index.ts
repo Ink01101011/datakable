@@ -360,10 +360,15 @@ type Matcher = ((b: number, rows: Uint32Array, query: string) => Hit[]) & {
  * The most a data version keeps in word indexes (R F1), in bytes. A block whose index would take
  * the total over it is matched without keeping one. An object so tests can lower it.
  */
-export const WORD_INDEX = { cap: 1_835_008 } // 1.75 MB
+// 1.5 MB: 100k rows x 4 columns of two- or three-word text (about 1.5 MB) keep their whole index;
+// one column of 30 or 100 words per cell stays within the 5 MB budget at 100k rows.
+export const WORD_INDEX = { cap: 1_572_864 }
 
-/** What a kept block's engine costs besides its index data (objects, typed-array headers). */
-export const ENGINE_BYTES = 1024
+/**
+ * What a kept block's engine costs besides its index data (objects, typed-array headers, its
+ * emptied items): measured 1.4 to 2.2 KB.
+ */
+export const ENGINE_BYTES = 1536
 
 /** ex-search's whitespace (`wordSpans`): the set of `\s` in a regular expression. */
 const space = (c: number) =>
@@ -507,7 +512,7 @@ function exSearchMatcher(
   // matches there, and later keystrokes over this data version split nothing. Never `updateConfig`
   // on it: that drops the index.
   // R F1: what is kept grows with the text, not the row count, so a block is kept only while the
-  // total stays within `WORD_INDEX.cap` for this data version. A block that would go over it is
+  // total stays within `WORD_INDEX.cap` (1.5 MB) for this data version. A block that would go over it is
   // `null`: each call matches its rows with an engine of its own, its index built over those rows
   // and dropped with it (2.1.1's way): the same results, its words split on every keystroke.
   const blocks: (Engine | null)[] = []
