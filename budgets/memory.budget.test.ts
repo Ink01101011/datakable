@@ -212,7 +212,10 @@ describe('§9.3 pipeline memory, real default preset, 100k rows (dist, productio
   // query (`hotell` → `hotelx`: most rows) and a selective one (`lopez` → `lopex`: a third).
   const textTable = (words: number, cols: number) =>
     Array.from({ length: N }, (_, i) => {
-      const o: Record<string, string | number> = { id: i, age: (i * 7919) % 100 }
+      const o: { id: number; age: number; [text: string]: string | number } = {
+        id: i,
+        age: (i * 7919) % 100,
+      }
       for (let c = 0; c < cols; c++) {
         o[`t${c}`] = Array.from(
           { length: words || 2 + (i % 2) },
@@ -230,7 +233,7 @@ describe('§9.3 pipeline memory, real default preset, 100k rows (dist, productio
     for (const [q1, q2] of [
       ['hotell', 'hotelx'],
       ['lopez', 'lopex'],
-    ]) {
+    ] as const) {
       it(`filter + sort + one-word queries (${q1}), ${label} + name / city: ≤ ${BUDGET_MB} MB`, async () => {
         const data = textTable(words, cols)
         const { mb, value: t } = await measureHeap(async () => {
