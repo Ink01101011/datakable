@@ -59,6 +59,7 @@ export const injectedBy: Readonly<Record<string, string>> = {
   DK_SCHEMA_INVALID_ROW: 'ingest/schema.test.ts',
   DK_SEARCH_COLUMN_SKIPPED: 'features/search/search.test.ts',
   DK_SEARCH_FAILED: HARNESS,
+  DK_SEARCH_FUZZY_OFF: 'features/search/fuzzy-max-rows.test.ts',
   DK_SEARCH_UNKNOWN_KEYS: 'features/search/search-fn.test.ts',
   DK_SORT_COMPARATOR_INVALID: HARNESS,
   DK_SORT_STRATEGY: 'features/sorting/strategy.test.ts',

@@ -36,7 +36,7 @@ export interface Hit {
 export interface Scores {
   /** The query. */
   readonly q: string
-  /** The weights of the searched columns, in key order. */
+  /** The fuzzy distance, then the weights of the searched columns in key order. */
   readonly w: string
   readonly h: Float64Array
   readonly s: Float64Array
@@ -217,7 +217,9 @@ export function* buildIndex(
     yield
   }
   if (keys.length === 0) return null
-  const w = keys.map((k) => k.weight).join()
+  // The memo key of the kept scores (#95): the weights, and the distance they were matched with
+  // (#123: data crossing `fuzzyMaxRows` changes it; scores of the other mode are never reused).
+  const w = `${config.fuzzyMaxDistance};${keys.map((k) => k.weight)}`
   /**
    * A 53-bit hash of row `r`'s searched texts (#95), cyrb53: two 32-bit lanes over the code units
    * plus one (1–65536), each text closed by a 0 (`charCodeAt` past the end is `NaN`, read as 0 by

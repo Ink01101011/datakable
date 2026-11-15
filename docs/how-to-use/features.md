@@ -125,7 +125,7 @@ console.log(table.getRowModel().rows) // the first page of the sorted results
 | --- | --- | --- | --- |
 | `@datakable/core/column-filters` | `columnFilters({ mode })` | `columnFilters`: one filter per column | `setColumnFilter(id, filter)`, `resetColumnFilters()` |
 | `@datakable/core/validity` | `validity()` | `validity`: `'all' \| 'valid' \| 'invalid'` | `setValidity(value)` |
-| `@datakable/core/search` | `search({ threshold, fuzzyMaxDistance, caseSensitive, typing, mode, searchFn })` | `search`: `{ input, query, status, error? }` | `setSearch(query)`, `flushSearch()`, `cancelSearch()`, `clearSearch()` |
+| `@datakable/core/search` | `search({ threshold, fuzzyMaxDistance, fuzzyMaxRows, caseSensitive, typing, mode, searchFn })` | `search`: `{ input, query, status, error? }` | `setSearch(query)`, `flushSearch()`, `cancelSearch()`, `clearSearch()` |
 | `@datakable/core/sorting` | `sorting({ locale, algorithm, debug, mode })` | `sorting`: `{ by: { id, desc }[] }` | `toggleSort(id, { multi })`, `setSorting(by)`, `clearSorting()`, `getSortDirection(id)` |
 | `@datakable/core/pagination` | `pagination({ pageSize, autoResetPageIndex, mode })` | `pagination`: `{ pageIndex, pageSize }` | `setPageIndex(index)`, `setPageSize(size)`, `nextPage()`, `prevPage()`, `getPageCount()`, `canNextPage()`, `canPrevPage()` |
 

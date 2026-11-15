@@ -1,4 +1,12 @@
-import { createDefaultFeatures, createTable } from '@datakable/core'
+import {
+  columnFilters,
+  createDefaultFeatures,
+  createTable,
+  pagination,
+  search,
+  sorting,
+  validity,
+} from '@datakable/core'
 import { describe, expect, it } from 'vitest'
 import { measureHeap } from './measure'
 import { mixedUsers } from './mixed-users'
@@ -83,6 +91,39 @@ describe('§9.3 pipeline memory, real default preset, 100k rows (dist, productio
       `[§9.3 memory] filter+sort+one-word search: ${mb.toFixed(2)} MB (budget ${BUDGET_MB})`,
     )
     expect(m.filteredCount).toBeGreaterThan(0)
+    expect(mb).toBeLessThanOrEqual(BUDGET_MB)
+    expect(t.getData()).toBe(data)
+  })
+
+  // #123: above `fuzzyMaxRows` rows the same one-word query is matched as with
+  // `fuzzyMaxDistance: 0`: whole values only, no word index kept for this data version.
+  it(`client search, one-word query above fuzzyMaxRows (no word index): ≤ ${BUDGET_MB} MB`, async () => {
+    const data = makeData()
+    const { mb, value: t } = await measureHeap(async () => {
+      const t = createTable({
+        data,
+        rowKey: 'id',
+        features: [
+          columnFilters(),
+          validity(),
+          search({ fuzzyMaxRows: 50_000 }),
+          sorting(),
+          pagination(),
+        ],
+        onDiagnostic() {},
+      })
+      t.getRowModel()
+      t.setColumnFilter('age', { type: 'range', value: { min: 10 } })
+      t.toggleSort('age')
+      await expect(t.setSearch('nane')).resolves.toEqual({ status: 'applied' })
+      t.getRowModel()
+      return t
+    })
+    console.info(
+      `[§9.3 memory] filter+sort+one-word search, fuzzyMaxRows 50k: ${mb.toFixed(2)} MB (budget ${BUDGET_MB})`,
+    )
+    // Typos stop matching above the limit: 'nane' is no substring of 'name …'.
+    expect(t.getRowModel().filteredCount).toBe(0)
     expect(mb).toBeLessThanOrEqual(BUDGET_MB)
     expect(t.getData()).toBe(data)
   })

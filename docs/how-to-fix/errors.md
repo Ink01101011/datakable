@@ -191,6 +191,7 @@ To trace a production table, install it: `createTable({ interceptors: [tracer()]
 | [`DK_SORT_STRATEGY`](#dk_sort_strategy) | info | Features |
 | [`DK_SEARCH_FAILED`](#dk_search_failed) | error | Features |
 | [`DK_SEARCH_COLUMN_SKIPPED`](#dk_search_column_skipped) | info | Features |
+| [`DK_SEARCH_FUZZY_OFF`](#dk_search_fuzzy_off) | info | Features |
 | [`DK_SEARCH_UNKNOWN_KEYS`](#dk_search_unknown_keys) | warn | Features |
 | [`DK_INVALID_PAGINATION`](#dk_invalid_pagination) | warn | Features |
 | [`DK_INVALID_STATE`](#dk_invalid_state) | warn | Features |
@@ -879,6 +880,50 @@ prints (development console):
   fix     1. give it a search weight to search it: columns: [{ key: 'joined', search: 1 }, …], and give one to every other column to search (once a column declares a weight, only weighted columns are searched)
           2. to choose the text it matches, add format: (value) => string to columns[2] (by default dates match their toLocaleString(), arrays their items joined by ", ")
   docs    https://github.com/Ink01101011/datakable/blob/main/docs/errors.md#dk_search_column_skipped
+  context trigger=api:setSearch run=1 phase=client
+```
+
+### DK_SEARCH_FUZZY_OFF
+
+`info` · fault test: [fuzzy-max-rows.test.ts](../../packages/core/src/features/search/fuzzy-max-rows.test.ts)
+
+**Problem.** `search({ fuzzyMaxRows })` is set and the data array has more rows than it (every row, before filters), so this data is searched as with `fuzzyMaxDistance: 0`: exact, prefix and substring matches only, no typo matching, no word index kept (#123). Development builds only, once per data array, on its first search. Not reported when `fuzzyMaxDistance` is `0` already.
+
+**Common causes.**
+
+- You set `fuzzyMaxRows` for large data, and this data is large: the report tells you the limit took effect.
+- The data grew past the limit (`setData` / `setOptions({ data })`): typos that matched before stop matching.
+
+**Fix.**
+
+- To keep typo matching on this data, raise `fuzzyMaxRows` to at least the row count, or remove it.
+- Nothing, if this is intended: the option trades typo matching for faster keystrokes and less memory on large data.
+
+**Example.**
+
+```ts
+import { createTable, search } from '@datakable/core'
+
+const products = Array.from({ length: 2000 }, (_, i) => ({ id: i, name: `Chair ${i}` }))
+
+// More rows than fuzzyMaxRows: this data is searched without typo matching.
+const table = createTable({
+  data: products,
+  rowKey: 'id',
+  features: [search({ fuzzyMaxRows: 1000 })],
+})
+await table.setSearch('chiar') // a typo of "chair": matches nothing on this data
+```
+
+prints (development console):
+
+```text
+ℹ [DataKable table#1] DK_SEARCH_FUZZY_OFF: the data has 2000 rows, more than fuzzyMaxRows (1000): search matches it as with fuzzyMaxDistance: 0 (configured: 3)
+  where   options.fuzzyMaxRows
+  impact  a query with a typo no longer matches; exact, prefix and substring matches are unchanged, and no word index is kept (faster keystrokes, less memory)
+  fix     1. to keep typo matching on this data, raise fuzzyMaxRows to 2000 or more, or remove it
+          2. nothing to fix if this is intended (reported once per data array, in development only)
+  docs    https://github.com/Ink01101011/datakable/blob/main/docs/errors.md#dk_search_fuzzy_off
   context trigger=api:setSearch run=1 phase=client
 ```
 

@@ -146,7 +146,8 @@ export default [
     // 2.1.1 #95 incremental search re-match (owner rule: a fix may raise a ratchet it cannot trim; 2026-11-09): 30,034 -> 30,422 B (+388 B) -> 29.75 KB.
     // 2.1.1 #96 narrowing a longer query to the previous hits (canNarrow) + one read per row with ex-search 1.2.1 (owner rule; trimmed +93 -> +76 B first): 30,428 -> 30,504 B (+76 B) -> 30 KB.
     // 2.2.0 #96 (a) ex-search 2.1.1's word index kept per block of rows across keystrokes, within the ratchet: 30,529 -> 30,705 B (+176 B). Round 2 (trimmed +112 -> +12 B): 30,717 B, within the ratchet.
-    limit: 30 * KB,
+    // 2.2.0 #123 search option fuzzyMaxRows (new API: the effective distance per data version, and the kept scores keyed by it; owner rule, trimmed +53 -> +43 B first): 30,717 -> 30,760 B (+43 B) -> 30.25 KB.
+    limit: 30.25 * KB,
   },
   {
     name: 'datakable/react: DataTable (default preset + <DataTable />)',

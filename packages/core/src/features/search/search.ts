@@ -88,6 +88,12 @@ export interface SearchOptions<T = AnyRow> {
   threshold?: number
   /** Maximum Levenshtein distance for a fuzzy match. Default `3`. */
   fuzzyMaxDistance?: number
+  /**
+   * Large data (#123): when the data array has more rows than this (every row, before filters),
+   * matching runs as with `fuzzyMaxDistance: 0`: exact, prefix and substring matches only, so a
+   * typo no longer matches, and no word index is kept. Default: never.
+   */
+  fuzzyMaxRows?: number
   /** Default `false`. */
   caseSensitive?: boolean
   /**
@@ -156,6 +162,14 @@ const typingOptions = {
 const matching = (_: unknown, o: Readonly<Record<string, unknown>>) =>
   o.searchFn === undefined ? undefined : 'searchFn replaces the built-in matching'
 
+/** A count of edits or rows (a matching option). */
+const count = {
+  type: 'number',
+  check: (v: number) => Number.isInteger(v) && v >= 0,
+  expected: 'a non-negative integer',
+  noEffect: matching,
+} as const
+
 const searchOptions = {
   threshold: {
     type: 'number',
@@ -163,12 +177,8 @@ const searchOptions = {
     expected: 'a number from 0 to 1',
     noEffect: matching,
   },
-  fuzzyMaxDistance: {
-    type: 'number',
-    check: (v: number) => Number.isInteger(v) && v >= 0,
-    expected: 'a non-negative integer',
-    noEffect: matching,
-  },
+  fuzzyMaxDistance: count,
+  fuzzyMaxRows: count,
   caseSensitive: { type: 'boolean', noEffect: matching },
   typing: { type: 'object', shape: typingOptions },
   mode: modeOption,
@@ -269,10 +279,23 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
 
   /** The projection of (data, columns): built by a sliced job; `undefined` while it runs. */
   function indexFor(ctx: RowModelContext): SearchIndex | null | undefined {
+    // #123: above `fuzzyMaxRows` rows (the whole data array, before filters: a result does not flip
+    // while the user filters) this data version is matched as with `fuzzyMaxDistance: 0`. The index,
+    // and the scores it keeps (search-index.ts `w`), belong to one data version: new data crossing
+    // the limit gets an index in its own mode.
+    const rows = ctx.data.length
+    const off = rows > (opts.fuzzyMaxRows as number)
     let byColumns = indexes.get(ctx.data)
     if (!byColumns) {
       byColumns = new WeakMap()
       indexes.set(ctx.data, byColumns)
+      if (DEV && off && config.fuzzyMaxDistance) {
+        ctx.emit('DK_SEARCH_FUZZY_OFF', {
+          rows,
+          limit: opts.fuzzyMaxRows as number,
+          distance: config.fuzzyMaxDistance,
+        })
+      }
     }
     let key = byColumns.get(ctx.columns)
     if (!key) {
@@ -283,7 +306,9 @@ export const search = <T = AnyRow>(opts: SearchOptions<T> = {}) => {
     if (done !== undefined) return done
     useExSearch ??= probeExSearch(ctx.emit)
     const exSearch = useExSearch
-    const index = sliced(ctx, key, () => buildIndex(ctx, config, exSearch))
+    const index = sliced(ctx, key, () =>
+      buildIndex(ctx, off ? { ...config, fuzzyMaxDistance: 0 } : config, exSearch),
+    )
     if (index !== undefined) built.set(key, index)
     return index
   }

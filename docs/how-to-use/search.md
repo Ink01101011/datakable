@@ -120,12 +120,13 @@ a new applied `query` does.
 | --- | --- | --- | --- |
 | `threshold` | `number` (0–1) | `0.3` | Minimum relevance, weights applied, to keep a row. |
 | `fuzzyMaxDistance` | `number` (integer ≥ 0) | `3` | Maximum Levenshtein distance of a fuzzy match. `0` turns fuzzy matching off: a one-word query is matched against whole cells only (no words are found or kept), so a keystroke costs less (about 26 ms instead of 65–75 ms at 100k rows in our benchmark), with the same results as matching each word, and a longer query matches only the previous hits (about 1 ms per keystroke at 100k rows). |
+| `fuzzyMaxRows` | `number` (integer ≥ 0) | — (never) | Large data: when the data array has more rows than this (every row, before filters), matching runs as with `fuzzyMaxDistance: 0` — typos stop matching, no word index is kept. At or below it, `fuzzyMaxDistance` applies. See [Large data](#large-data). |
 | `caseSensitive` | `boolean` | `false` | Match case. |
 | `typing` | `SearchTyping` | immediate (client), see below (server) | When `query` follows `input`. |
 | `mode` | `'client' \| 'server'` | `'client'` | `'server'`: the server matches the query; core skips this step. |
 | `searchFn` | `AsyncSearchFn<T>` | — | Replaces the built-in matching. Wrap it with `withSearchFn()`. |
 
-`threshold`, `fuzzyMaxDistance` and `caseSensitive` have no effect with a `searchFn`, and
+`threshold`, `fuzzyMaxDistance`, `fuzzyMaxRows` and `caseSensitive` have no effect with a `searchFn`, and
 `searchFn` has none with `mode: 'server'` (both reported as `DK_OPTION_NO_EFFECT` in
 development).
 
@@ -302,6 +303,52 @@ const table = createTable({
 
 void table.setSearch('mali') // fetches once the debounce applies the query
 ```
+
+## Large data
+
+Typo matching is what makes a one-word keystroke expensive on large data: each word of each cell
+is measured against the query, and the words are kept (ex-search's word index). `fuzzyMaxRows`
+turns it off for data above a row count you choose, so small tables keep typo matching and large
+ones stay fast:
+
+```ts
+import { createTable } from '@datakable/core'
+import { search } from '@datakable/core/search'
+
+type Order = { id: number; customer: string; city: string }
+declare const orders: Order[]
+
+const table = createTable({
+  data: orders,
+  rowKey: 'id',
+  // Up to 50,000 rows: typos match (fuzzyMaxDistance 3). Above: exact, prefix, substring only.
+  features: [search({ fuzzyMaxRows: 50_000 })],
+})
+
+await table.setSearch('somchai') // finds "Somchai" at any size
+await table.setSearch('somchia') // a typo: found up to 50,000 rows, not above
+```
+
+- **What changes above the limit.** The data is matched as with `fuzzyMaxDistance: 0`: a cell
+  matches when it equals the query, starts with it or contains it (case-insensitive unless
+  `caseSensitive`). A query with a typo (`somchia`) no longer matches. Exact, prefix and substring
+  hits, their scores and their order are the same as without the option. No word index is kept,
+  and a longer query matches only the previous hits (see above).
+- **Which row count.** The rows of the data array (`data.length`), before filters: filtering does
+  not switch typo matching back on, so results do not change while the user filters. New data
+  (`setData`, `setOptions({ data })`) that crosses the limit is matched in its own mode from its
+  first search; no score from the other mode is kept.
+- **When it takes effect.** Development builds report
+  [`DK_SEARCH_FUZZY_OFF`](../how-to-fix/errors.md#dk_search_fuzzy_off) (info) once per data
+  array, on its first search, when the limit switches typo matching off.
+- **Choosing a value.** At 100k rows (4 searched columns of names, cities and numbers; Node on an
+  Apple M-series laptop, no CPU throttle, production build, median of 5 processes), the first
+  one-word query took 117 ms with typo matching and 60 ms with `fuzzyMaxRows: 50_000`; later
+  one-word keystrokes took about 52 ms and 31 ms. The table's memory for filter + sort + a
+  one-word query at 100k rows is 4.37 MB with typo matching and 3.21 MB above the limit (no word
+  index). Pick the row count above which a keystroke feels slow on the devices your users have (a
+  phone is several times slower than this laptop), and keep typo matching where your users rely
+  on it (names, addresses). Omitted, typo matching stays on at every size, as before.
 
 ## Pitfalls
 
