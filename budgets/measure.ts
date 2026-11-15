@@ -193,12 +193,16 @@ export function median(xs: readonly number[]): number {
 /** Set by vitest / vite in a test worker (`import.meta.env`); a child `vitest run` sets its own. */
 const workerEnv = /^(VITEST.*|TEST|BASE_URL|MODE|DEV|PROD|SSR|FORCE_TTY|NODE_ENV)$/
 
+/** A sample's child process that runs longer than this is killed and fails the budget. */
+const SAMPLE_TIMEOUT_MS = 5 * 60_000
+
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 /**
  * A timing budget measured as the median of {@link SAMPLES} samples, each in a FRESH process
- * (#130). The test `test` of `file` (relative to the repo root) is run alone, once per sample, by
- * a child `vitest run` of this config; there `sampled` runs `sample` once and reports it. So every
+ * (#130). The test `test` of `file` (relative to the repo root; its full name, suites first, joined
+ * by ` > ` as `expect.getState().currentTestName` gives it) is run alone, once per sample, by a child
+ * `vitest run` of this config; there `sampled` runs `sample` once and reports it. So every
  * sample starts like a lone run of that test — no heap, JIT or cache state left by other tests or
  * by earlier samples — and is the same measurement as before, repeated.
  *
@@ -213,10 +217,15 @@ export async function sampled<K extends string>(
 ): Promise<Record<K, Tasks>> {
   const out = env[SAMPLE_OUT]
   if (out !== undefined) {
+    // One test per child: a second one would overwrite the first one's sample.
+    if (existsSync(out)) throw new Error(`more than one test of this child matched "${test}"`)
     const r = await sample()
     writeFileSync(out, JSON.stringify(r))
     return r
   }
+  // vitest's `-t` is a regular expression over the full name (suites and test joined by ` > `, as
+  // `currentTestName`): anchored at both ends, one test name cannot select another containing it.
+  const name = `^${escapeRegExp(test)}$`
   const dir = mkdtempSync(join(tmpdir(), 'dk-budget-'))
   const runs: Record<K, Tasks>[] = []
   try {
@@ -224,18 +233,24 @@ export async function sampled<K extends string>(
     const base = Object.fromEntries(Object.entries(env).filter(([k]) => !workerEnv.test(k)))
     for (let i = 0; i < SAMPLES; i++) {
       const path = join(dir, `${i}.json`)
-      const args = ['run', '--config', 'vitest.budgets.config.ts', file, '-t', escapeRegExp(test)]
+      const args = ['run', '--config', 'vitest.budgets.config.ts', file, '-t', name]
       const child = spawnSync(g.process.execPath, [vitestBin, ...args], {
         cwd: root,
         env: { ...base, [SAMPLE_OUT]: path },
         encoding: 'utf8',
         maxBuffer: 64 * MB,
+        // The parent's event loop waits on the child: vitest's own timeout cannot fire here.
+        timeout: SAMPLE_TIMEOUT_MS,
+        killSignal: 'SIGKILL',
       })
-      if (child.status !== 0 || !existsSync(path)) {
+      if (child.error || child.status !== 0 || !existsSync(path)) {
         const log = `${child.stdout ?? ''}${child.stderr ?? ''}`.split('\n').slice(-60).join('\n')
-        throw new Error(
-          `sample ${i + 1}/${SAMPLES} of "${test}" failed (exit ${child.status}):\n${log}`,
-        )
+        const why = child.error
+          ? (child.error as NodeJS.ErrnoException).code === 'ETIMEDOUT'
+            ? `timed out after ${SAMPLE_TIMEOUT_MS / 1000} s`
+            : String(child.error)
+          : `exit ${child.status}`
+        throw new Error(`sample ${i + 1}/${SAMPLES} of "${test}" failed (${why}):\n${log}`)
       }
       runs.push(JSON.parse(readFileSync(path, 'utf8')) as Record<K, Tasks>)
     }

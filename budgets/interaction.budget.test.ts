@@ -118,7 +118,7 @@ async function interact(t: T, label: string, act: () => void): Promise<Tasks> {
 
 /** The median of {@link SAMPLES} lone runs of the current test, each in a fresh process (#130). */
 function samples<K extends string>(sample: () => Promise<Record<K, Tasks>>) {
-  const title = (expect.getState().currentTestName ?? '').split(' > ').at(-1) as string
+  const title = expect.getState().currentTestName ?? ''
   return sampled('budgets/interaction.budget.test.ts', title, sample)
 }
 
