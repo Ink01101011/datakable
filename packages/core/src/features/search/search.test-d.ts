@@ -36,6 +36,15 @@ describe('search() types', () => {
     search({ typing: { strategy: 'later' } })
   })
 
+  it('fuzzyMaxRows is an optional row count (#123)', () => {
+    search({ fuzzyMaxRows: 50_000 })
+    search({ fuzzyMaxRows: 50_000, fuzzyMaxDistance: 2, threshold: 0.4 })
+    // @ts-expect-error a row count
+    search({ fuzzyMaxRows: '50000' })
+    // @ts-expect-error a row count
+    search({ fuzzyMaxRows: true })
+  })
+
   it('searchFn is typed against the row type; refetch is a core method', () => {
     search<User>({
       searchFn: withSearchFn(({ query, rows, signal }) => {

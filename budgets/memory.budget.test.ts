@@ -1,4 +1,12 @@
-import { createDefaultFeatures, createTable } from '@datakable/core'
+import {
+  columnFilters,
+  createDefaultFeatures,
+  createTable,
+  pagination,
+  search,
+  sorting,
+  validity,
+} from '@datakable/core'
 import { describe, expect, it } from 'vitest'
 import { measureHeap } from './measure'
 import { mixedUsers } from './mixed-users'
@@ -19,6 +27,14 @@ const makeData = (): R[] =>
   Array.from({ length: N }, (_, i) => ({ id: i, age: (i * 7919) % 100, name: `name ${i}` }))
 
 const BUDGET_MB = 5
+
+const WORDS = ['alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot', 'golf', 'hotel', 'india']
+/** 100k rows of one text column, `words` words per cell. */
+const longText = (words: number) =>
+  Array.from({ length: N }, (_, i) => ({
+    id: i,
+    text: Array.from({ length: words }, (_, j) => WORDS[(i * 31 + j * 7) % WORDS.length]).join(' '),
+  }))
 
 function preset(data: R[]) {
   return createTable({ data, rowKey: 'id', features: createDefaultFeatures(), onDiagnostic() {} })
@@ -62,11 +78,12 @@ describe('§9.3 pipeline memory, real default preset, 100k rows (dist, productio
     expect(t.getData()).toBe(data)
   })
 
-  // #96: a one-word query with fuzzy matching on is matched against each word of a cell too
-  // (ex-search's fuzzyMode 'word'). ex-search 1.2.1 can keep the word offsets of every cell (16 B
-  // per cell of two words): kept for all rows that measured 5.57 MB here and 5.08 MB in the PVT
-  // shape below, so the words are split per chunk and dropped (search-index.ts).
-  it(`client search, one-word query (words split per chunk, not kept): ≤ ${BUDGET_MB} MB`, async () => {
+  // #96 (a): a one-word query with fuzzy matching on is matched against each word of a cell too
+  // (ex-search's fuzzyMode 'word'), and keeps ex-search's word index of this data version (the
+  // word offsets of each cell of two words or more: `name 123` is one), so later keystrokes split
+  // no cell again. ex-search 1.2.1's index (16 B per two-word cell) measured 5.57 MB here and
+  // 5.08 MB in the PVT shape below; 2.1.1's is about 1.6 B per value (#124).
+  it(`client search, one-word query (word index kept): ≤ ${BUDGET_MB} MB`, async () => {
     const data = makeData()
     const { mb, value: t } = await measureHeap(async () => {
       const t = preset(data)
@@ -82,6 +99,39 @@ describe('§9.3 pipeline memory, real default preset, 100k rows (dist, productio
       `[§9.3 memory] filter+sort+one-word search: ${mb.toFixed(2)} MB (budget ${BUDGET_MB})`,
     )
     expect(m.filteredCount).toBeGreaterThan(0)
+    expect(mb).toBeLessThanOrEqual(BUDGET_MB)
+    expect(t.getData()).toBe(data)
+  })
+
+  // #123: above `fuzzyMaxRows` rows the same one-word query is matched as with
+  // `fuzzyMaxDistance: 0`: whole values only, no word index kept for this data version.
+  it(`client search, one-word query above fuzzyMaxRows (no word index): ≤ ${BUDGET_MB} MB`, async () => {
+    const data = makeData()
+    const { mb, value: t } = await measureHeap(async () => {
+      const t = createTable({
+        data,
+        rowKey: 'id',
+        features: [
+          columnFilters(),
+          validity(),
+          search({ fuzzyMaxRows: 50_000 }),
+          sorting(),
+          pagination(),
+        ],
+        onDiagnostic() {},
+      })
+      t.getRowModel()
+      t.setColumnFilter('age', { type: 'range', value: { min: 10 } })
+      t.toggleSort('age')
+      await expect(t.setSearch('nane')).resolves.toEqual({ status: 'applied' })
+      t.getRowModel()
+      return t
+    })
+    console.info(
+      `[§9.3 memory] filter+sort+one-word search, fuzzyMaxRows 50k: ${mb.toFixed(2)} MB (budget ${BUDGET_MB})`,
+    )
+    // Typos stop matching above the limit: 'nane' is no substring of 'name …'.
+    expect(t.getRowModel().filteredCount).toBe(0)
     expect(mb).toBeLessThanOrEqual(BUDGET_MB)
     expect(t.getData()).toBe(data)
   })
@@ -109,7 +159,7 @@ describe('§9.3 pipeline memory, real default preset, 100k rows (dist, productio
     expect(t.getData()).toBe(data)
   })
 
-  it(`zero-config one-word search (words not kept), the 10-column PVT shape: ≤ ${BUDGET_MB} MB`, async () => {
+  it(`zero-config one-word search (word index kept), the 10-column PVT shape: ≤ ${BUDGET_MB} MB`, async () => {
     const data = mixedUsers(N)
     const { mb, value: t } = await measureHeap(async () => {
       const t = createTable({
@@ -123,6 +173,119 @@ describe('§9.3 pipeline memory, real default preset, 100k rows (dist, productio
       return t
     })
     console.info(`[§9.3 memory] zero-config one-word search, PVT shape: ${mb.toFixed(2)} MB`)
+    expect(t.getRowModel().filteredCount).toBeGreaterThan(0)
+    expect(mb).toBeLessThanOrEqual(BUDGET_MB)
+    expect(t.getData()).toBe(data)
+  })
+
+  // R F1: the word index costs about 1 byte per word of a multi-word cell, so long text would keep
+  // MBs (30 words per cell: 6.22 MB, 100 words: 13.03 MB before the cap). It is kept up to a cap
+  // per data array; the blocks over it are split again on each keystroke.
+  for (const words of [30, 100]) {
+    it(`one searched column of ${words} words per cell, one-word queries: ≤ ${BUDGET_MB} MB`, async () => {
+      const data = longText(words)
+      const { mb, value: t } = await measureHeap(async () => {
+        const t = createTable({
+          data,
+          rowKey: 'id',
+          columns: [{ key: 'id' }, { key: 'text', search: 1 }],
+          features: createDefaultFeatures(),
+          onDiagnostic() {},
+        })
+        t.getRowModel()
+        await expect(t.setSearch('hotell')).resolves.toEqual({ status: 'applied' })
+        await expect(t.setSearch('hotelx')).resolves.toEqual({ status: 'applied' })
+        t.getRowModel()
+        return t
+      })
+      console.info(
+        `[§9.3 memory] one-word search, ${words} words per cell: ${mb.toFixed(2)} MB (budget ${BUDGET_MB})`,
+      )
+      expect(t.getRowModel().filteredCount).toBeGreaterThan(0)
+      expect(mb).toBeLessThanOrEqual(BUDGET_MB)
+      expect(t.getData()).toBe(data)
+    })
+  }
+
+  // R2 N1: filter (age ≥ 10) + sort (age) + one-word queries over multi-word text, the kept word
+  // index on top of the per-row search state (scores, hashes) and the filter and sort state. A broad
+  // query (`hotell` → `hotelx`: most rows) and a selective one (`lopez` → `lopex`: a third).
+  const textTable = (words: number, cols: number) =>
+    Array.from({ length: N }, (_, i) => {
+      const o: { id: number; age: number; [text: string]: string | number } = {
+        id: i,
+        age: (i * 7919) % 100,
+      }
+      for (let c = 0; c < cols; c++) {
+        o[`t${c}`] = Array.from(
+          { length: words || 2 + (i % 2) },
+          (_, j) => WORDS[(i * 31 + j * 7 + c * 3) % WORDS.length],
+        ).join(' ')
+      }
+      o.name = `name ${i}`
+      o.city = `${['Lopez', 'Paris', 'Oslo'][i % 3]} ${i % 97}`
+      return o
+    })
+  for (const [label, words, cols] of [
+    ['4 columns of 2-3 words', 0, 4],
+    ['one column of 30 words', 30, 1],
+  ] as const) {
+    for (const [q1, q2] of [
+      ['hotell', 'hotelx'],
+      ['lopez', 'lopex'],
+    ] as const) {
+      it(`filter + sort + one-word queries (${q1}), ${label} + name / city: ≤ ${BUDGET_MB} MB`, async () => {
+        const data = textTable(words, cols)
+        const { mb, value: t } = await measureHeap(async () => {
+          const t = createTable({
+            data,
+            rowKey: 'id',
+            columns: [
+              { key: 'id' },
+              ...Array.from({ length: cols }, (_, c) => ({ key: `t${c}`, search: 1 })),
+              { key: 'name', search: 1 },
+              { key: 'city', search: 1 },
+              { key: 'age' },
+            ],
+            features: createDefaultFeatures(),
+            onDiagnostic() {},
+          })
+          t.getRowModel()
+          t.setColumnFilter('age', { type: 'range', value: { min: 10 } })
+          t.toggleSort('age')
+          await expect(t.setSearch(q1)).resolves.toEqual({ status: 'applied' })
+          await expect(t.setSearch(q2)).resolves.toEqual({ status: 'applied' })
+          t.getRowModel()
+          return t
+        })
+        console.info(
+          `[§9.3 memory] filter+sort+one-word (${q1}), ${label}: ${mb.toFixed(2)} MB, ` +
+            `${t.getRowModel().filteredCount} hits (budget ${BUDGET_MB})`,
+        )
+        expect(t.getRowModel().filteredCount).toBeGreaterThan(0)
+        expect(mb).toBeLessThanOrEqual(BUDGET_MB)
+        expect(t.getData()).toBe(data)
+      })
+    }
+  }
+
+  it(`zero-config filter + sort + one-word query, the 10-column PVT shape: ≤ ${BUDGET_MB} MB`, async () => {
+    const data = mixedUsers(N)
+    const { mb, value: t } = await measureHeap(async () => {
+      const t = createTable({
+        data,
+        rowKey: 'id',
+        features: createDefaultFeatures(),
+        onDiagnostic() {},
+      })
+      t.getRowModel()
+      t.setColumnFilter('age', { type: 'range', value: { min: 20 } })
+      t.toggleSort('age')
+      await expect(t.setSearch('usr')).resolves.toEqual({ status: 'applied' })
+      t.getRowModel()
+      return t
+    })
+    console.info(`[§9.3 memory] zero-config filter+sort+one-word, PVT shape: ${mb.toFixed(2)} MB`)
     expect(t.getRowModel().filteredCount).toBeGreaterThan(0)
     expect(mb).toBeLessThanOrEqual(BUDGET_MB)
     expect(t.getData()).toBe(data)

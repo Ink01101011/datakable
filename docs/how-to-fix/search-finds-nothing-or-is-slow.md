@@ -112,7 +112,8 @@ reaches `threshold` (default `0.3`), with up to `fuzzyMaxDistance` (default `3`)
 word of the cell for a one-word query; against the whole cell for a query with spaces). A low
 weight lowers a column's relevance. `explainRow(key)` prints the threshold the row missed and
 suggests a lower one; `search({ threshold: 0.2 })` keeps weaker matches. `caseSensitive: true`
-makes it stricter.
+makes it stricter. With `fuzzyMaxRows` set, data of more rows matches no typo at all
+([`DK_SEARCH_FUZZY_OFF`](errors.md#dk_search_fuzzy_off) in development).
 
 ## Search is slow
 
@@ -123,6 +124,9 @@ responsive. When a step still takes longer than one task (50 ms), development bu
 
 - **Search fewer columns.** Give a `search` weight to the columns worth searching (example
   above); ids, numbers and long text columns cost time and rarely help.
+- **Turn typo matching off for large data.** `search({ fuzzyMaxRows: 50_000 })` matches data of
+  more rows as with `fuzzyMaxDistance: 0` (exact, prefix and substring only): about 40 % less per
+  one-word keystroke at 100k rows ([Large data](../how-to-use/search.md#large-data)).
 - **Type less often.** `search({ typing: { strategy: 'debounce', wait: 300 } })` applies the
   query once the user pauses.
 - **Keep `data` stable.** A new `data` array rebuilds the matcher; in React, memoise derived data
@@ -135,6 +139,7 @@ responsive. When a step still takes longer than one task (50 ms), development bu
 
 [`DK_SEARCH_FAILED`](errors.md#dk_search_failed) ·
 [`DK_SEARCH_COLUMN_SKIPPED`](errors.md#dk_search_column_skipped) ·
+[`DK_SEARCH_FUZZY_OFF`](errors.md#dk_search_fuzzy_off) ·
 [`DK_PERF_HINT`](errors.md#dk_perf_hint) ·
 [`DK_UNSTABLE_OPTION`](errors.md#dk_unstable_option) ·
 [`DK_OPTION_NO_EFFECT`](errors.md#dk_option_no_effect) (a `search` with no searchable column)
