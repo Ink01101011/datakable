@@ -136,6 +136,26 @@ describe('search(): client matching (§6.3)', () => {
     expect(Array.from(rankHits(hits))).toEqual([2, 5, 3, 7])
   })
 
+  it('rankHits over many hits (sorted in parts, then merged) equals one sort (R2 N4)', () => {
+    for (const n of [16_383, 16_384, 16_385, 50_000, 100_001]) {
+      const scores = [
+        1,
+        0.8,
+        0.65,
+        0.55,
+        0.4125,
+        Number.POSITIVE_INFINITY,
+        Number.NEGATIVE_INFINITY,
+      ]
+      const hits = Array.from({ length: n }, (_, k) => ({
+        i: (k * 7919) % n,
+        score: scores[(k * 31) % scores.length] as number,
+      }))
+      const want = [...hits].sort((a, b) => b.score - a.score || a.i - b.i).map((h) => h.i)
+      expect(Array.from(rankHits(hits)), String(n)).toEqual(want)
+    }
+  })
+
   it('relevance order is deterministic across runs and data copies', async () => {
     const data = Array.from({ length: 200 }, (_, i) => ({
       id: i,

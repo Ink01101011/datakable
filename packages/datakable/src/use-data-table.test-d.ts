@@ -1,9 +1,11 @@
 import {
   type ColumnFiltersState,
   type PaginationState,
+  type SearchOptions,
   type SearchOutcome,
   type SearchState,
   type SortingState,
+  search,
   sorting,
   type ValidityState,
 } from '@datakable/core'
@@ -31,5 +33,13 @@ describe("datakable's useDataTable types", () => {
     expectTypeOf(t.state).toEqualTypeOf<{ sorting: SortingState<User> }>()
     // @ts-expect-error search is not installed
     void t.setSearch
+  })
+
+  it('search({ fuzzyMaxRows }) passes through datakable and useDataTable (#123)', () => {
+    expectTypeOf<SearchOptions['fuzzyMaxRows']>().toEqualTypeOf<number | undefined>()
+    const t = useDataTable({ data: users, features: [search({ fuzzyMaxRows: 50_000 })] })
+    expectTypeOf(t.state).toEqualTypeOf<{ search: SearchState }>()
+    // @ts-expect-error a row count
+    search({ fuzzyMaxRows: '50000' })
   })
 })

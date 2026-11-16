@@ -104,6 +104,10 @@ Moved: [DK_SEARCH_COLUMN_SKIPPED](how-to-fix/errors.md#dk_search_column_skipped)
 
 Moved: [DK_SEARCH_FAILED](how-to-fix/errors.md#dk_search_failed).
 
+### DK_SEARCH_FUZZY_OFF
+
+Moved: [DK_SEARCH_FUZZY_OFF](how-to-fix/errors.md#dk_search_fuzzy_off).
+
 ### DK_SEARCH_UNKNOWN_KEYS
 
 Moved: [DK_SEARCH_UNKNOWN_KEYS](how-to-fix/errors.md#dk_search_unknown_keys).
