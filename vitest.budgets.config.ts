@@ -5,7 +5,8 @@ import { defineConfig } from 'vitest/config'
 // of `pnpm test` (which runs against source with no build).
 //
 // - production mode (`NODE_ENV=production`): the code a user ships, dev checks off;
-// - one fork, files one after another: timings are not shared with other test files;
+// - one fork, files one after another, each file in a fresh process (`isolate`): the timing
+//   budgets never share a heap or JIT state with the memory budgets (#130);
 // - `--expose-gc`: memory is measured after full collections.
 const dist = (path: string) => fileURLToPath(new URL(`./packages/${path}`, import.meta.url))
 
@@ -25,6 +26,7 @@ export default defineConfig({
     pool: 'forks',
     execArgv: ['--expose-gc'],
     fileParallelism: false,
+    isolate: true,
     testTimeout: 60_000,
     // The measurements are the point: print them for passing tests too.
     silent: false,

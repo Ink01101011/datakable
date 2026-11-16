@@ -53,8 +53,9 @@ pnpm check:budgets  # sizes against their limits, then the memory and interactio
   way. A column with `format`, or a date, array or object column given a `search` weight, keeps
   its formatted strings in the column cache (repeated strings share one copy): those are the
   columns whose memory grows with the row count. Without any `search` weight, only the columns of
-  primitives are searched (see [Search](search.md)), so a zero-config table keeps nothing per row
-  for search: 1.5 MB in all for 100k rows of ten mixed-type fields (strings, nullable numbers,
+  primitives are searched (see [Search](search.md)), so a zero-config table keeps no copy of
+  its values for search (a query that is applied keeps 10 bytes per row, plus the word index
+  within its allowance: see [Search](search.md)): 1.5 MB in all, before a query, for 100k rows of ten mixed-type fields (strings, nullable numbers,
   booleans, dates, arrays, nested objects), measured in Node, production build.
 - **Sorting** picks a stable algorithm per sort from one scan of the keys (`algorithm: 'auto'`):
   integer and date keys go to tim / counting / radix sort, and from 10k rows a string column is
@@ -64,8 +65,10 @@ pnpm check:budgets  # sizes against their limits, then the memory and interactio
   including formatting the searchable columns, and the collation ranks) runs in slices of a few
   milliseconds, yielding through `scheduler.yield()` (or `setTimeout` where it is missing,
   `DK_ENV_FALLBACK`). Meanwhile the row model keeps the previous
-  rows with `status: 'pending'`, and it updates when the work is done. Slicing only happens in the
-  browser after the first row model; the server and the first render compute synchronously.
+  rows with `status: 'pending'`, and it updates when the work is done. When the last slice ran
+  past its time, the pipeline run that applies the result waits for the next task instead of
+  lengthening that one. Slicing only happens in the browser after the first row model; the server
+  and the first render compute synchronously.
 - **Cell callbacks per column, not per cell.** Your `format`, `accessor`, filter `fn` and `sortBy`
   run in one `column:batch` per column per pipeline run, with an inline `try/catch`; interceptors
   and the error boundary see one call per column (when search formats a column time-sliced, one

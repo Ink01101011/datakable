@@ -382,7 +382,7 @@ table.subscribe(() => {
 `search({ mode: 'server' })` changes the typing defaults so that each keystroke does not send a
 request: `typing` defaults to `{ strategy: 'debounce', wait: 300, minLength: 2 }` (an input shorter
 than 2 characters, trimmed, is sent as an empty query). Anything you pass in `typing` overrides
-these. `threshold`, `fuzzyMaxDistance`, `caseSensitive` and `searchFn` do nothing in server mode:
+these. `threshold`, `fuzzyMaxDistance`, `fuzzyMaxRows`, `caseSensitive` and `searchFn` do nothing in server mode:
 the server matches the query. Details in [Search](search.md).
 
 ## Pitfalls

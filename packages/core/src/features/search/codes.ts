@@ -27,6 +27,14 @@ declare module '../../diagnostics/catalog' {
       /** Position in the table's columns (`options.columns`, else the derived columns). */
       index: number
     }
+    DK_SEARCH_FUZZY_OFF: {
+      /** Rows of the data array (all of them, before filters). */
+      rows: number
+      /** `fuzzyMaxRows`. */
+      limit: number
+      /** The configured `fuzzyMaxDistance`, not applied to this data. */
+      distance: number
+    }
   }
 }
 

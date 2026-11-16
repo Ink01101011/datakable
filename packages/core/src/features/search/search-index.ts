@@ -5,7 +5,7 @@ import type { Emit } from '../../diagnostics/types'
 import type { RowModelContext } from '../../feature/types'
 import { nullishOf, type SlicedFormatting } from '../../pipeline/column-cache'
 import { resolveColumns } from '../../pipeline/columns'
-import { arrayIndex } from '../../pipeline/row'
+import { runJob } from '../../pipeline/slice'
 import { detectCapability, hasCapability } from '../../versioning/capability'
 
 /** Matcher settings (the client options of `search()`, defaults applied). */
@@ -19,7 +19,7 @@ export interface MatchConfig {
  * One projected row as ex-search reads it: `i` is the row index (results map back by it, never by
  * identity: ex-search returns copies), `c0`, `c1`, … the formatted values of the searchable
  * columns. Flat keys also sidestep ex-search's top-level-key limitation for nested paths. Items
- * are built per chunk while matching and dropped after it (§9.3 memory): none is kept.
+ * are built while ex-search reads them and dropped after its call (§9.3 memory): none is kept.
  */
 export type Item = Record<string, string | number> & { readonly i: number }
 
@@ -31,16 +31,19 @@ export interface Hit {
 
 /**
  * The scores of the last match of a table (#95), per data row: `h` the 53-bit hashes of the rows'
- * searched texts (the index's, `-1`: not hashed), `s` its score (`-1`: no hit, `NaN`: not matched).
- * 16 bytes per row.
+ * searched texts (the index's, `-1`: not hashed), `s` its score as a code into `t`: `t[0]` is
+ * `NaN` (not matched), `t[1]` is `-1` (no hit), the others the distinct scores of the match. 10
+ * bytes per row (R2 N1: a `Float64Array` of scores took 6 more; a match has a few hundred distinct
+ * scores, exact in `t`; past 65,534 a score is stored as not matched, which only re-matches it).
  */
 export interface Scores {
   /** The query. */
   readonly q: string
-  /** The weights of the searched columns, in key order. */
+  /** The fuzzy distance, then the weights of the searched columns in key order. */
   readonly w: string
   readonly h: Float64Array
-  readonly s: Float64Array
+  readonly s: Uint16Array
+  readonly t: readonly number[]
 }
 
 /** The matcher of one (data, columns) pair: references to column values, no per-row copy. */
@@ -69,17 +72,27 @@ const CHUNK = 4096
  */
 const CELLS = 16_384
 
+/**
+ * Characters matched per chunk (R F1): long text (sentences, descriptions) matches fewer rows per
+ * chunk, as many columns do. Shorter text is held by {@link CELLS} alone.
+ */
+const CHARS = 524_288
+
 interface Key {
   readonly name: string
   readonly weight: number
 }
 
-/** The formatted value of row `r` of one searchable column. */
-type Read = (r: number) => string
+/**
+ * The formatted value of row `r` of one searchable column; `c`: the characters of its strings (a
+ * column {@link scan} read), for the slice size.
+ */
+type Read = ((r: number) => string) & { c?: number }
 
-// A throw (no `ExSearch`) counts as missing (hasCapability).
+// A throw (no `ExSearch`) counts as missing (hasCapability). `canNarrow` comes with
+// `search(q, { within })` (1.2.1 / 2.1.0), which matching relies on.
 const hasExSearch = () =>
-  [ExSearch.prototype.search, ExSearch.prototype.setData, ExSearch.prototype.updateConfig].every(
+  [ExSearch.prototype.search, ExSearch.prototype.setData, ExSearch.prototype.canNarrow].every(
     (f) => typeof f === 'function',
   )
 
@@ -93,7 +106,7 @@ export function probeExSearch(emit: Emit): boolean {
           feature: 'search',
           dependency: 'ex-search',
           capability: "ExSearch (fuzzyMode: 'word')",
-          supported: '^1.2.0',
+          supported: '^2.1.1',
           fallback: 'case-insensitive exact / prefix / substring matching (no fuzzy matching)',
         },
         emit,
@@ -121,17 +134,19 @@ function numberReader(values: Float64Array): Read {
  * the column cache formats those. `undefined` when a read throws. The values are read in NFC (#30),
  * normalised here, never per keystroke: the rows whose value is not NFC (rare: NFD input from
  * macOS, Thai or Vietnamese keyboards) keep their NFC form in a sparse map. Only values with a code
- * unit from U+0300 (combining marks and up) can change.
+ * unit from U+0300 (combining marks and up) can change. Counts the characters of the strings.
  */
 function* scan(
   size: number,
   get: (r: number) => unknown,
 ): Generator<undefined, Read | false | undefined, undefined> {
   const over = new Map<number, string>()
+  let c = 0
   try {
     for (let r = 0; r < size; r++) {
       const v = get(r)
       if (v !== null && (typeof v === 'object' || typeof v === 'function')) return false
+      if (typeof v === 'string') c += v.length
       if (typeof v === 'string' && /[\u0300-\uffff]/.test(v)) {
         const n = v.normalize('NFC')
         if (n !== v) over.set(r, n)
@@ -145,7 +160,7 @@ function* scan(
     const v = get(r)
     return v === null || v === undefined ? '' : String(v)
   }
-  return over.size ? (r) => over.get(r) ?? read(r) : read
+  return Object.assign(over.size ? (r: number) => over.get(r) ?? read(r) : read, { c })
 }
 
 /**
@@ -217,7 +232,9 @@ export function* buildIndex(
     yield
   }
   if (keys.length === 0) return null
-  const w = keys.map((k) => k.weight).join()
+  // The memo key of the kept scores (#95): the weights, and the distance they were matched with
+  // (#123: data crossing `fuzzyMaxRows` changes it; scores of the other mode are never reused).
+  const w = `${config.fuzzyMaxDistance};${keys.map((k) => k.weight)}`
   /**
    * A 53-bit hash of row `r`'s searched texts (#95), cyrb53: two 32-bit lanes over the code units
    * plus one (1–65536), each text closed by a 0 (`charCodeAt` past the end is `NaN`, read as 0 by
@@ -245,7 +262,18 @@ export function* buildIndex(
   const fold = (v: string) => (config.caseSensitive ? v : v.toLowerCase())
   const foldQuery = (q: string) => fold(q.normalize('NFC'))
   const at = (k: number, r: number) => fold((reads[k] as Read)(r))
-  const matchChunk = (useExSearch ? exSearchIndex : containsIndex)(keys, at, config)
+  // The characters of the searched strings (numbers are short), for long text (CHARS).
+  const chars = reads.reduce((sum, read) => sum + (read.c ?? 0), 1)
+  /** Rows matched per slice. */
+  const size = Math.max(16, Math.min(Math.max(256, CELLS / keys.length), (CHARS * n) / chars)) | 0
+  /**
+   * Rows per block (#96 a, word matching): half a slice, so building a block's word index (every
+   * row read and split) and matching a run of it fit one slice (§9.1).
+   */
+  const block = size >> 1
+  /** Rows matched between two `yield`s: a quarter slice, so a slice ends close to its deadline. */
+  const run = size >> 2
+  const matcher = (useExSearch ? exSearchMatcher : containsMatcher)(keys, at, config, n, block)
   /**
    * The hashes of this data version, computed on a row's first match (`-1`: not yet). The texts do
    * not depend on the query: a keystroke reuses them and hashes no row (#95).
@@ -260,14 +288,36 @@ export function* buildIndex(
       // Same data (the scores hold this index's hashes), a narrowing query: a row the previous
       // match scored without a hit is not matched again; its hits and the rows it did not see
       // (`NaN`: filtered out then) are.
-      const cut =
-        !old && prev?.h === h && prev.w === w && matchChunk.narrows?.(foldQuery(prev.q), q)
-      const s = new Float64Array(n).fill(Number.NaN)
-      const size = Math.max(256, Math.floor(CELLS / keys.length))
+      const cut = !old && prev?.h === h && prev.w === w && matcher.narrows?.(foldQuery(prev.q), q)
+      const s = new Uint16Array(n)
+      const t = [Number.NaN, -1]
+      const codes = new Map<number, number>()
+      /** The code of score `v` in `t` (0: not matched, when `t` is full). */
+      const code = (v: number) => {
+        let c = codes.get(v)
+        if (c === undefined && t.length < WORD_INDEX.codes) {
+          c = t.push(v) - 1
+          codes.set(v, c)
+        }
+        return c ?? 0
+      }
       const hits: Hit[] = []
-      for (let k = 0; k < rows.length; k += size) {
-        if (k) yield
-        const chunk = rows.subarray(k, k + size)
+      /** Rows read since the last `yield`: matched, or read to build a block's word index. */
+      let spent = 0
+      // Runs of at most `run` rows of one block, in the order given (a filter's output: ascending),
+      // a `yield` between two (the slice ends close to its deadline, §9.1).
+      for (let k = 0; k < rows.length; ) {
+        const b = Math.floor((rows[k] as number) / block)
+        let e = k + 1
+        while (e < rows.length && e - k < run && Math.floor((rows[e] as number) / block) === b) e++
+        const cost = e - k + (matcher.cost?.(b, q, e - k) ?? 0)
+        if (spent && spent + cost > run) {
+          yield
+          spent = 0
+        }
+        spent += cost
+        const chunk = rows.subarray(k, e)
+        k = e
         const miss: number[] = []
         for (const r of chunk) {
           let x = h[r] as number
@@ -275,134 +325,247 @@ export function* buildIndex(
             x = hash(r)
             h[r] = x
           }
-          s[r] = -1
+          s[r] = 1
           if (cut) {
-            if ((prev.s[r] as number) !== -1) miss.push(r)
+            if (prev.s[r] !== 1) miss.push(r)
             continue
           }
           if (!old) continue
           // Out of range reads `undefined`: never equal, never `>= -1` (like `NaN`: not matched).
           const j = old.h[r] === x ? r : old.h[r + d] === x ? r + d : -1
-          const v = old.s[j] as number
+          const v = old.t[old.s[j] as number] as number
           if (v >= -1) {
-            s[r] = v
+            s[r] = code(v)
             if (v >= 0) hits.push({ i: r, score: v })
           } else miss.push(r)
         }
         // A new query (no scores to keep) matches the chunk as it is.
         const todo = old || cut ? Uint32Array.from(miss) : chunk
         if (todo.length) {
-          for (const hit of matchChunk(todo, q)) {
-            s[hit.i] = hit.score
+          for (const hit of matcher(b, todo, q)) {
+            s[hit.i] = code(hit.score)
             hits.push(hit)
           }
         }
       }
-      if (memo) memo.scores = { q: query, w, h, s }
-      return rankHits(hits)
+      if (memo) memo.scores = { q: query, w, h, s, t }
+      return yield* ranked(hits)
     },
   }
 }
 
 /**
- * The projection as ex-search reads it: an array (`length`, index reads) of `{ i, c0, … }` items,
- * each built when read and not kept. It shows the chunk of rows being matched; ex-search holds
- * this one view (`setData` once).
+ * The hits among `rows` (row indices, all in block `b`) for a folded query (`score` decides alone,
+ * so parts match like the whole).
  */
-function projection(keys: readonly Key[], at: (k: number, r: number) => string) {
-  let rows: Uint32Array = new Uint32Array(0)
-  /** The items built for the chunk shown (ex-search 1.2.1 reads a row to split it, then to score it). */
-  let held: Record<string, string | number>[] = []
-  // Never written, and its own `length` stays 0: `length` is read through the trap below (setting
-  // a large `length` would allocate a backing store).
-  const target: Item[] = []
-  const items = new Proxy(target, {
-    get(t, p) {
-      if (p === 'length') return rows.length
-      const j = arrayIndex(p, rows.length)
-      if (j < 0) return t[p as keyof Item[]]
-      if (held[j]) return held[j]
-      const r = rows[j] as number
-      const o = { i: r } as Record<string, string | number>
-      for (let k = 0; k < keys.length; k++) o[(keys[k] as Key).name] = at(k, r)
-      held[j] = o
-      return o
-    },
-    has: (t, p) => arrayIndex(p, rows.length) >= 0 || p in t,
-  })
-  return {
-    items,
-    /** Shows `chunk` (row indices), each item built once until the next `show`. */
-    show(chunk: Uint32Array) {
-      rows = chunk
-      held = []
-    },
-  }
-}
-
-/** The hits of one chunk of rows for a folded query (`score` decides alone, so chunks match like the whole). */
-type MatchChunk = ((chunk: Uint32Array, query: string) => Hit[]) & {
+type Matcher = ((b: number, rows: Uint32Array, query: string) => Hit[]) & {
+  /**
+   * Rows read, besides the `rows` rows matched, to build block `b`'s word index before `query` is
+   * matched there. Missing: none.
+   */
+  cost?: (b: number, query: string, rows: number) => number
   /**
    * #96 (c): matching `next` within the hits of `prev` (both folded, as ex-search scores them)
-   * provably equals matching every row. Missing (or `undefined`): never.
+   * provably equals matching every row. Missing: never.
    */
-  narrows?: (prev: string, next: string) => boolean | undefined
+  narrows?: (prev: string, next: string) => boolean
 }
 
-function exSearchIndex(
+/**
+ * Search state allowance per data version (R F1, R2 N1), in bytes: `cap` for the per-row state
+ * (`row` bytes per data row: the 8-byte hash and 2-byte score code of `Scores`, and up to 4 bytes of
+ * output per hit) and the kept word indexes together. The word indexes get what the rows leave:
+ * `cap - row * n`, none from about 150k rows up. A block whose index would take them over it is
+ * matched without keeping one. `codes`: the size of a match's score table. An object so tests can
+ * change them.
+ *
+ * Measured at 100k rows (budget harness, warm code), filter (age) + sort (age) + one-word queries:
+ * the zero-config PVT shape holds 4.13 MB before any index (after `Scores` went from 16 to 10 bytes
+ * per row), 4 columns of 2–3 words 3.69 MB, one 30-word column 3.91 MB; 2 MiB leaves the indexes
+ * 0.66 MiB at 100k (1.32 MiB at 50k), so each stays under 5 MB.
+ */
+export const WORD_INDEX = { cap: 2_097_152, row: 14, codes: 65_536 }
+
+/**
+ * What a kept block's engine costs besides its index data (objects, typed-array headers, its
+ * emptied items): measured 1.4 to 2.2 KB.
+ */
+export const ENGINE_BYTES = 1536
+
+/**
+ * At least the bytes ex-search 2.1.1's word index keeps for a cell `v` (`buildWordIndex`), from its
+ * whitespace (`\s`, ex-search's set) and length: a varint header, the trailing whitespace length,
+ * the first word's start, and per later word its distance from the previous start plus the gap when
+ * it is longer than one character, each one byte up to 63 characters. So the whitespace count + 3,
+ * plus one per 64 characters for longer distances and headers. None without whitespace (one word).
+ * It over-counts by about one byte per cell (two- or three-word cells: 4 instead of 3; 30 words:
+ * 34 instead of 31), so what is kept stays under the allowance (R F1, R2 N1). The groups (16 bytes
+ * per 64 cells with any) and the engine are counted by the caller.
+ */
+export const wordIndexBytes = (v: string): number => {
+  const ws = v.length - v.replace(/\s/g, '').length
+  return ws && ws + 3 + (v.length >> 6)
+}
+
+function exSearchMatcher(
   keys: readonly Key[],
   at: (k: number, r: number) => string,
   config: MatchConfig,
-): MatchChunk {
+  n: number,
+  size: number,
+): Matcher {
+  // R F2: ex-search 2.x rejects a non-finite weight or threshold, which 1.2.1 (datakable 2.1.1)
+  // scored with. Such a config hands it finite stand-ins that keep every row (weight 1, threshold
+  // -1), and its hits are scored as 1.2.1 did from their raw field scores (`run`).
+  // Weights are > 0 here (buildIndex): Infinity is the non-finite one.
+  const finite = Number.isFinite(config.threshold) && keys.every((k) => k.weight < Infinity)
   // Values and query are folded already (buildIndex).
-  const engine = new ExSearch<Item>({
-    keys: keys as Key[],
+  const base = {
     ...config,
+    keys: (finite
+      ? keys
+      : keys.map((k) => ({ ...k, weight: k.weight < Infinity ? k.weight : 1 }))) as Key[],
+    threshold: finite ? config.threshold : -1,
     caseSensitive: true,
     // DataKable re-ranks with exact scores and an index tie-break; tim keeps ex-search's own pass
     // stable and avoids radix's score quantisation.
-    sortAlgorithm: 'tim',
-  })
+    sortAlgorithm: 'tim' as const,
+  }
   // A one-word query is measured against the whole value and each of its words, the best wins: a
   // typo of one word of a multi-word cell matches (#10). ex-search's `fuzzyMode: 'word'` does it
   // with its bounded matcher (#106). A query with whitespace is measured against whole values only,
   // as before (a single word is never that query), and is decided once per query, not per row (#96).
-  // ex-search 1.2.1 splits a value into words once per `setData` and keeps the word offsets (its
-  // word index, 16 bytes per cell of two words). Kept for every row, it would take DataKable over
-  // its 5 MB budget at 100k rows (§9.3, #96), so it is built for each chunk the view shows and
-  // dropped after it (`updateConfig`): values are split per chunk, each row read once.
   // With `fuzzyMaxDistance: 0` no word can score (distance 0 is equality, which the exact and
   // contains tiers score already): values are not split at all, same results (#96).
-  const view = projection(keys, at)
-  engine.setData(view.items)
-  const match = (chunk: Uint32Array, q: string) => {
-    // Set per chunk, like the view: another job may have matched in between.
-    engine.updateConfig({ fuzzyMode: !config.fuzzyMaxDistance || /\s/.test(q) ? 'value' : 'word' })
-    view.show(chunk)
-    // Results are copies of the items (`Omit<Item, …>` drops `i` from the type, not the value).
-    const hits = engine.search(q) as unknown as Hit[]
-    engine.updateConfig({})
-    // The same rows again: drops the items built for them.
-    view.show(chunk)
+  const words = (q: string) => config.fuzzyMaxDistance > 0 && !/\s/.test(q)
+  /**
+   * An engine and the data it reads: an array-like `{ length }` holding the `{ i, c0, … }` items of
+   * one call's rows, row `r` at `r - start`, while the call runs, and none after it (§9.3 memory:
+   * emptied, it keeps no element store). ex-search 2.x reads a row once per key and again for each
+   * result: a plain object is read about twice as fast as a Proxy building each item on read (and
+   * an array would keep 8 bytes per row); items from offset 0 up keep fast elements.
+   */
+  type Engine = { items: Item[]; engine: ExSearch<Item> }
+  const engine = (length: number, fuzzyMode: 'value' | 'word'): Engine => {
+    const items = { length } as unknown as Item[]
+    return { items, engine: new ExSearch<Item>({ ...base, fuzzyMode }).setData(items) }
+  }
+  /** What the word index of the block being read keeps, in bytes (`run` with `count`). */
+  let counted = 0
+  /**
+   * Rows `rows` matched by `e`, row `r` at `r - start` of its data; `read`: the rows it reads. With
+   * `count`, adds what ex-search's word index keeps for them to `counted`: each cell's bytes and 16
+   * per 64 cells (by position in the engine's data) with any.
+   */
+  const run = (
+    { items, engine }: Engine,
+    rows: Uint32Array,
+    read: Uint32Array,
+    start: number,
+    q: string,
+    count?: boolean,
+  ) => {
+    let group = -1
+    for (const r of read) {
+      const o = { i: r } as Record<string, string | number>
+      for (let k = 0; k < keys.length; k++) {
+        const v = at(k, r)
+        o[(keys[k] as Key).name] = v
+        const c = count && wordIndexBytes(v)
+        if (c) {
+          const z = ((r - start) * keys.length + k) >>> 6
+          counted += c + (z === group ? 0 : 16)
+          group = z
+        }
+      }
+      items[r - start] = o as Item
+    }
+    try {
+      // Results are copies of the items (`Omit<Item, …>` drops `i` from the type, not the value).
+      const hits = engine.search(q, { within: rows.map((r) => r - start) })
+      if (finite) return hits as unknown as Hit[]
+      // 1.2.1's score: the best raw × weight (a NaN product, 0 × Infinity, never wins) / 100; a row
+      // is kept unless below `threshold` (a NaN threshold keeps every row).
+      return hits.flatMap((h) => {
+        const score =
+          h.fieldMatches.reduce((best, f, k) => {
+            const v = f.rawScore * (keys[k] as Key).weight
+            return v > best ? v : best
+          }, -Infinity) / 100
+        return score < config.threshold ? [] : [{ i: (h as unknown as Item).i, score }]
+      })
+    } finally {
+      // `delete`: an `undefined` element would keep the element store.
+      for (const r of read) delete items[r - start]
+    }
+  }
+  /** Whole values: one engine over every row (made on first use), each call from its first row. */
+  let whole: Engine | undefined
+  // #96 (a): ex-search splits the values into words once per `setData`, on the first word-mode
+  // search, and keeps the word offsets (its word index, about 1 byte per word of a multi-word cell:
+  // `wordIndexBytes`). Only word matching has blocks: one word engine per block of rows, made on
+  // first use; a block's words are split in one slice (§9.1) the first time a one-word query
+  // matches there, and later keystrokes over this data version split nothing. Never `updateConfig`
+  // on it: that drops the index.
+  // R F1: what is kept grows with the text, not the row count, so a block is kept only while the
+  // total stays within what `WORD_INDEX` leaves the indexes of this data version. One that would go over it is
+  // `null`: each call matches its rows with an engine of its own, its index built over those rows
+  // and dropped with it (2.1.1's way): the same results, its words split on every keystroke.
+  const blocks: (Engine | null)[] = []
+  /** Bytes kept by the engines in `blocks`. */
+  let kept = 0
+  /** Rows of the kept blocks; `-1` once a block did not fit (no new one is kept after it). */
+  let rowsKept = 0
+  const length = (b: number) => Math.min(size, n - b * size)
+  const cap = () => WORD_INDEX.cap - WORD_INDEX.row * n
+  // Decided before a block's index is built (FIX2 round 2): a block that would go over the cap at
+  // the kept blocks' bytes per row, or any after one that did not fit, is matched the 2.1.1 way
+  // instead of building an index to throw away.
+  const over = (b: number) =>
+    blocks[b] === null ||
+    (!blocks[b] && (rowsKept < 0 || kept + (rowsKept ? (kept / rowsKept) * length(b) : 0) > cap()))
+  const match: Matcher = (b, rows, q) => {
+    if (!words(q)) {
+      whole = whole ?? engine(n, 'value')
+      return run(whole, rows, rows, Math.min(...rows), q)
+    }
+    const start = b * size
+    const known = blocks[b]
+    if (known) return run(known, rows, rows, start, q)
+    const k = engine(length(b), 'word')
+    if (over(b)) return run(k, rows, rows, start, q)
+    // A new word engine builds its word index in this call: it reads every row of the block.
+    counted = ENGINE_BYTES
+    const read = Uint32Array.from({ length: length(b) }, (_, j) => start + j)
+    const hits = run(k, rows, read, start, q, true)
+    const fits = kept + counted <= cap()
+    if (fits) kept += counted
+    rowsKept = fits ? rowsKept + length(b) : -1
+    blocks[b] = fits ? k : null
     return hits
   }
-  // ex-search's `canNarrow` (1.2.1; 1.2.0 never narrows): fuzzy matching off, `prev` inside `next`
-  // and no weight that lets a row reach `threshold` on `next` but not on `prev`; or the same query.
-  // Queries are compared as given: DataKable's own (trimmed, NFC, folded).
-  match.narrows = (prev: string, next: string) => engine.canNarrow?.(prev, next)
+  match.cost = (b, q, m) => (!words(q) || blocks[b] ? 0 : over(b) ? m : length(b))
+  // ex-search's `canNarrow`: fuzzy matching off, `prev` inside `next` and no weight that lets a row
+  // reach `threshold` on `next` but not on `prev`; or the same query. Queries are compared as
+  // DataKable scores them (trimmed, NFC, folded). The method, not the `canNarrow` export: a named
+  // ESM import of an export an older ex-search lacks would stop the package loading before the
+  // probe (which requires the method) could fall back.
+  // Not with stand-ins for non-finite values: they do not score like the config.
+  const narrowing = new ExSearch<Item>(base)
+  match.narrows = (prev, next) => finite && narrowing.canNarrow(prev, next)
   return match
 }
 
 /** The fallback when ex-search is missing or incompatible: exact 1 · prefix 0.8 · substring 0.65. */
-function containsIndex(
+function containsMatcher(
   keys: readonly Key[],
   at: (k: number, r: number) => string,
   config: MatchConfig,
-): MatchChunk {
-  return (chunk, q) => {
+): Matcher {
+  return (_, rows, q) => {
     const hits: Hit[] = []
-    for (let j = 0; j < chunk.length; j++) {
-      const r = chunk[j] as number
+    for (let j = 0; j < rows.length; j++) {
+      const r = rows[j] as number
       let best = 0
       for (let k = 0; k < keys.length; k++) {
         const v = at(k, r)
@@ -416,13 +579,36 @@ function containsIndex(
   }
 }
 
+/** Relevance order (§6.3): score descending, ties by original row index. */
+const order = (a: Hit, b: Hit) => b.score - a.score || a.i - b.i
+
+/** Hits sorted per slice (R2 N4: one sort of 100k hits is a 40 ms task under a 4x throttle). */
+const RANK = 16_384
+
 /**
- * Hits in relevance order (§6.3): score descending, ties by original row index. Enforced here so
- * the order never depends on the matcher's own ranking. Sorts `hits` (a fresh array) in place.
+ * Hits in relevance order (§6.3), enforced here so the order never depends on the matcher's own
+ * ranking, in time slices: parts of {@link RANK} hits sorted, then merged two at a time, a `yield`
+ * after each. `order` is a total order (row indices are unique), so the merge equals one sort.
  */
-export function rankHits(hits: Hit[]): Uint32Array {
-  return Uint32Array.from(
-    hits.sort((a, b) => b.score - a.score || a.i - b.i),
-    (h) => h.i,
-  )
+function* ranked(hits: Hit[]): Generator<undefined, Uint32Array, undefined> {
+  const parts: Hit[][] = []
+  for (let k = 0; k < hits.length; k += RANK) {
+    parts.push(hits.slice(k, k + RANK).sort(order))
+    yield
+  }
+  while (parts.length > 1) {
+    const a = parts.shift() as Hit[]
+    const b = parts.shift() as Hit[]
+    const m: Hit[] = []
+    let i = 0
+    let j = 0
+    while (i < a.length && j < b.length)
+      m.push((order(a[i] as Hit, b[j] as Hit) < 0 ? a[i++] : b[j++]) as Hit)
+    parts.push(m.concat(a.slice(i), b.slice(j)))
+    yield
+  }
+  return Uint32Array.from(parts[0] ?? [], (h) => h.i)
 }
+
+/** {@link ranked} at once. */
+export const rankHits = (hits: Hit[]): Uint32Array => runJob(() => ranked(hits))
